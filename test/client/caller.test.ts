@@ -8,12 +8,19 @@ import { join, relative } from 'node:path'
 import { Readable } from 'node:stream'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { MAX_ATTACHMENT_BYTES } from '../../src/approval/constants.ts'
-import type { ApprovalRequest, RequestResult } from '../../src/approval/index.ts'
+import { ApprovalService } from '../../src/approval/index.ts'
+import type {
+  ApprovalRequest,
+  MessageReference,
+  Messenger,
+  RequestResult,
+} from '../../src/approval/index.ts'
 import { NO_AUTH, NO_CLIENT_TOKEN } from '../../src/auth/index.ts'
 import type { ClientToken } from '../../src/auth/index.ts'
 import {
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   ATTACHMENT_TOO_OLD_MESSAGE,
+  BACKGROUND_TOO_OLD_MESSAGE,
   Caller,
   TIMEOUT_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
@@ -536,4 +543,130 @@ test('an attachment against an unreachable service is unreachable', async () => 
   expect(await caller(port).ask({ ...ASK, attachment: { name: 'a', text: 'x' } }, CALL)).toEqual(
     failed('unreachable', unreachable(port)),
   )
+})
+
+class RecordingMessenger implements Messenger {
+  sent: { id: string }[] = []
+
+  async sendRequest(id: string): Promise<MessageReference> {
+    this.sent.push({ id })
+    return { chatId: 1, messageId: 2 }
+  }
+
+  async finalize(): Promise<void> {}
+}
+
+async function startBackgroundApi() {
+  const messenger = new RecordingMessenger()
+  const service = new ApprovalService(messenger)
+  const app = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
+    maxTextLength: 3900,
+    providerName: 'test',
+    auth: NO_AUTH,
+    maxAttachmentBytes: 1000,
+  })
+  await app.listen({ port: 0, host: '127.0.0.1' })
+  servers.push(app.server)
+  return { port: (app.server.address() as AddressInfo).port, service, messenger }
+}
+
+async function startPending(): Promise<{
+  port: number
+  id: string
+  service: ApprovalService
+  asked: Awaited<ReturnType<Caller['askInBackground']>>
+}> {
+  const { port, service } = await startBackgroundApi()
+  const asked = await caller(port).askInBackground(
+    { ...ASK, options: ['Approve'], timeoutOption: 'Approve' },
+    CALL,
+  )
+  return { port, id: asked.kind === 'pending' ? asked.id : '', service, asked }
+}
+
+test('askInBackground then waitFor returns the answer', async () => {
+  const { port, id, service, asked } = await startPending()
+  expect(asked).toEqual({ kind: 'pending', id: expect.any(String), expiresAt: expect.any(String) })
+  service.tap(id, 0)
+  expect(await caller(port).waitFor(id, CALL)).toEqual({
+    kind: 'done',
+    id,
+    answer: 'Approve',
+    timedOut: false,
+  })
+})
+
+test('waitFor reports pending once waitSeconds passes', async () => {
+  const { port, id } = await startPending()
+  expect(await caller(port).waitFor(id, { ...CALL, waitSeconds: 0.2 })).toEqual({
+    kind: 'pending',
+    id,
+    expiresAt: expect.any(String),
+  })
+})
+
+test('waitFor with waitSeconds 0 checks once', async () => {
+  const seen: string[] = []
+  const port = await startStub((request, response) => {
+    seen.push(`${request.method} ${request.url}`)
+    response.end('{"id":"x","state":"pending","expiresAt":"2026-10-21T06:00:00.000Z"}')
+  })
+  expect(await caller(port).waitFor('x', { ...CALL, waitSeconds: 0 })).toEqual({
+    kind: 'pending',
+    id: 'x',
+    expiresAt: '2026-10-21T06:00:00.000Z',
+  })
+  expect(seen).toEqual(['GET /request/x?wait=0'])
+})
+
+test('waitFor on an unknown id is unknownRequest', async () => {
+  const seen: string[] = []
+  const port = await startStub((request, response) => {
+    seen.push(`${request.method} ${request.url}`)
+    response.statusCode = 404
+    response.end('{"error":"not found"}')
+  })
+  expect(await caller(port).waitFor('a/b', { ...CALL, waitSeconds: 0 })).toEqual(
+    failed(
+      'unknownRequest',
+      "jaypost doesn't know request a%2Fb (the service restarted, or the answer expired after 24 h)",
+    ),
+  )
+  expect(seen).toEqual(['GET /request/a%2Fb?wait=0'])
+})
+
+test('cancel returns cancelled and waitFor then sees it', async () => {
+  const { port, id } = await startPending()
+  expect(await caller(port).cancel(id, CALL)).toEqual({ kind: 'cancelled', id })
+  expect(await caller(port).waitFor(id, CALL)).toEqual({ kind: 'cancelled', id })
+})
+
+test('askInBackground on an old service is tooOld', async () => {
+  const port = await startStub(reply(404, '{"error":"not found"}'))
+  expect(await caller(port).askInBackground(ASK, CALL)).toEqual(
+    failed('tooOld', BACKGROUND_TOO_OLD_MESSAGE),
+  )
+})
+
+test('an unreadable state body is unreadable', async () => {
+  const port = await startStub(reply(200, '{"id":"x","state":"pending"}'))
+  expect(await caller(port).waitFor('x', { ...CALL, waitSeconds: 0 })).toEqual(
+    failed('unreadable', 'jaypost service sent an unreadable answer: {"id":"x","state":"pending"}'),
+  )
+  expect(await caller(port).askInBackground(ASK, CALL)).toEqual(
+    failed('unreadable', 'jaypost service sent an unreadable answer: {"id":"x","state":"pending"}'),
+  )
+  expect(await caller(port).cancel('x', CALL)).toEqual(
+    failed('unreadable', 'jaypost service sent an unreadable answer: {"id":"x","state":"pending"}'),
+  )
+})
+
+test('an unusable token makes no background request', async () => {
+  const { port, seen } = await startRecordingStub('{"paired":true}')
+  const unusable = caller(port, { kind: 'unusable', message: 'bad token' })
+  const expected = failed('unusableToken', 'bad token')
+  expect(await unusable.askInBackground(ASK, CALL)).toEqual(expected)
+  expect(await unusable.waitFor('x', CALL)).toEqual(expected)
+  expect(await unusable.cancel('x', CALL)).toEqual(expected)
+  expect(seen).toEqual([])
 })

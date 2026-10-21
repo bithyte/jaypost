@@ -1,8 +1,9 @@
+import { MAX_WAIT_SECONDS } from '../approval/constants.ts'
 import { statusInfoSchema } from '../server/schema.ts'
 import type { StatusInfo } from '../server/types.ts'
 import { checkAttachmentLimit, readAttachment } from './attachment.ts'
 import { FETCH_GRACE_MS, HOST } from './constants.ts'
-import { callApi, postApi, requestApi, toSendTimeoutMs, unreadable } from './http.ts'
+import { callApi, isStateBody, postApi, requestApi, toSendTimeoutMs, unreadable } from './http.ts'
 import type {
   ApiOptions,
   AskBody,
@@ -13,7 +14,10 @@ import type {
   Done,
   Failure,
   Message,
+  Pending,
   Question,
+  QuestionState,
+  StateBody,
 } from './types.ts'
 
 type Session = { readonly token?: string }
@@ -50,6 +54,95 @@ export class Caller {
       return result
     }
     return { kind: 'done', answer: result.outcome.answer, timedOut: result.outcome.timedOut }
+  }
+
+  /** Starts a question the owner answers later; collect it with `waitFor`. */
+  async askInBackground(question: Question, call: CallOptions): Promise<Pending | Failure> {
+    const session = this.#begin()
+    if (session.kind === 'failed') {
+      return session
+    }
+    const attachment = await this.#attach(question.attachment, session, call.signal)
+    if (attachment.kind === 'failed') {
+      return attachment
+    }
+    const result = await postApi(
+      this.#port,
+      '/request/async',
+      toAskBody(question, attachment.body),
+      {
+        ...this.#apiOptions(session, call.signal),
+        timeoutMs: toSendTimeoutMs(attachment.body !== undefined),
+      },
+    )
+    if (result.kind === 'failed') {
+      return result
+    }
+    if (!isStateBody(result.body) || result.body.state !== 'pending') {
+      return unreadable(JSON.stringify(result.body))
+    }
+    return { kind: 'pending', id: result.body.id, expiresAt: result.body.expiresAt }
+  }
+
+  /** Long-polls until settled or `waitSeconds` passes; 0 checks once, omitted waits until settled. */
+  async waitFor(
+    id: string,
+    call: CallOptions & { readonly waitSeconds?: number },
+  ): Promise<QuestionState> {
+    const session = this.#begin()
+    if (session.kind === 'failed') {
+      return session
+    }
+    const path = `/request/${encodeURIComponent(id)}` as const
+    const deadlineMs =
+      call.waitSeconds === undefined ? undefined : this.#now() + call.waitSeconds * 1000
+    for (;;) {
+      const remainingSeconds =
+        deadlineMs === undefined ? MAX_WAIT_SECONDS : Math.max(0, (deadlineMs - this.#now()) / 1000)
+      const waitSeconds = Math.min(remainingSeconds, MAX_WAIT_SECONDS)
+      const result = await callApi(this.#port, 'GET', `${path}?wait=${waitSeconds}`, undefined, {
+        ...this.#apiOptions(session, call.signal),
+        timeoutMs: waitSeconds * 1000 + FETCH_GRACE_MS,
+      })
+      if (result.kind === 'failed') {
+        return result
+      }
+      if (!isStateBody(result.body)) {
+        return unreadable(JSON.stringify(result.body))
+      }
+      const isDue = deadlineMs !== undefined && this.#now() >= deadlineMs
+      if (result.body.state !== 'pending' || isDue) {
+        return toQuestionState(result.body)
+      }
+    }
+  }
+
+  /** Cancels a background question; the state that comes back is the settled one. */
+  async cancel(
+    id: string,
+    call: CallOptions & { readonly timeoutMs?: number },
+  ): Promise<QuestionState> {
+    const session = this.#begin()
+    if (session.kind === 'failed') {
+      return session
+    }
+    const result = await callApi(
+      this.#port,
+      'DELETE',
+      `/request/${encodeURIComponent(id)}`,
+      undefined,
+      {
+        ...this.#apiOptions(session, call.signal),
+        timeoutMs: call.timeoutMs ?? FETCH_GRACE_MS,
+      },
+    )
+    if (result.kind === 'failed') {
+      return result
+    }
+    if (!isStateBody(result.body)) {
+      return unreadable(JSON.stringify(result.body))
+    }
+    return toQuestionState(result.body)
   }
 
   /** Resolves once the service has sent the message. */
@@ -162,5 +255,16 @@ function toAskBody(question: Question, attachment: AttachmentBody | undefined): 
     ...(question.project === undefined ? {} : { project: question.project }),
     ...(question.format === undefined ? {} : { format: question.format }),
     ...(attachment === undefined ? {} : { attachment }),
+  }
+}
+
+function toQuestionState(body: StateBody): QuestionState {
+  switch (body.state) {
+    case 'pending':
+      return { kind: 'pending', id: body.id, expiresAt: body.expiresAt }
+    case 'done':
+      return { kind: 'done', id: body.id, answer: body.answer, timedOut: body.timedOut }
+    case 'cancelled':
+      return { kind: 'cancelled', id: body.id }
   }
 }
