@@ -8,8 +8,14 @@ import { SNIPPETS } from '../snippets/index.ts'
   <div class="wrap">
     <h1>Your agent asks.<br />Your phone buzzes.</h1>
     <p class="subhead">
-      Let your agents and scripts ask you before they act. You tap a button in Telegram, and they
-      carry on.
+      Let your agents and scripts ask you before they act. You tap a button in{' '}
+      <span class="flip"
+        ><span class="visually-hidden">Telegram or Discord</span><span
+          class="flip-words"
+          aria-hidden="true"
+          ><span class="flip-telegram">Telegram</span><span class="flip-discord">Discord</span></span
+        ></span
+      >, and they carry on.
     </p>
     <RoundTrip />
     <div class="install">
@@ -42,6 +48,60 @@ import { SNIPPETS } from '../snippets/index.ts'
     margin: 20px auto 0;
     color: var(--text-muted);
     font-size: 1.1rem;
+  }
+
+  /* Sized to the longer word so the sentence doesn't reflow; reduced motion keeps Telegram. */
+  .flip-words {
+    display: inline-grid;
+    overflow: hidden;
+    vertical-align: bottom;
+  }
+
+  .flip-words > span {
+    grid-area: 1 / 1;
+    font-weight: 600;
+  }
+
+  .flip-telegram {
+    color: var(--telegram);
+  }
+
+  .flip-discord {
+    color: var(--discord);
+    visibility: hidden;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .flip-words > span {
+      animation: flip-roll 6s infinite;
+    }
+
+    /* start part-way in so Telegram is already showing on load */
+    .flip-words > .flip-telegram {
+      animation-delay: -0.3s;
+    }
+
+    .flip-words > .flip-discord {
+      visibility: visible;
+      animation-delay: -3.3s;
+    }
+  }
+
+  @keyframes flip-roll {
+    0% {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    5%,
+    45% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    50%,
+    100% {
+      opacity: 0;
+      transform: translateY(-100%);
+    }
   }
 
   .install {
