@@ -31,6 +31,9 @@ await build({
   platform: 'node',
   format: 'esm',
   minify: true,
+  // node-fetch (via grammy) recognizes the abort-controller polyfill's signal by
+  // constructor.name === 'AbortSignal'; mangled class names make every Telegram call throw
+  outputOptions: { keepNames: true },
   clean: true,
   // bundle everything, including grammy's transitive deps, so the binary needs no node_modules
   // zlib-sync stays external: @discordjs/ws imports it lazily and only for zlib-sync
@@ -41,6 +44,9 @@ await build({
   alias: { punycode: 'punycode/' },
   exe: {
     outDir: 'dist-exe',
+    // node-fetch calls url.parse() on every request. Node only warns DEP0169 for code outside
+    // node_modules, and bundled deps count as outside
+    seaConfig: { execArgv: ['--disable-warning=DEP0169'] },
     targets,
   },
 })
