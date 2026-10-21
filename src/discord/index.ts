@@ -1,3 +1,4 @@
+export { createDiscordClient, toIncomingInteraction, toIncomingMessage } from './client.ts'
 export { toCommandDefinitions } from './commands.ts'
 export {
   AMBIGUOUS_REPLY,
@@ -12,6 +13,7 @@ export {
   NOT_OWNER_COMMAND_REPLY,
   NOT_TEXT_REPLY,
   PAIRED_REPLY,
+  REJECTED_TOKEN_FATAL,
   TEXT_HINT_WITHOUT_BUTTONS,
   TEXT_HINT_WITH_BUTTONS,
   WRONG_CODE_REPLY,
@@ -27,17 +29,27 @@ export {
   routeTap,
   toButtonRows,
 } from './routing.ts'
+export { validateToken } from './setup.ts'
 export type {
   ButtonRow,
   CommandDefinition,
   Dismiss,
+  DiscordClient,
+  DiscordClientOptions,
+  DiscordIdentity,
+  GatewayEvents,
+  IncomingInteraction,
   IncomingMessage,
+  InteractionHandle,
+  InteractionResponse,
   OpenQuestion,
   OpenQuestions,
+  OutgoingMessage,
   Owner,
   RenderedContent,
   Reply,
   ReplyRoute,
+  SentMessage,
   Tap,
   TapRoute,
 } from './types.ts'

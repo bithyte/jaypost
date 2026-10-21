@@ -54,3 +54,17 @@ export const COMMAND_OPTIONS: Readonly<
   mute: { name: 'duration', description: 'How long, like 30m, 2h or 1d' },
   quiet: { name: 'hours', description: 'Quiet hours like 22-7, or off' },
 }
+/** How long `validateToken` waits for Discord before giving up. */
+export const TOKEN_CHECK_TIMEOUT_MS = 10_000
+/** Discord's REST API root; the client appends the version. */
+export const DISCORD_API_ROOT = 'https://discord.com/api'
+/** Gateway close codes that won't recover on retry: bad token, shard, version or intents. */
+export const FATAL_CLOSE_CODES: readonly number[] = [4004, 4010, 4011, 4012, 4013, 4014]
+/** Message flag that hides link previews. */
+export const MESSAGE_FLAG_SUPPRESS_EMBEDS = 4
+/** Message flag that delivers without a push notification. */
+export const MESSAGE_FLAG_SUPPRESS_NOTIFICATIONS = 4096
+/** Message flag that shows an interaction reply only to the user who triggered it. */
+export const MESSAGE_FLAG_EPHEMERAL = 64
+/** Fatal message for a token Discord refuses; never includes the token. */
+export const REJECTED_TOKEN_FATAL = 'Discord rejected the bot token; check it with `jaypost init`'
