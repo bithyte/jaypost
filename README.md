@@ -429,7 +429,7 @@ Attachments need a service at least as new as this release; an older one ignores
 
 ### OpenAPI spec
 
-The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `jaypost openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `npm run openapi`.
+The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `jaypost openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `vp run openapi`.
 
 ## Install options
 
@@ -685,10 +685,10 @@ The [question log](#question-log) keeps question text and answers on disk (mode 
 
 ## Releasing
 
-When a change matters to users, run `npm run changeset` on its branch, pick patch, minor or major, write a line or two for the changelog, and commit the generated `.changeset/*.md` file with the change. Internal changes (refactors, tests, docs) don't need one.
+When a change matters to users, run `vp run changeset` on its branch, pick patch, minor or major, write a line or two for the changelog, and commit the generated `.changeset/*.md` file with the change. Internal changes (refactors, tests, docs) don't need one.
 
 After a PR with a changeset is merged into `main`, the `publish` workflow opens or updates a `chore: release` PR that bumps the version, writes `CHANGELOG.md` and regenerates `docs/openapi.yaml`. Merging that PR is the release: the workflow runs the checks and tests, publishes to npm, pushes the `vX.Y.Z` tag and creates the GitHub Release. Nothing needs to be run locally.
 
 The same workflow builds the standalone binaries: Linux on Ubuntu, macOS on a macOS runner (ad-hoc codesigned). One last job gzips them and attaches the four `.gz` files and a `SHA256SUMS` to the GitHub Release.
 
-The website in `site/` deploys to `https://bithyte.github.io/jaypost/` after each release, as the last job of `publish`. To deploy by hand (the first time, or for a site-only fix), run the `site` workflow from the Actions tab; it builds whichever ref you pick. For local work, run `npm --prefix site ci` once, then `npm run web:dev`. One-time setup: Settings, Pages, Source: GitHub Actions. To run it from a release tag, add a `v*` tag rule to the `github-pages` environment, which only allows `main` by default.
+The website in `site/` deploys to `https://bithyte.github.io/jaypost/` after each release, as the last job of `publish`. To deploy by hand (the first time, or for a site-only fix), run the `site` workflow from the Actions tab; it builds whichever ref you pick. For local work, `vp install` at the root installs the site too, then run `vp run web:dev`. One-time setup: Settings, Pages, Source: GitHub Actions. To run it from a release tag, add a `v*` tag rule to the `github-pages` environment, which only allows `main` by default.

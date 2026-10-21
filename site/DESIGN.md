@@ -64,7 +64,7 @@ Placement was picked over "both behind the heading" and "big corner wash". Color
 
 `public/og.png` is a 1200x630 screenshot of the top of the built page: dark theme, reduced motion (so the round-trip shows its finished state and the flip shows "Telegram"). Regenerate it when the header or hero changes:
 
-1. `npm run web:build`, then `npm run web:preview` and note the port it prints.
+1. `vp run web:build`, then `vp run web:preview` and note the port it prints.
 2. Screenshot `http://localhost:<port>/jaypost/` with Playwright at a 1200x630 viewport, `colorScheme: 'dark'`, `reducedMotion: 'reduce'`, into `site/public/og.png`.
 3. Build again so `dist` picks it up.
 

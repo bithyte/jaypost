@@ -46,11 +46,11 @@
     "build:exe": "node scripts/build-exe.ts",
     "openapi": "node scripts/openapi.ts",
     "changeset": "changeset",
-    "version-packages": "changeset version && npm install --package-lock-only && npm run openapi",
-    "prepack": "npm run build",
-    "web:dev": "npm --prefix site run dev",
-    "web:build": "npm --prefix site run build",
-    "web:preview": "npm --prefix site run preview"
+    "version-packages": "changeset version && vp install --lockfile-only && vp run openapi",
+    "prepack": "vp run build",
+    "web:dev": "vp run --filter jaypost-site dev",
+    "web:build": "vp run --filter jaypost-site build",
+    "web:preview": "vp run --filter jaypost-site preview"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
@@ -73,5 +73,6 @@
   },
   "engines": {
     "node": ">=24.2"
-  }
+  },
+  "packageManager": "pnpm@12.14.0"
 }

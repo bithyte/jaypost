@@ -25,11 +25,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: 24
-
-      - run: npm ci
+          cache: true
 
       - id: select-mode
         uses: changesets/action/select-mode@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
@@ -47,15 +46,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: 24
-
-      - run: npm ci
+          cache: true
 
       - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          script: npm run version-packages
+          script: vp run version-packages
           commit-message: 'chore: release'
           pr-title: 'chore: release'
 
@@ -72,20 +70,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: 24
+          cache: true
 
-      - run: npm ci
+      - run: vp check
 
-      - run: npm run check
+      - run: vp test
 
-      # test/site imports site/src, whose tsconfig extends astro's, so astro must be installed
-      - run: npm --prefix site ci
-
-      - run: npm test
-
-      # npm pack runs prepack, which builds dist
+      # changeset pack runs pnpm pack, whose prepack builds dist
       - id: pack
         uses: changesets/action/pack@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
@@ -103,20 +97,12 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      # changeset publish runs pnpm publish, which does trusted publishing through OIDC
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: 24
+          cache: true
           registry-url: https://registry.npmjs.org
-
-      # Trusted publishing needs npm >= 11.5.1
-      - name: Ensure npm supports trusted publishing
-        run: |
-          if ! npx --yes semver --range ">=11.5.1" "$(npm --version)" > /dev/null; then
-            npm install --global npm@latest
-          fi
-          npm --version
-
-      - run: npm ci
 
       - uses: changesets/action/publish@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
@@ -140,14 +126,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@v5
+      - uses: voidzero-dev/setup-vp@68f39c78aaf39be468cabd2afb09c162574c84af # v1.21.2
         with:
           node-version: 26
+          cache: true
 
-      - run: npm ci
-
-      # setup-node's Node 26 is first on PATH, so plain npm run works (no vp env exec needed)
-      - run: npm run build:exe
+      # setup-vp selects Node 26 for the job, so plain vp run works (no vp env exec needed)
+      - run: vp run build:exe
         env:
           EXE_PLATFORMS: ${{ matrix.platform }}
 
