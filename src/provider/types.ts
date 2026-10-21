@@ -101,6 +101,8 @@ export type Provider = {
   readonly maxTextLength: number
   /** Largest attachment this provider sends, in bytes; absent means no attachment support. */
   readonly maxAttachmentBytes?: number
+  /** Most options a request may have; absent means no limit of the provider's own. */
+  readonly maxOptionCount?: number
   readonly settings: readonly ProviderSetting[]
   readonly setup: ProviderSetup
   readonly createRuntime: (settings: SettingValues, log: (line: string) => void) => ProviderRuntime

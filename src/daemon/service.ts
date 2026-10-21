@@ -123,6 +123,7 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     providerName: provider.name,
     auth: config.auth,
     maxAttachmentBytes: resolveMaxAttachmentBytes(provider),
+    ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
     ...(notifications === undefined ? {} : { notifications }),
   })
   const handlers: RuntimeHandlers = {

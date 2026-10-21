@@ -419,3 +419,13 @@ test('a non-string name is rejected', () => {
     'attachment.name must be a non-empty string',
   )
 })
+
+test('more options than maxOptionCount is rejected', () => {
+  const body = { text: 'q', options: ['a', 'b', 'c'], timeoutOption: 'a' }
+  expect(parseApprovalRequest(body, 100, 0, 2)).toEqual({
+    ok: false,
+    error: 'options must have at most 2 entries',
+  })
+  expect(parseApprovalRequest(body, 100, 0, 3).ok).toBe(true)
+  expect(parseApprovalRequest(body, 100, 0).ok).toBe(true)
+})

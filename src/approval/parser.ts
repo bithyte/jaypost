@@ -162,7 +162,21 @@ export function createAttachmentSchema(maxAttachmentBytes: number) {
  * Schema of a /request body; also the source of the OpenAPI spec. Messages are part of the API
  * (README error table); only the first issue is reported.
  */
-export function createApprovalRequestSchema(maxTextLength: number, maxAttachmentBytes: number) {
+export function createApprovalRequestSchema(
+  maxTextLength: number,
+  maxAttachmentBytes: number,
+  maxOptionCount?: number,
+) {
+  const optionsSchema = z
+    .array(
+      z.string({ error: OPTION_ERROR }).min(1, OPTION_ERROR).max(MAX_OPTION_LENGTH, OPTION_ERROR),
+      { error: OPTIONS_ERROR },
+    )
+    .refine((options) => new Set(options).size === options.length, 'options must be unique')
+  const limitedOptionsSchema =
+    maxOptionCount === undefined
+      ? optionsSchema
+      : optionsSchema.max(maxOptionCount, `options must have at most ${maxOptionCount} entries`)
   return z
     .object(
       {
@@ -170,18 +184,7 @@ export function createApprovalRequestSchema(maxTextLength: number, maxAttachment
         project: createProjectSchema(),
         format: createFormatSchema(),
         allowText: z.boolean({ error: 'allowText must be a boolean' }).optional(),
-        options: z
-          .array(
-            z
-              .string({ error: OPTION_ERROR })
-              .min(1, OPTION_ERROR)
-              .max(MAX_OPTION_LENGTH, OPTION_ERROR),
-            {
-              error: OPTIONS_ERROR,
-            },
-          )
-          .refine((options) => new Set(options).size === options.length, 'options must be unique')
-          .optional(),
+        options: limitedOptionsSchema.optional(),
         timeoutOption: z.string({ error: 'timeoutOption must be a string' }),
         timeout: z.number({ error: TIMEOUT_ERROR }).positive(TIMEOUT_ERROR).optional(),
         attachment: createAttachmentSchema(maxAttachmentBytes).optional(),
@@ -244,8 +247,13 @@ export function parseApprovalRequest(
   body: unknown,
   maxTextLength: number,
   maxAttachmentBytes: number,
+  maxOptionCount?: number,
 ): ParseResult {
-  const result = createApprovalRequestSchema(maxTextLength, maxAttachmentBytes).safeParse(body)
+  const result = createApprovalRequestSchema(
+    maxTextLength,
+    maxAttachmentBytes,
+    maxOptionCount,
+  ).safeParse(body)
   if (result.success) {
     return { ok: true, value: result.data }
   }

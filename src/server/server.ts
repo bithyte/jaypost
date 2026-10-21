@@ -41,7 +41,7 @@ export function createApiServer(
   status: () => StatusInfo,
   options: ApiServerOptions,
 ): FastifyInstance {
-  const { maxTextLength, providerName, notifications, auth } = options
+  const { maxTextLength, maxOptionCount, providerName, notifications, auth } = options
   const attachmentLimit = options.maxAttachmentBytes ?? 0
   // Pending requests can hang for minutes; close() shouldn't wait for them.
   // A question can hold its response for up to 24 h; these timeouts must never cap it.
@@ -103,7 +103,12 @@ export function createApiServer(
           },
         }
       : {}
-  app.get('/status', guard, async () => ({ ...status(), maxAttachmentBytes: attachmentLimit }))
+  app.get('/status', guard, async () => ({
+    ...status(),
+    maxAttachmentBytes: attachmentLimit,
+    maxTextLength,
+    ...(maxOptionCount === undefined ? {} : { maxOptionCount }),
+  }))
   // Containers publish the same port on the host, so the local port is the one clients use.
   app.get('/openapi.yaml', async (request, reply) =>
     reply.type('application/yaml; charset=utf-8').send(
@@ -111,6 +116,7 @@ export function createApiServer(
         port: request.socket.localPort ?? 0,
         maxTextLength,
         maxAttachmentBytes: attachmentLimit,
+        ...(maxOptionCount === undefined ? {} : { maxOptionCount }),
       }),
     ),
   )
@@ -137,7 +143,7 @@ export function createApiServer(
       reply.code(501).send({ error: ATTACHMENTS_UNSUPPORTED_ERROR })
       return undefined
     }
-    const parsed = parseApprovalRequest(json, maxTextLength, attachmentLimit)
+    const parsed = parseApprovalRequest(json, maxTextLength, attachmentLimit, maxOptionCount)
     if (!parsed.ok) {
       reply.code(400).send({ error: parsed.error })
       return undefined

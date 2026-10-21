@@ -16,5 +16,6 @@ writeFileSync(
     port: DEFAULT_PORT,
     maxTextLength: provider.maxTextLength,
     maxAttachmentBytes: resolveMaxAttachmentBytes(provider),
+    ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
   }),
 )

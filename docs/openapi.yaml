@@ -345,6 +345,12 @@ components:
               type: string
             maxAttachmentBytes:
               type: number
+            maxTextLength:
+              type: number
+              description: Most characters a request text may have.
+            maxOptionCount:
+              type: number
+              description: Most options a request may have; absent means no provider limit
           required:
             - paired
           additionalProperties: {}
@@ -365,6 +371,12 @@ components:
               type: string
             maxAttachmentBytes:
               type: number
+            maxTextLength:
+              type: number
+              description: Most characters a request text may have.
+            maxOptionCount:
+              type: number
+              description: Most options a request may have; absent means no provider limit
           required:
             - paired
             - code

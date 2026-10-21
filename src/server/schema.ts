@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 /**
- * Shape of the /status response; `code` is present only while unpaired. `bot` is the Telegram
- * field older CLIs read; unknown fields are kept.
+ * Shape of the /status response; `code` is present only while unpaired. `bot` is a Telegram-only
+ * field older CLIs read; the limits come from the provider. Unknown fields are kept.
  */
 export const statusInfoSchema = z.discriminatedUnion('paired', [
   z.looseObject({
@@ -11,6 +11,8 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
     displayName: z.string().optional(),
     bot: z.string().optional(),
     maxAttachmentBytes: z.number().optional(),
+    maxTextLength: z.number().optional(),
+    maxOptionCount: z.number().optional(),
   }),
   z.looseObject({
     paired: z.literal(false),
@@ -20,5 +22,7 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
     instructions: z.string().optional(),
     bot: z.string().optional(),
     maxAttachmentBytes: z.number().optional(),
+    maxTextLength: z.number().optional(),
+    maxOptionCount: z.number().optional(),
   }),
 ])

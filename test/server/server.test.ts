@@ -300,6 +300,7 @@ test('GET /status reports pairing', async () => {
     code: 'K7QM-4XPD',
     bot: 'b',
     maxAttachmentBytes: MAX_ATTACHMENT_BYTES,
+    maxTextLength: 3900,
   })
 })
 
@@ -310,6 +311,7 @@ test('GET /status when paired', async () => {
     paired: true,
     bot: 'b',
     maxAttachmentBytes: MAX_ATTACHMENT_BYTES,
+    maxTextLength: 3900,
   })
 })
 
@@ -466,6 +468,7 @@ test('the right token behaves as today', async () => {
     paired: true,
     bot: 'b',
     maxAttachmentBytes: MAX_ATTACHMENT_BYTES,
+    maxTextLength: 3900,
   })
 })
 
@@ -572,15 +575,18 @@ async function startReal(
     readonly status?: () => StatusInfo
     readonly auth?: ApiAuth
     readonly maxAttachmentBytes?: number
+    readonly maxTextLength?: number
+    readonly maxOptionCount?: number
   } = {},
 ) {
   const messenger = new RecordingMessenger()
   const service = new ApprovalService(messenger)
   server = createApiServer(service, options.status ?? (() => ({ paired: true, bot: 'b' })), {
-    maxTextLength: 3900,
+    maxTextLength: options.maxTextLength ?? 3900,
     providerName: 'test',
     auth: options.auth ?? NO_AUTH,
     maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
+    ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
   })
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo
@@ -870,8 +876,33 @@ test('GET /status reports maxAttachmentBytes, 0 without support', async () => {
     paired: true,
     bot: 'b',
     maxAttachmentBytes: 1234,
+    maxTextLength: 3900,
   })
   await server?.close()
   url = await start(vi.fn<RequestFn>(), undefined, undefined, NO_AUTH, 0)
   expect(await (await fetch(`${url}/status`)).json()).toMatchObject({ maxAttachmentBytes: 0 })
+})
+
+test('status reports maxTextLength, and maxOptionCount only when set', async () => {
+  const limited = await startReal({ maxTextLength: 1800, maxOptionCount: 25 })
+  expect(await (await fetch(`${limited.url}/status`)).json()).toMatchObject({
+    maxTextLength: 1800,
+    maxOptionCount: 25,
+  })
+  await server?.close()
+  const unlimited = await startReal()
+  const body = await (await fetch(`${unlimited.url}/status`)).json()
+  expect(body).toMatchObject({ maxTextLength: 3900 })
+  expect(body).not.toHaveProperty('maxOptionCount')
+})
+
+test('a request over maxOptionCount answers 400', async () => {
+  const { url } = await startReal({ maxOptionCount: 25 })
+  const options = Array.from({ length: 26 }, (_, index) => `o${index}`)
+  const response = await fetch(`${url}/request`, {
+    method: 'POST',
+    body: JSON.stringify({ text: 'q', options, timeoutOption: 'o0' }),
+  })
+  expect(response.status).toBe(400)
+  expect(await response.json()).toEqual({ error: 'options must have at most 25 entries' })
 })

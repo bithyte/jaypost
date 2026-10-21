@@ -140,6 +140,7 @@ test('fake without pairing is paired from start', async () => {
     provider: 'fake',
     displayName: 'fake',
     maxAttachmentBytes: 0,
+    maxTextLength: 100,
   })
   const response = post(url, '/request', REQUEST)
   await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
@@ -164,6 +165,7 @@ test('pairing fake: unpaired status, pair, then paired and saved', async () => {
     code: 'K7QM-4XPD',
     instructions: 'Say K7QM4XPD to fake',
     maxAttachmentBytes: 0,
+    maxTextLength: 100,
   })
   expect(runtime.handlers?.pair?.('u1', 'k7qm-4xpd')).toBe('paired')
   expect(await getStatus(url)).toEqual({
@@ -171,6 +173,7 @@ test('pairing fake: unpaired status, pair, then paired and saved', async () => {
     provider: 'fakepair',
     displayName: 'fake',
     maxAttachmentBytes: 0,
+    maxTextLength: 100,
   })
   expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({ fakeOwner: 'u1' })
 })
@@ -190,6 +193,7 @@ test('owner save failure is logged and pairing still completes', async () => {
     provider: 'fakepair',
     displayName: 'fake',
     maxAttachmentBytes: 0,
+    maxTextLength: 100,
   })
 })
 

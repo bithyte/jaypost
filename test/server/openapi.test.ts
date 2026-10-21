@@ -16,7 +16,12 @@ test('docs/openapi.yaml is up to date (npm run openapi)', () => {
   const maxAttachmentBytes = resolveMaxAttachmentBytes(provider)
   const committed = readFileSync(new URL('../../docs/openapi.yaml', import.meta.url), 'utf8')
   expect(committed).toBe(
-    formatOpenApiYaml({ port: DEFAULT_PORT, maxTextLength, maxAttachmentBytes }),
+    formatOpenApiYaml({
+      port: DEFAULT_PORT,
+      maxTextLength,
+      maxAttachmentBytes,
+      ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
+    }),
   )
 })
 
@@ -146,4 +151,36 @@ test('PayloadTooLarge names the new body limit', () => {
 test('Status has maxAttachmentBytes', () => {
   const { Status } = createOpenApiDocument(ATTACHMENT_OPTIONS).components.schemas
   expect(JSON.stringify(Status)).toContain('maxAttachmentBytes')
+})
+
+test('Status has maxTextLength and maxOptionCount', () => {
+  const document = createOpenApiDocument({ port: 1, maxTextLength: 10, maxAttachmentBytes: 0 })
+  const status = document.components.schemas.Status as {
+    readonly oneOf?: readonly { readonly properties?: Record<string, unknown> }[]
+    readonly anyOf?: readonly { readonly properties?: Record<string, unknown> }[]
+  }
+  const branches = status.oneOf ?? status.anyOf ?? []
+  expect(branches.length).toBe(2)
+  for (const branch of branches) {
+    expect(branch.properties).toMatchObject({
+      maxTextLength: { type: 'number' },
+      maxOptionCount: { type: 'number' },
+    })
+  }
+})
+
+test('maxOptionCount becomes maxItems on request options', () => {
+  const withLimit = createOpenApiDocument({
+    port: 1,
+    maxTextLength: 1800,
+    maxAttachmentBytes: 0,
+    maxOptionCount: 25,
+  })
+  expect(withLimit.components.schemas.ApprovalRequest.properties?.options).toMatchObject({
+    maxItems: 25,
+  })
+  const without = createOpenApiDocument({ port: 1, maxTextLength: 1800, maxAttachmentBytes: 0 })
+  expect(without.components.schemas.ApprovalRequest.properties?.options).not.toHaveProperty(
+    'maxItems',
+  )
 })

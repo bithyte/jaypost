@@ -100,9 +100,31 @@ function toBodySchema(schema: z.ZodType, maxTextLength: number): JsonSchema {
   return { ...json, properties: { ...properties, attachment: attachmentReference() } }
 }
 
+/** Adds descriptions of the limit fields to both branches of the generated Status schema. */
+function toStatusSchema(status: JsonSchema): JsonSchema {
+  const descriptions: Readonly<Record<string, string>> = {
+    maxTextLength: 'Most characters a request text may have.',
+    maxOptionCount: 'Most options a request may have; absent means no provider limit',
+  }
+  return {
+    ...status,
+    oneOf: (status.oneOf ?? []).map((branch) => ({
+      ...branch,
+      properties: Object.fromEntries(
+        Object.entries(branch.properties ?? {}).map(([name, property]) => [
+          name,
+          typeof property === 'object' && Object.hasOwn(descriptions, name)
+            ? { ...property, description: descriptions[name] }
+            : property,
+        ]),
+      ),
+    })),
+  }
+}
+
 /** OpenAPI 3.1 document of the HTTP API, for a service on `port` with the given text limit. */
 export function createOpenApiDocument(options: OpenApiOptions) {
-  const { port, maxTextLength, maxAttachmentBytes } = options
+  const { port, maxTextLength, maxAttachmentBytes, maxOptionCount } = options
   const { $schema: _schema, ...status } = z.toJSONSchema(statusInfoSchema)
   return {
     openapi: '3.1.0',
@@ -299,7 +321,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
       },
       schemas: {
         ApprovalRequest: toBodySchema(
-          createApprovalRequestSchema(maxTextLength, maxAttachmentBytes),
+          createApprovalRequestSchema(maxTextLength, maxAttachmentBytes, maxOptionCount),
           maxTextLength,
         ),
         Attachment: toAttachmentSchema(maxAttachmentBytes),
@@ -351,7 +373,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           createNotifyRequestSchema(maxTextLength, maxAttachmentBytes),
           maxTextLength,
         ),
-        Status: status,
+        Status: toStatusSchema(status),
         Error: {
           type: 'object',
           properties: { error: { type: 'string' } },
