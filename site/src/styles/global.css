@@ -134,9 +134,17 @@ pre {
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--font-mono);
   font-weight: 600;
   text-decoration: none;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
 }
 
 .nav {

@@ -4,7 +4,26 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '')
 
 <header class="site-header">
   <div class="wrap">
-    <a class="wordmark" href={`${base}/`}>jaypost</a>
+    <a class="wordmark" href={`${base}/`}>
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+        <defs>
+          <linearGradient id="logo-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#2aabee"></stop>
+            <stop offset="1" stop-color="#5865f2"></stop>
+          </linearGradient>
+          <mask id="logo-eye">
+            <rect width="48" height="48" fill="#fff"></rect>
+            <circle cx="31" cy="22" r="2.4"></circle>
+          </mask>
+        </defs>
+        <g fill="url(#logo-gradient)" mask="url(#logo-eye)">
+          <path d="M17 15 3 7l16 4L8 1l15 9-4-10 9 13z"></path>
+          <path d="M25 12a15 14 0 1 1-9 26L4 44l5-11a15 14 0 0 1 16-21z"></path>
+          <path d="m38 22 9 3-9 3z"></path>
+        </g>
+      </svg>
+      JayPost
+    </a>
     <nav class="nav" aria-label="Main">
       <a href="https://github.com/bithyte/jaypost#readme">Docs</a>
       <a href="https://github.com/bithyte/jaypost">GitHub</a>
