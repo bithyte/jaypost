@@ -46,6 +46,8 @@ export const WRONG_CODE_REPLY =
 export const EXPIRED_REPLY = 'Expired'
 /** Answer to a slash command from anyone but the owner. */
 export const NOT_OWNER_COMMAND_REPLY = "This bot isn't paired with you."
+/** Ephemeral answer to an owner command that has no reply text. */
+export const UNKNOWN_COMMAND_REPLY = 'Unknown command.'
 /** The one optional argument of each command that takes one. */
 export const COMMAND_OPTIONS: Readonly<
   Partial<Record<OwnerCommand['name'], { readonly name: string; readonly description: string }>>

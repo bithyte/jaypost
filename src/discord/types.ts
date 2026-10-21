@@ -1,4 +1,5 @@
 import type { Attachment } from '../approval/index.ts'
+import type { RuntimeHandlers } from '../provider/index.ts'
 
 /**
  * Message content ready to send. `fallback` says how far rendering degraded to fit the limit:
@@ -173,4 +174,18 @@ export type DiscordMessageReference = {
   readonly channelId: string
   readonly messageId: string
   readonly hasButtons: boolean
+}
+
+/**
+ * What the gateway event handlers read: `owner` and `openQuestions` are the runtime's live state,
+ * `botId` is the bot's own user id, and `onPaired` runs after a successful pairing.
+ */
+export type EventContext = {
+  readonly client: DiscordClient
+  readonly owner: Owner
+  readonly botId: string
+  readonly openQuestions: OpenQuestions
+  readonly handlers: RuntimeHandlers
+  readonly onPaired: (id: string) => void
+  readonly log: (line: string) => void
 }

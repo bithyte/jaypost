@@ -1,5 +1,6 @@
 export { createDiscordClient, toIncomingInteraction, toIncomingMessage } from './client.ts'
 export { toCommandDefinitions } from './commands.ts'
+export { handleInteraction, handleMessage } from './events.ts'
 export {
   AMBIGUOUS_REPLY,
   BUTTONS_ONLY_REPLY,
@@ -16,6 +17,7 @@ export {
   REJECTED_TOKEN_FATAL,
   TEXT_HINT_WITHOUT_BUTTONS,
   TEXT_HINT_WITH_BUTTONS,
+  UNKNOWN_COMMAND_REPLY,
   WRONG_CODE_REPLY,
 } from './constants.ts'
 export { escapeDiscordMarkdown, renderContent } from './markdown.ts'
@@ -30,6 +32,7 @@ export {
   routeTap,
   toButtonRows,
 } from './routing.ts'
+export { createDiscordRuntime } from './runtime.ts'
 export { validateToken } from './setup.ts'
 export type {
   ButtonRow,
@@ -39,6 +42,7 @@ export type {
   DiscordClientOptions,
   DiscordIdentity,
   DiscordMessageReference,
+  EventContext,
   GatewayEvents,
   IncomingInteraction,
   IncomingMessage,
