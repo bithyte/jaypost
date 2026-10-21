@@ -1,0 +1,320 @@
+<div class="roundtrip">
+  <p class="visually-hidden">
+    An agent runs git push --force origin main and waits for approval. Your phone shows the question
+    with Approve and Decline buttons. You tap Approve and the agent carries on.
+  </p>
+  <div class="rt-stage" aria-hidden="true">
+    <div class="rt-terminal">
+      <div class="rt-bar"><i></i><i></i><i></i><span>claude-code</span></div>
+      <div class="rt-body">
+        <div class="rt-line"><span class="rt-prompt">$</span> <span class="rt-typed">git push --force origin main</span></div>
+        <div class="rt-status">
+          <span class="rt-wait">waiting for approval...</span>
+          <span class="rt-ok">approved</span>
+        </div>
+        <div class="rt-next">To github.com:acme/app.git<br />+ 3f2a91c...b7d04e8 main -&gt; main (forced update)</div>
+      </div>
+    </div>
+    <div class="rt-phone">
+      <div class="rt-chat-bar">jaypost bot</div>
+      <div class="rt-chat">
+        <div class="rt-msg">
+          <b>[claude-code]</b><br />
+          Force-push main to origin?
+        </div>
+        <div class="rt-buttons">
+          <span class="rt-approve">Approve</span>
+          <span>Decline</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .roundtrip {
+    margin: 48px 0 40px;
+    text-align: left;
+  }
+
+  .rt-stage {
+    display: grid;
+    gap: 20px;
+    align-items: center;
+    padding: 28px 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rt-terminal {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #08080a;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    overflow: hidden;
+  }
+
+  .rt-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-faint);
+  }
+
+  .rt-bar i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .rt-bar span {
+    margin-left: 8px;
+    font-size: 0.75rem;
+  }
+
+  .rt-body {
+    display: grid;
+    gap: 6px;
+    padding: 16px;
+    min-height: 130px;
+    align-content: start;
+  }
+
+  .rt-prompt {
+    color: var(--accent);
+  }
+
+  .rt-typed {
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+
+  .rt-status {
+    display: grid;
+  }
+
+  .rt-status > span {
+    grid-area: 1 / 1;
+  }
+
+  .rt-wait {
+    color: #e5c07b;
+    opacity: 0;
+  }
+
+  .rt-ok {
+    color: var(--accent);
+  }
+
+  .rt-next {
+    color: var(--text-faint);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .rt-phone {
+    justify-self: center;
+    width: 100%;
+    max-width: 290px;
+    border: 1px solid #2a3a4c;
+    border-radius: 22px;
+    overflow: hidden;
+    background: #0e1621;
+    font-size: 0.9rem;
+  }
+
+  .rt-chat-bar {
+    padding: 12px 16px;
+    background: #17212b;
+    color: #f5f5f5;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .rt-chat {
+    display: grid;
+    gap: 6px;
+    padding: 16px 12px;
+    min-height: 130px;
+    align-content: start;
+  }
+
+  .rt-msg {
+    padding: 8px 12px;
+    border-radius: 12px 12px 12px 4px;
+    background: #182533;
+    color: #f5f5f5;
+    line-height: 1.4;
+  }
+
+  .rt-msg b {
+    color: #6ab3f3;
+  }
+
+  .rt-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .rt-buttons span {
+    padding: 7px 0;
+    border-radius: 8px;
+    background: rgb(106 179 243 / 16%);
+    color: #8ec7f6;
+    text-align: center;
+    font-size: 0.85rem;
+  }
+
+  .rt-buttons .rt-approve {
+    background: var(--accent);
+    color: #08140d;
+    font-weight: 600;
+  }
+
+  @media (min-width: 720px) {
+    .rt-stage {
+      grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+      gap: 32px;
+      padding: 36px;
+    }
+  }
+
+  /* The static markup above is the finished (approved) state; motion replays it as a loop. */
+  @media (prefers-reduced-motion: no-preference) {
+    .rt-stage {
+      animation: rt-cycle 8s linear infinite;
+    }
+
+    .rt-typed {
+      width: 0;
+      animation: rt-type 8s steps(29, end) infinite;
+    }
+
+    .rt-wait {
+      animation: rt-wait 8s linear infinite;
+    }
+
+    .rt-ok {
+      opacity: 0;
+      animation: rt-ok 8s linear infinite;
+    }
+
+    .rt-next {
+      opacity: 0;
+      animation: rt-next 8s linear infinite;
+    }
+
+    .rt-msg,
+    .rt-buttons {
+      opacity: 0;
+      animation: rt-msg 8s linear infinite;
+    }
+
+    .rt-buttons .rt-approve {
+      background: rgb(106 179 243 / 16%);
+      color: #8ec7f6;
+      font-weight: 400;
+      animation: rt-tap 8s linear infinite;
+    }
+  }
+
+  @keyframes rt-cycle {
+    0%,
+    93% {
+      opacity: 1;
+    }
+    98%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes rt-type {
+    0% {
+      width: 0;
+    }
+    15%,
+    100% {
+      width: 29ch;
+    }
+  }
+
+  @keyframes rt-wait {
+    0%,
+    19% {
+      opacity: 0;
+    }
+    21%,
+    60% {
+      opacity: 1;
+    }
+    62%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes rt-ok {
+    0%,
+    61% {
+      opacity: 0;
+    }
+    63%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes rt-next {
+    0%,
+    69% {
+      opacity: 0;
+    }
+    72%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes rt-msg {
+    0%,
+    26% {
+      opacity: 0;
+    }
+    31%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes rt-tap {
+    0%,
+    54% {
+      background: rgb(106 179 243 / 16%);
+      color: #8ec7f6;
+      font-weight: 400;
+      transform: scale(1);
+    }
+    56% {
+      transform: scale(0.94);
+    }
+    58%,
+    100% {
+      background: var(--accent);
+      color: #08140d;
+      font-weight: 600;
+      transform: scale(1);
+    }
+  }
+</style>

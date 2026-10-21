@@ -1,25 +1,11 @@
 ---
 import Base from '../layouts/Base.astro'
-import Tabs from '../components/Tabs.astro'
-import { SNIPPETS } from '../snippets/index.ts'
+import Hero from '../components/Hero.astro'
 ---
 
 <Base
   title="jaypost"
   description="Let your agents and scripts ask you before they act. A local HTTP API that asks you a question on Telegram with inline buttons and returns your answer."
 >
-  <section class="section">
-    <div class="wrap">
-      <h2>jaypost</h2>
-      <Tabs
-        id="install"
-        prompt
-        tabs={[
-          { label: 'npx', code: SNIPPETS.npxInit },
-          { label: 'linux', code: SNIPPETS.binaryLinux },
-          { label: 'macos', code: SNIPPETS.binaryMacos },
-        ]}
-      />
-    </div>
-  </section>
+  <Hero />
 </Base>

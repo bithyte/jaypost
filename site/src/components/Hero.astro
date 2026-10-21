@@ -1,0 +1,52 @@
+---
+import RoundTrip from './RoundTrip.astro'
+import Tabs from './Tabs.astro'
+import { SNIPPETS } from '../snippets/index.ts'
+---
+
+<section class="hero">
+  <div class="wrap">
+    <h1>Your agent asks.<br />Your phone buzzes.</h1>
+    <p class="subhead">
+      Let your agents and scripts ask you before they act. You tap a button in Telegram, and they
+      carry on.
+    </p>
+    <RoundTrip />
+    <div class="install">
+      <Tabs
+        id="install"
+        prompt
+        tabs={[
+          { label: 'npx', code: SNIPPETS.npxInit },
+          { label: 'linux', code: SNIPPETS.binaryLinux },
+          { label: 'macos', code: SNIPPETS.binaryMacos },
+        ]}
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero {
+    padding: 64px 0 80px;
+    text-align: center;
+  }
+
+  h1 {
+    font-size: clamp(2.2rem, 7vw, 4rem);
+    font-weight: 700;
+  }
+
+  .subhead {
+    max-width: 52ch;
+    margin: 20px auto 0;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+  }
+
+  .install {
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: left;
+  }
+</style>
