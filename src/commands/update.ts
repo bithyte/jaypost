@@ -21,7 +21,7 @@ import {
 import type { LatestRelease } from '../update/index.ts'
 import type { UpdateDeps } from './types.ts'
 
-const PACKAGE_NAME = 'telegram-ask'
+const PACKAGE_NAME = 'jaypost'
 
 /**
  * What step 1 brings to the latest version: a binary file, an npm package run by `nodePath`, or
@@ -222,7 +222,7 @@ async function handOff(deps: UpdateDeps, subject: Subject): Promise<number> {
   if (result.code === 0 || result.code === 130) {
     return result.code
   }
-  deps.print('The new version is in place; run "telegram-ask update" again or "telegram-ask init".')
+  deps.print('The new version is in place; run "jaypost update" again or "jaypost init".')
   return result.code
 }
 
@@ -241,7 +241,7 @@ async function update(deps: UpdateDeps): Promise<number> {
     switch (subject.kind) {
       case 'stuck':
         print(
-          `Can't update this copy; run "npx telegram-ask@latest update" or download the latest binary.`,
+          `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
         )
         return 1
       case 'binary':
@@ -253,10 +253,10 @@ async function update(deps: UpdateDeps): Promise<number> {
     }
   }
   if (existing === undefined) {
-    print(`Updated telegram-ask ${current} -> ${latest.version}.`)
+    print(`Updated jaypost ${current} -> ${latest.version}.`)
     return 0
   }
-  // `npx telegram-ask@latest update` is already the new code: finish here, no second process.
+  // `npx jaypost@latest update` is already the new code: finish here, no second process.
   if (isSkipped && (subject.kind === 'stuck' || subject.isRunning)) {
     return runFinishUpdate(deps)
   }
@@ -313,7 +313,7 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
     // install.json doesn't record whether the old service required a token, so always say so.
     if (auth.kind === 'none') {
       print(
-        `No API token file at ${deps.paths.tokenFile}; the service will not require an API token. Run "telegram-ask init" to set one.`,
+        `No API token file at ${deps.paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
       )
     }
     const next = await target.upgrade(
@@ -329,7 +329,7 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
       record,
     )
     writeInstall(deps.paths.installFile, next)
-    print(`Updated telegram-ask ${record.version} -> ${next.version}.`)
+    print(`Updated jaypost ${record.version} -> ${next.version}.`)
     return 0
   } catch (error) {
     if (deps.signal?.aborted) {

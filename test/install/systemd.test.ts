@@ -68,7 +68,7 @@ function make(env: NodeJS.ProcessEnv = {}, selfPath = '/src/dist/cli.js') {
   return { t, paths }
 }
 
-function makeBinary(env: NodeJS.ProcessEnv = {}, binaryPath = join(tmp, 'dl', 'telegram-ask')) {
+function makeBinary(env: NodeJS.ProcessEnv = {}, binaryPath = join(tmp, 'dl', 'jaypost')) {
   if (!existsSync(binaryPath)) {
     mkdirSync(dirname(binaryPath), { recursive: true })
     writeFileSync(binaryPath, 'binary v2')
@@ -113,10 +113,10 @@ test('installs from npm into a user prefix when global prefix is not writable', 
   const rec = await t.install(base)
   expect(calls).toContainEqual([
     'npm',
-    ['i', '-g', '--prefix', paths.userNpmPrefix, 'telegram-ask@0.1.0'],
+    ['i', '-g', '--prefix', paths.userNpmPrefix, 'jaypost@0.1.0'],
   ])
   expect(rec.cliPath).toBe(
-    join(paths.userNpmPrefix, 'lib', 'node_modules', 'telegram-ask', 'dist', 'cli.js'),
+    join(paths.userNpmPrefix, 'lib', 'node_modules', 'jaypost', 'dist', 'cli.js'),
   )
 })
 
@@ -126,14 +126,14 @@ test('installs globally when prefix is writable', async () => {
   const { t } = make()
   const rec = await t.install({ ...base, tarball: '/x/pkg.tgz' })
   expect(calls).toContainEqual(['npm', ['i', '-g', '/x/pkg.tgz']])
-  expect(rec.cliPath).toBe(join(rootOut, 'telegram-ask', 'dist', 'cli.js'))
+  expect(rec.cliPath).toBe(join(rootOut, 'jaypost', 'dist', 'cli.js'))
 })
 
 test('install writes unit, config 0600, enables', async () => {
   const { t, paths } = make()
   const rec = await t.install(base)
   expect(calls).toContainEqual(['systemctl', ['--user', 'daemon-reload']])
-  expect(calls).toContainEqual(['systemctl', ['--user', 'enable', '--now', 'telegram-ask']])
+  expect(calls).toContainEqual(['systemctl', ['--user', 'enable', '--now', 'jaypost']])
   expect(calls.some(([c]) => c === 'sudo')).toBe(false)
   expect(readConfigFile(paths.configFile)).toEqual({
     provider: 'telegram',
@@ -143,7 +143,7 @@ test('install writes unit, config 0600, enables', async () => {
   expect(statSync(paths.configFile).mode & 0o777).toBe(0o600)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
   expect(unit).toContain(`ExecStart="/usr/bin/node" "${rec.cliPath}" start`)
-  expect(unit).toContain(`Environment="TELEGRAM_ASK_CONFIG=${paths.configFile}"`)
+  expect(unit).toContain(`Environment="JAYPOST_CONFIG=${paths.configFile}"`)
   expect(rec).toMatchObject({
     target: 'systemd',
     provider: 'telegram',
@@ -156,12 +156,12 @@ test('install writes unit, config 0600, enables', async () => {
 test('unit stays quoted with spaces in paths and config env', async () => {
   const cfg = join(tmp, 'my dir', 'c.json')
   rootOut = join(tmp, 'my root')
-  const self = join(rootOut, 'telegram-ask', 'dist', 'cli.js')
-  const { t, paths } = make({ TELEGRAM_ASK_CONFIG: cfg }, self)
+  const self = join(rootOut, 'jaypost', 'dist', 'cli.js')
+  const { t, paths } = make({ JAYPOST_CONFIG: cfg }, self)
   await t.install(base)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
   expect(unit).toContain(`ExecStart="/usr/bin/node" "${self}" start`)
-  expect(unit).toContain(`Environment="TELEGRAM_ASK_CONFIG=${cfg}"`)
+  expect(unit).toContain(`Environment="JAYPOST_CONFIG=${cfg}"`)
   expect(readConfigFile(cfg).botToken).toBe('t')
 })
 
@@ -183,7 +183,7 @@ test('install keeps a reused owner id', async () => {
 })
 
 test('already global: no npm install', async () => {
-  const self = join(rootOut, 'telegram-ask', 'dist', 'cli.js')
+  const self = join(rootOut, 'jaypost', 'dist', 'cli.js')
   const { t } = make({}, self)
   const rec = await t.install(base)
   expect(calls.some(([c, a]) => c === 'npm' && a[0] === 'i')).toBe(false)
@@ -199,7 +199,7 @@ test('remove without purge keeps config; with purge deletes it', async () => {
   expect(existsSync(paths.systemdUnit)).toBe(false)
   expect(existsSync(paths.configFile)).toBe(true)
   expect(existsSync(stateFile)).toBe(true)
-  expect(calls).toContainEqual(['systemctl', ['--user', 'disable', '--now', 'telegram-ask']])
+  expect(calls).toContainEqual(['systemctl', ['--user', 'disable', '--now', 'jaypost']])
   await t.remove(rec, true)
   expect(existsSync(paths.configFile)).toBe(false)
   expect(existsSync(stateFile)).toBe(false)
@@ -229,8 +229,8 @@ test('available, isRunning, restart, logsHint', async () => {
   expect(await t.available()).toEqual({ ok: true })
   expect(await t.isRunning({} as never)).toBe(true)
   await t.restart({} as never)
-  expect(calls).toContainEqual(['systemctl', ['--user', 'restart', 'telegram-ask']])
-  expect(t.logsHint({} as never)).toBe('journalctl --user -u telegram-ask -f')
+  expect(calls).toContainEqual(['systemctl', ['--user', 'restart', 'jaypost']])
+  expect(t.logsHint({} as never)).toBe('journalctl --user -u jaypost -f')
 })
 
 test('restart throws on a non-zero exit without leaking stderr', async () => {
@@ -239,17 +239,15 @@ test('restart throws on a non-zero exit without leaking stderr', async () => {
   await expect(t.restart({} as never)).rejects.toThrow('systemctl restart failed (exit 1)')
 })
 
-test('relative TELEGRAM_ASK_CONFIG is resolved to an absolute path and recorded', async () => {
+test('relative JAYPOST_CONFIG is resolved to an absolute path and recorded', async () => {
   const cwd = process.cwd()
   process.chdir(tmp)
   try {
-    const { t, paths } = make({ TELEGRAM_ASK_CONFIG: 'rel/c.json' })
+    const { t, paths } = make({ JAYPOST_CONFIG: 'rel/c.json' })
     const rec = await t.install(base)
     const abs = join(tmp, 'rel', 'c.json')
     expect(rec.configFile).toBe(abs)
-    expect(readFileSync(paths.systemdUnit, 'utf8')).toContain(
-      `Environment="TELEGRAM_ASK_CONFIG=${abs}"`,
-    )
+    expect(readFileSync(paths.systemdUnit, 'utf8')).toContain(`Environment="JAYPOST_CONFIG=${abs}"`)
     expect(readConfigFile(abs).botToken).toBe('t')
   } finally {
     process.chdir(cwd)
@@ -261,7 +259,7 @@ test('readSecrets, clearOwner and purge use the recorded configFile, not the env
   writeFileSync(recorded, JSON.stringify({ botToken: 'rt', ownerId: 5 }))
   const recordedState = join(tmp, 'state.json')
   writeFileSync(recordedState, '{}')
-  const { t, paths } = make({ TELEGRAM_ASK_CONFIG: join(tmp, 'other.json') })
+  const { t, paths } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
   const rec = { target: 'systemd' as const, port: 1, version: 'v', configFile: recorded }
   expect(await t.readSecrets(rec)).toEqual({
     provider: 'telegram',
@@ -281,7 +279,7 @@ test('readAuditLog reads both files next to the recorded configFile', async () =
   mkdirSync(directory)
   writeFileSync(join(directory, 'audit.jsonl.1'), 'old\n')
   writeFileSync(join(directory, 'audit.jsonl'), 'new\n')
-  const { t } = make({ TELEGRAM_ASK_CONFIG: join(tmp, 'other.json') })
+  const { t } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
   const rec = {
     target: 'systemd' as const,
     port: 1,
@@ -359,24 +357,22 @@ test('purge hint names the user prefix when the fallback was used', async () => 
   const rec = await t.install(base)
   await t.remove(rec, true)
   expect(log).toHaveBeenCalledWith(
-    `The npm package was left in place; remove it with: npm rm -g --prefix ${paths.userNpmPrefix} telegram-ask`,
+    `The npm package was left in place; remove it with: npm rm -g --prefix ${paths.userNpmPrefix} jaypost`,
   )
   log.mockClear()
-  await t.remove({ ...rec, cliPath: '/usr/lib/node_modules/telegram-ask/dist/cli.js' }, true)
+  await t.remove({ ...rec, cliPath: '/usr/lib/node_modules/jaypost/dist/cli.js' }, true)
   expect(log).toHaveBeenCalledWith(
-    'The npm package was left in place; remove it with: npm rm -g telegram-ask',
+    'The npm package was left in place; remove it with: npm rm -g jaypost',
   )
   log.mockRestore()
 })
 
 test('findUnitConfigFile parses quoted and unquoted Environment lines', () => {
-  expect(
-    findUnitConfigFile('[Service]\nEnvironment="TELEGRAM_ASK_CONFIG=/a b/50%%/c.json"\n'),
-  ).toBe('/a b/50%/c.json')
-  expect(findUnitConfigFile('Environment="TELEGRAM_ASK_CONFIG=/x\\"q.json"\n')).toBe('/x"q.json')
-  expect(findUnitConfigFile('Environment=TELEGRAM_ASK_CONFIG=/plain/c.json\n')).toBe(
-    '/plain/c.json',
+  expect(findUnitConfigFile('[Service]\nEnvironment="JAYPOST_CONFIG=/a b/50%%/c.json"\n')).toBe(
+    '/a b/50%/c.json',
   )
+  expect(findUnitConfigFile('Environment="JAYPOST_CONFIG=/x\\"q.json"\n')).toBe('/x"q.json')
+  expect(findUnitConfigFile('Environment=JAYPOST_CONFIG=/plain/c.json\n')).toBe('/plain/c.json')
   expect(findUnitConfigFile('Environment="FOO=bar"\nExecStart=x\n')).toBeUndefined()
   expect(findUnitConfigFile('[Unit]\n')).toBeUndefined()
 })
@@ -393,7 +389,7 @@ test('binary install copies itself to ~/.local/bin and runs it directly', async 
   const { t, paths, binaryPath } = makeBinary()
   const binDirectory = join(tmp, '.local', 'bin')
   expect(existsSync(binDirectory)).toBe(false)
-  expect(paths.binaryCopy).toBe(join(tmp, '.local', 'bin', 'telegram-ask'))
+  expect(paths.binaryCopy).toBe(join(tmp, '.local', 'bin', 'jaypost'))
   const rec = await t.install(base)
   expect(statSync(paths.binaryCopy).mode & 0o777).toBe(0o755)
   expect(readFileSync(paths.binaryCopy, 'utf8')).toBe(readFileSync(binaryPath, 'utf8'))
@@ -401,9 +397,9 @@ test('binary install copies itself to ~/.local/bin and runs it directly', async 
   expect(unit).toContain(`ExecStart="${paths.binaryCopy}" start`)
   expect(unit).not.toContain('node')
   expect(calls.some(([c]) => c === 'npm')).toBe(false)
-  expect(calls).toContainEqual(['systemctl', ['--user', 'enable', '--now', 'telegram-ask']])
+  expect(calls).toContainEqual(['systemctl', ['--user', 'enable', '--now', 'jaypost']])
   expect(rec).toMatchObject({ target: 'systemd', cliKind: 'binary', cliPath: paths.binaryCopy })
-  expect(readdirSync(binDirectory)).toEqual(['telegram-ask'])
+  expect(readdirSync(binDirectory)).toEqual(['jaypost'])
 })
 
 test('binary install over an existing copy replaces it with a new inode', async () => {
@@ -414,11 +410,11 @@ test('binary install over an existing copy replaces it with a new inode', async 
   await t.install(base)
   expect(statSync(paths.binaryCopy).ino).not.toBe(before)
   expect(readFileSync(paths.binaryCopy, 'utf8')).toBe('binary v2')
-  expect(readdirSync(dirname(paths.binaryCopy))).toEqual(['telegram-ask'])
+  expect(readdirSync(dirname(paths.binaryCopy))).toEqual(['jaypost'])
 })
 
 test('binary install from the copy itself skips the copy', async () => {
-  const copy = join(tmp, '.local', 'bin', 'telegram-ask')
+  const copy = join(tmp, '.local', 'bin', 'jaypost')
   mkdirSync(dirname(copy), { recursive: true })
   writeFileSync(copy, 'binary v1')
   const before = statSync(copy).ino
@@ -435,13 +431,13 @@ test('binary unit stays quoted with spaces and $ in HOME', async () => {
   const { t, paths } = makeBinary({ HOME: home })
   await t.install(base)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
-  const quoted = join(tmp, 'my $$home', '.local', 'bin', 'telegram-ask')
+  const quoted = join(tmp, 'my $$home', '.local', 'bin', 'jaypost')
   expect(unit).toContain(`ExecStart="${quoted}" start`)
-  expect(readFileSync(join(home, '.local', 'bin', 'telegram-ask'), 'utf8')).toBe('binary v2')
+  expect(readFileSync(join(home, '.local', 'bin', 'jaypost'), 'utf8')).toBe('binary v2')
 })
 
 test("binary install prints a PATH hint when ~/.local/bin isn't on PATH", async () => {
-  const hint = "~/.local/bin isn't on your PATH; add it to run telegram-ask from anywhere."
+  const hint = "~/.local/bin isn't on your PATH; add it to run jaypost from anywhere."
   const printed: string[] = []
   const { t } = makeBinary({ PATH: '/usr/bin:/bin' })
   await t.install({ ...base, print: (text) => printed.push(text) })
@@ -464,7 +460,7 @@ function plantCopy(paths: { readonly binaryCopy: string }, kind: 'file' | 'symli
     writeFileSync(paths.binaryCopy, 'binary v1')
     return
   }
-  symlinkSync('../lib/node_modules/telegram-ask/dist/cli.js', paths.binaryCopy)
+  symlinkSync('../lib/node_modules/jaypost/dist/cli.js', paths.binaryCopy)
 }
 
 test('purge removes the binary copy', async () => {
@@ -484,13 +480,12 @@ test('remove without purge keeps the binary copy', async () => {
   expect(existsSync(paths.binaryCopy)).toBe(true)
 })
 
-test('binary target is unavailable when ~/.local/bin/telegram-ask is a symlink', async () => {
+test('binary target is unavailable when ~/.local/bin/jaypost is a symlink', async () => {
   const { t, paths } = makeBinary()
   plantCopy(paths, 'symlink')
   expect(await t.available()).toEqual({
     ok: false,
-    reason:
-      '~/.local/bin/telegram-ask is a symlink (npm\'s launcher?); run "npm rm -g telegram-ask" first',
+    reason: '~/.local/bin/jaypost is a symlink (npm\'s launcher?); run "npm rm -g jaypost" first',
   })
 })
 
@@ -521,7 +516,7 @@ test('npm install deletes a leftover binary copy before npm i -g', async () => {
   expect(existsSync(paths.binaryCopy)).toBe(false)
 })
 
-test('npm install leaves a symlink at ~/.local/bin/telegram-ask alone', async () => {
+test('npm install leaves a symlink at ~/.local/bin/jaypost alone', async () => {
   const { t, paths } = make()
   plantCopy(paths, 'symlink')
   await t.install(base)
@@ -536,7 +531,7 @@ test('upgrade rewrites the unit and restarts', async () => {
   expect(record).toMatchObject({ target: 'systemd', version: '0.2.0', cliKind: 'npm' })
   expect(readFileSync(paths.systemdUnit, 'utf8')).toContain('ExecStart="/usr/bin/node"')
   const ctl = calls.filter(([c]) => c === 'systemctl').map(([, a]) => a.slice(1).join(' '))
-  expect(ctl).toEqual(['daemon-reload', 'enable --now telegram-ask', 'restart telegram-ask'])
+  expect(ctl).toEqual(['daemon-reload', 'enable --now jaypost', 'restart jaypost'])
 })
 
 test('upgrade throws when the restart fails', async () => {
@@ -551,8 +546,8 @@ test('findUnitExecWords returns the ExecStart words without start', () => {
     '/usr/bin/node',
     '/x/cli.js',
   ])
-  expect(findUnitExecWords('ExecStart="/h/.local/bin/telegram-ask" start\n')).toEqual([
-    '/h/.local/bin/telegram-ask',
+  expect(findUnitExecWords('ExecStart="/h/.local/bin/jaypost" start\n')).toEqual([
+    '/h/.local/bin/jaypost',
   ])
   expect(findUnitExecWords('ExecStart=/usr/bin/node /x/cli.js start\n')).toEqual([
     '/usr/bin/node',

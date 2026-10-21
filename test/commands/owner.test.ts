@@ -10,7 +10,7 @@ let file: string
 let env: NodeJS.ProcessEnv
 beforeEach(() => {
   file = join(mkdtempSync(join(tmpdir(), 'own-')), 'config.json')
-  env = { TELEGRAM_ASK_CONFIG: file }
+  env = { JAYPOST_CONFIG: file }
 })
 afterEach(() => vi.restoreAllMocks())
 

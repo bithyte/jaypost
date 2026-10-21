@@ -24,21 +24,21 @@ export function formatDockerfile(options: {
 }): string {
   const install =
     options.tarball === undefined
-      ? `RUN npm i -g telegram-ask@${options.version}`
+      ? `RUN npm i -g jaypost@${options.version}`
       : `COPY ${basename(options.tarball)} /tmp/pkg.tgz\nRUN npm i -g /tmp/pkg.tgz && rm /tmp/pkg.tgz`
   return `FROM node:24-slim
-ENV NODE_ENV=production TELEGRAM_ASK_CONFIG=/data/config.json HOST=0.0.0.0
+ENV NODE_ENV=production JAYPOST_CONFIG=/data/config.json HOST=0.0.0.0
 ${install}
 RUN mkdir /data && chown node:node /data
 VOLUME /data
 USER node
-CMD ["telegram-ask","start"]
+CMD ["jaypost","start"]
 `
 }
 
 /** Compose file publishing `port` on loopback only, with a named volume for /data. */
 export function formatComposeYaml(port: number): string {
-  return `name: telegram-ask
+  return `name: jaypost
 services:
   bot:
     build: .
@@ -98,12 +98,12 @@ export function formatQuadletContainer(options: {
   readonly envFile: string
 }): string {
   return `[Unit]
-Description=telegram-ask service
+Description=jaypost service
 
 [Container]
-Image=localhost/telegram-ask:${options.version}
-ContainerName=telegram-ask
-Volume=telegram-ask-data:/data
+Image=localhost/jaypost:${options.version}
+ContainerName=jaypost
+Volume=jaypost-data:/data
 EnvironmentFile=${quoteSystemdValue(options.envFile)}
 PublishPort=127.0.0.1:${options.port}:${options.port}
 
@@ -117,19 +117,19 @@ WantedBy=default.target
 
 /**
  * User unit that runs the `exec` words (`[node, cli]` or `[binary]`) plus `start`, with
- * TELEGRAM_ASK_CONFIG pinned to `config`.
+ * JAYPOST_CONFIG pinned to `config`.
  */
 export function formatSystemdUnit(options: {
   readonly exec: readonly string[]
   readonly config: string
 }): string {
   return `[Unit]
-Description=telegram-ask service
+Description=jaypost service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Environment=${quoteSystemdValue(`TELEGRAM_ASK_CONFIG=${options.config}`)}
+Environment=${quoteSystemdValue(`JAYPOST_CONFIG=${options.config}`)}
 ExecStart=${options.exec.map(quoteExecWord).join(' ')} start
 Restart=on-failure
 RestartSec=5
@@ -173,7 +173,7 @@ ${words}
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>TELEGRAM_ASK_CONFIG</key>
+    <key>JAYPOST_CONFIG</key>
     <string>${escapeXml(options.config)}</string>
   </dict>
   <key>RunAtLoad</key>

@@ -10,7 +10,7 @@ import type { HookArgs, HookDeps, NotificationEvent, PermissionRequestEvent } fr
 /** Handles one hook event from stdin. Returns 0 when handled, 1 on any failure (stderr says why). */
 export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   if (deps.token.kind === 'unusable') {
-    deps.printError(`telegram-ask: ${deps.token.message}`)
+    deps.printError(`jaypost: ${deps.token.message}`)
     return 1
   }
   let input: string
@@ -19,13 +19,13 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   } catch (error) {
     if (!deps.signal.aborted) {
       const message = error instanceof Error ? error.message : String(error)
-      deps.printError(`telegram-ask: couldn't read the hook input: ${message}`)
+      deps.printError(`jaypost: couldn't read the hook input: ${message}`)
     }
     return 1
   }
   const parsed = parseHookEvent(input)
   if (parsed.kind === 'invalid') {
-    deps.printError(`telegram-ask: ${parsed.message}`)
+    deps.printError(`jaypost: ${parsed.message}`)
     return 1
   }
   const event = parsed.event
@@ -84,7 +84,7 @@ async function askPermission(
     case 'undecided':
       return 0
     case 'unknownAnswer':
-      deps.printError(`telegram-ask: unexpected answer ${JSON.stringify(decision.answer)}`)
+      deps.printError(`jaypost: unexpected answer ${JSON.stringify(decision.answer)}`)
       return 1
   }
 }
@@ -92,7 +92,7 @@ async function askPermission(
 /** Killed hooks stay silent: the abort is ours, not a failure worth reporting. */
 function reportFailure(message: string, deps: HookDeps): number {
   if (!deps.signal.aborted) {
-    deps.printError(`telegram-ask: ${message}`)
+    deps.printError(`jaypost: ${message}`)
   }
   return 1
 }

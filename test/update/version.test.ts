@@ -14,15 +14,15 @@ test('treats a legacy version as older than any release', () => {
 })
 
 test('names assets for supported platforms only', () => {
-  expect(formatAssetName('linux', 'x64')).toBe('telegram-ask-linux-x64.gz')
-  expect(formatAssetName('darwin', 'arm64')).toBe('telegram-ask-darwin-arm64.gz')
+  expect(formatAssetName('linux', 'x64')).toBe('jaypost-linux-x64.gz')
+  expect(formatAssetName('darwin', 'arm64')).toBe('jaypost-darwin-arm64.gz')
   expect(formatAssetName('win32', 'x64')).toBeUndefined()
   expect(formatAssetName('linux', 'ia32')).toBeUndefined()
 })
 
 test('parses sha256sum output', () => {
-  expect(parseChecksums(`${'a'.repeat(64)}  telegram-ask-linux-x64.gz\n`)).toEqual(
-    new Map([['telegram-ask-linux-x64.gz', 'a'.repeat(64)]]),
+  expect(parseChecksums(`${'a'.repeat(64)}  jaypost-linux-x64.gz\n`)).toEqual(
+    new Map([['jaypost-linux-x64.gz', 'a'.repeat(64)]]),
   )
 })
 

@@ -11,18 +11,18 @@ import type { ApprovalRequest, RequestResult } from '../../src/approval/index.ts
 import type { NotifyRequest } from '../../src/notify/index.ts'
 import { NO_AUTH } from '../../src/auth/index.ts'
 import { ATTACHMENT_TOO_OLD_MESSAGE, TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
-import { Client, TelegramAskError } from '../../src/index.ts'
+import { Client, JaypostError } from '../../src/index.ts'
 
 const TOKEN = 'A'.repeat(43)
 const FIRST = 'B'.repeat(43)
 const SECOND = 'C'.repeat(43)
 let directory = ''
-const tokenFile = (): string => join(directory, 'telegram-ask', 'token')
+const tokenFile = (): string => join(directory, 'jaypost', 'token')
 
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'telegram-ask-client-'))
+  directory = mkdtempSync(join(tmpdir(), 'jaypost-client-'))
   vi.stubEnv('XDG_CONFIG_HOME', directory)
-  vi.stubEnv('TELEGRAM_ASK_TOKEN', '')
+  vi.stubEnv('JAYPOST_TOKEN', '')
 })
 
 const servers: Server[] = []
@@ -109,24 +109,24 @@ test('notify posts the text and resolves', async () => {
 test('service 400 throws with its message', async () => {
   const { port } = await startStub(400, '{"error":"options must be unique"}')
   const client = new Client({ port })
-  await expect(client.request(ASK)).rejects.toThrow(new TelegramAskError('options must be unique'))
+  await expect(client.request(ASK)).rejects.toThrow(new JaypostError('options must be unique'))
 })
 
 test('unreadable answer throws', async () => {
   const { port } = await startStub(200, '{"answer":1}')
   const client = new Client({ port })
   await expect(client.request(ASK)).rejects.toThrow(
-    'telegram-ask service sent an unreadable answer: {"answer":1}',
+    'jaypost service sent an unreadable answer: {"answer":1}',
   )
 })
 
 test('unreachable host throws and names it', async () => {
   const client = new Client({ host: '127.0.0.2', port: 9 })
   const error = await client.notify({ text: 'hi' }).catch((caught: unknown) => caught)
-  expect(error).toBeInstanceOf(TelegramAskError)
+  expect(error).toBeInstanceOf(JaypostError)
   expect(error).toHaveProperty(
     'message',
-    'telegram-ask service not reachable on 127.0.0.2:9 (run telegram-ask status)',
+    'jaypost service not reachable on 127.0.0.2:9 (run jaypost status)',
   )
 })
 
@@ -166,17 +166,17 @@ test('the default lookup reads the token file on every call', async () => {
   expect(seen.authorization).toBe(`Bearer ${SECOND}`)
 })
 
-test('TELEGRAM_ASK_TOKEN beats the token file', async () => {
+test('JAYPOST_TOKEN beats the token file', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
   writeTokenFile(tokenFile(), FIRST)
-  vi.stubEnv('TELEGRAM_ASK_TOKEN', SECOND)
+  vi.stubEnv('JAYPOST_TOKEN', SECOND)
   await new Client({ port }).notify({ text: 'x' })
   expect(seen.authorization).toBe(`Bearer ${SECOND}`)
 })
 
 test('a bad explicit token is a RangeError that does not quote it', () => {
   expect(() => new Client({ token: 'short-secret' })).toThrow(
-    new RangeError("token isn't a valid telegram-ask token"),
+    new RangeError("token isn't a valid jaypost token"),
   )
 })
 
@@ -185,7 +185,7 @@ test('the constructor does no io and an unreadable token file rejects the call',
   const { port, seen } = await startStub(200, '{"ok":true}')
   const client = new Client({ port })
   const error = await client.notify({ text: 'x' }).catch((caught: unknown) => caught)
-  expect(error).toBeInstanceOf(TelegramAskError)
+  expect(error).toBeInstanceOf(JaypostError)
   expect(error).toHaveProperty(
     'message',
     expect.stringMatching(
@@ -199,7 +199,7 @@ test('a rejected token surfaces the rejected message', async () => {
   const { port } = await startStub(401, '{"error":"unauthorized"}')
   const client = new Client({ port, token: TOKEN })
   await expect(client.notify({ text: 'x' })).rejects.toThrow(
-    new TelegramAskError(TOKEN_REJECTED_MESSAGE),
+    new JaypostError(TOKEN_REJECTED_MESSAGE),
   )
 })
 
@@ -318,14 +318,14 @@ test('an attachment against an old service throws the upgrade message', async ()
   const port = (server.address() as AddressInfo).port
   const attachment = { name: 'a.txt', text: 'x' }
   await expect(new Client({ port }).request({ ...ASK, attachment })).rejects.toThrow(
-    new TelegramAskError(ATTACHMENT_TOO_OLD_MESSAGE),
+    new JaypostError(ATTACHMENT_TOO_OLD_MESSAGE),
   )
 })
 
-test('a missing attachment file throws TelegramAskError', async () => {
+test('a missing attachment file throws JaypostError', async () => {
   const { port } = await startRealServer()
   const path = join(directory, 'missing.txt')
   const call = new Client({ port }).notify({ text: 'x', attachment: { path } })
-  await expect(call).rejects.toBeInstanceOf(TelegramAskError)
+  await expect(call).rejects.toBeInstanceOf(JaypostError)
   await expect(call).rejects.toThrow(`attachment ${JSON.stringify(path)} not found`)
 })

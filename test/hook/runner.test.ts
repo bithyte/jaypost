@@ -228,7 +228,7 @@ test('deny tap prints the deny decision', async () => {
   service.tap(messenger.sent[0]?.id ?? '', 2)
   expect(await pending).toBe(0)
   expect(out).toEqual([
-    '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"the user denied this from telegram-ask"}}}',
+    '{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"the user denied this from jaypost"}}}',
   ])
   expect(errors).toEqual([])
 })
@@ -330,7 +330,7 @@ test('service down exits 1 with the reachability message', async () => {
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
   expect(errors).toEqual([
-    `telegram-ask: telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`,
+    `jaypost: jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   ])
 })
 
@@ -340,7 +340,7 @@ test('notification with the service down exits 1 with the reachability message',
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
   expect(errors).toEqual([
-    `telegram-ask: telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`,
+    `jaypost: jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   ])
 })
 
@@ -349,7 +349,7 @@ test('an answer that was not offered exits 1 with the answer', async () => {
   const { deps, out, errors } = createDeps(port, BASH_EVENT)
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: unexpected answer "Maybe"'])
+  expect(errors).toEqual(['jaypost: unexpected answer "Maybe"'])
 })
 
 test('an unreadable answer exits 1 with the body', async () => {
@@ -357,9 +357,7 @@ test('an unreadable answer exits 1 with the body', async () => {
   const { deps, out, errors } = createDeps(port, BASH_EVENT)
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual([
-    'telegram-ask: telegram-ask service sent an unreadable answer: {"ok":true}',
-  ])
+  expect(errors).toEqual(['jaypost: jaypost service sent an unreadable answer: {"ok":true}'])
 })
 
 test('abort cancels the question quietly', async () => {
@@ -405,7 +403,7 @@ test('a wrong token prints the rejected message', async () => {
   })
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual([`telegram-ask: ${TOKEN_REJECTED_MESSAGE}`])
+  expect(errors).toEqual([`jaypost: ${TOKEN_REJECTED_MESSAGE}`])
   expect(messenger.sent).toEqual([])
 })
 
@@ -425,7 +423,7 @@ test('an unusable token fails without reading stdin or calling the service', asy
   expect(await runHook({}, counting)).toBe(1)
   expect(readCount).toBe(0)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: bad token here'])
+  expect(errors).toEqual(['jaypost: bad token here'])
   expect(messenger.sent).toEqual([])
   expect(notifier.sent).toEqual([])
 })
@@ -435,7 +433,7 @@ test('invalid input exits 1 with the reason', async () => {
   const { deps, out, errors } = createDeps(port, 'nope')
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: hook input is not valid JSON'])
+  expect(errors).toEqual(['jaypost: hook input is not valid JSON'])
   expect(messenger.sent).toEqual([])
 })
 
@@ -444,7 +442,7 @@ test('empty input exits 1', async () => {
   const { deps, out, errors } = createDeps(port, '')
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: hook input is not valid JSON'])
+  expect(errors).toEqual(['jaypost: hook input is not valid JSON'])
 })
 
 test('failed stdin read exits 1 with the reason', async () => {
@@ -458,7 +456,7 @@ test('failed stdin read exits 1 with the reason', async () => {
   }
   expect(await runHook({}, failing)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(["telegram-ask: couldn't read the hook input: EIO"])
+  expect(errors).toEqual(["jaypost: couldn't read the hook input: EIO"])
 })
 
 test('aborted stdin read exits 1 quietly', async () => {
@@ -485,7 +483,7 @@ test('unknown event exits 1', async () => {
   const { deps, out, errors } = createDeps(port, JSON.stringify({ hook_event_name: 'Stop' }))
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: unsupported hook event "Stop"'])
+  expect(errors).toEqual(['jaypost: unsupported hook event "Stop"'])
 })
 
 test('the cli writes exactly one json line on allow', async () => {

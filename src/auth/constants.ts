@@ -1,7 +1,7 @@
 import type { ApiAuth, ClientToken } from './types.ts'
 
 /** Env var clients and the service read the token from. */
-export const TOKEN_ENV_VAR = 'TELEGRAM_ASK_TOKEN'
+export const TOKEN_ENV_VAR = 'JAYPOST_TOKEN'
 /** Client token file name inside the config directory. */
 export const TOKEN_FILE_NAME = 'token'
 /** Random bytes in a generated token; 32 encode to 43 base64url characters. */

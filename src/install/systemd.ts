@@ -23,7 +23,7 @@ import { requireRecordOwner } from './state.ts'
 import { formatSystemdUnit } from './templates.ts'
 import type { CliLocation, InstallRecord, Secrets, Target, TargetDeps } from './types.ts'
 
-/** Best-effort read of the TELEGRAM_ASK_CONFIG value from a unit's Environment= lines. */
+/** Best-effort read of the JAYPOST_CONFIG value from a unit's Environment= lines. */
 export function findUnitConfigFile(unit: string): string | undefined {
   for (const line of unit.split('\n')) {
     const rawValue = ENVIRONMENT_LINE_PATTERN.exec(line)?.[1]
@@ -108,7 +108,7 @@ export function findUnitExecWords(unit: string): readonly string[] | undefined {
 export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target {
   const { exec, paths, env, user, providers } = deps
   const systemctl = (...args: string[]) => exec('systemctl', ['--user', ...args])
-  // The unit always pins TELEGRAM_ASK_CONFIG to this absolute path, and install.json records it,
+  // The unit always pins JAYPOST_CONFIG to this absolute path, and install.json records it,
   // so later commands don't depend on the environment they happen to run in.
   const configFile = resolveDefaultConfigFile(paths, env)
   const resolveConfigFile = (record: InstallRecord) => record.configFile ?? configFile

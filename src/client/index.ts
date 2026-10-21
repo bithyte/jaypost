@@ -1,5 +1,5 @@
 export { prepareAttachment } from './attachment.ts'
-export { Client, TelegramAskError } from './client.ts'
+export { Client, JaypostError } from './client.ts'
 export {
   ATTACHMENT_GRACE_MS,
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,

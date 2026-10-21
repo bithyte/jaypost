@@ -120,7 +120,7 @@ export async function requestApi(
   if (!isOutcome(result.body)) {
     return {
       kind: 'failed',
-      message: `telegram-ask service sent an unreadable answer: ${JSON.stringify(result.body)}`,
+      message: `jaypost service sent an unreadable answer: ${JSON.stringify(result.body)}`,
     }
   }
   const { answer, timedOut } = result.body
@@ -196,9 +196,9 @@ function describeTransportFailure(port: number, options: ApiOptions, timeout: Ab
     return CANCELLED_MESSAGE
   }
   if (timeout.aborted) {
-    return `telegram-ask service didn't answer within ${options.timeoutMs / 1000} s`
+    return `jaypost service didn't answer within ${options.timeoutMs / 1000} s`
   }
-  return `telegram-ask service not reachable on ${options.host ?? HOST}:${port} (run telegram-ask status)`
+  return `jaypost service not reachable on ${options.host ?? HOST}:${port} (run jaypost status)`
 }
 
 /** True for a GET /request/<id> body. */
@@ -228,7 +228,7 @@ export function isStateBody(body: unknown): body is StateBody {
 
 /** The copy for a 404 on a request id. */
 export function describeUnknownRequest(id: string): string {
-  return `telegram-ask doesn't know request ${id} (the service restarted, or the answer expired after 24 h)`
+  return `jaypost doesn't know request ${id} (the service restarted, or the answer expired after 24 h)`
 }
 
 /** True for a /request answer body: `{ answer, timedOut }`. */
@@ -249,7 +249,7 @@ function parseOk(text: string): ApiResult {
   } catch {
     return {
       kind: 'failed',
-      message: `telegram-ask service sent an unreadable answer: ${text.trim()}`,
+      message: `jaypost service sent an unreadable answer: ${text.trim()}`,
     }
   }
 }
@@ -287,7 +287,7 @@ function describeStatus(status: number, path: ApiPath, text: string, sentToken: 
   if (status === 502) {
     return SEND_FAILED_MESSAGE
   }
-  return `telegram-ask service error ${status}: ${error ?? text.trim()}`
+  return `jaypost service error ${status}: ${error ?? text.trim()}`
 }
 
 function readErrorField(text: string): string | undefined {

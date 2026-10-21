@@ -37,7 +37,7 @@ export function formatAssetName(platform: string, arch: string): string | undefi
   if (!SUPPORTED_PLATFORMS.includes(platform) || !SUPPORTED_ARCHITECTURES.includes(arch)) {
     return undefined
   }
-  return `telegram-ask-${platform}-${arch}.gz`
+  return `jaypost-${platform}-${arch}.gz`
 }
 
 /** Parses `sha256sum` output into file name to lowercase hex; skips lines that don't match. */

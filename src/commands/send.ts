@@ -9,7 +9,7 @@ import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
  */
 export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Promise<number> {
   if (deps.token.kind === 'unusable') {
-    deps.printError(`telegram-ask: ${deps.token.message}`)
+    deps.printError(`jaypost: ${deps.token.message}`)
     return 1
   }
   const attachment = await prepare(args.attachment, deps)
@@ -31,7 +31,7 @@ export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Pro
     { signal: deps.signal, ...toTokenOption(deps.token) },
   )
   if (result.kind === 'failed') {
-    deps.printError(`telegram-ask: ${result.message}`)
+    deps.printError(`jaypost: ${result.message}`)
     return 1
   }
   const { answer, timedOut } = result.outcome
@@ -42,7 +42,7 @@ export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Pro
 /** Sends a notification; prints nothing on success. Returns 0 once sent, 1 on any failure. */
 export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promise<number> {
   if (deps.token.kind === 'unusable') {
-    deps.printError(`telegram-ask: ${deps.token.message}`)
+    deps.printError(`jaypost: ${deps.token.message}`)
     return 1
   }
   const attachment = await prepare(args.attachment, deps)
@@ -65,7 +65,7 @@ export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promi
     },
   )
   if (result.kind === 'failed') {
-    deps.printError(`telegram-ask: ${result.message}`)
+    deps.printError(`jaypost: ${result.message}`)
     return 1
   }
   return 0
@@ -84,7 +84,7 @@ async function prepare(source: AttachmentSource | undefined, deps: SendDeps): Pr
     ...toTokenOption(deps.token),
   })
   if (result.kind === 'failed') {
-    deps.printError(`telegram-ask: ${result.message}`)
+    deps.printError(`jaypost: ${result.message}`)
     return { kind: 'failed' }
   }
   return { kind: 'ready', body: { attachment: result.attachment } }

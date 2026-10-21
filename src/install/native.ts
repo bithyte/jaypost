@@ -86,9 +86,9 @@ function formatOtherProviderKeys(
   return Object.fromEntries(keys.map((key) => [key, null]))
 }
 
-/** The config file a service install uses when nothing recorded one: $TELEGRAM_ASK_CONFIG or the default, absolute. */
+/** The config file a service install uses when nothing recorded one: $JAYPOST_CONFIG or the default, absolute. */
 export function resolveDefaultConfigFile(paths: InstallPaths, env: NodeJS.ProcessEnv): string {
-  return resolve(env.TELEGRAM_ASK_CONFIG || paths.configFile)
+  return resolve(env.JAYPOST_CONFIG || paths.configFile)
 }
 
 /**

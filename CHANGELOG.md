@@ -1,4 +1,4 @@
-# telegram-ask
+# jaypost
 
 ## 0.5.0
 

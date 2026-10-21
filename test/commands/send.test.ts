@@ -193,7 +193,7 @@ test('request abort cancels the telegram message', async () => {
   await waitFor(() => messenger.sent.length === 1)
   controller.abort()
   expect(await pending).toBe(1)
-  expect(errors).toEqual(['telegram-ask: cancelled'])
+  expect(errors).toEqual(['jaypost: cancelled'])
   await waitFor(() => messenger.finalized.length === 1)
   expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
 })
@@ -204,7 +204,7 @@ test('request validation error goes to stderr', async () => {
   expect(await runSendRequest({ ...ASK, timeoutOption: 'Maybe' }, deps)).toBe(1)
   expect(out).toEqual([])
   expect(errors).toHaveLength(1)
-  expect(errors[0]).toMatch(/^telegram-ask: .*timeoutOption/)
+  expect(errors[0]).toMatch(/^jaypost: .*timeoutOption/)
 })
 
 test('notify sends and prints nothing', async () => {
@@ -220,7 +220,7 @@ test('notify without provider support fails', async () => {
   const { port } = await startApi({ notifications: false })
   const { deps, errors } = createDeps(port)
   expect(await runSendNotify({ text: 'done' }, deps)).toBe(1)
-  expect(errors).toEqual(['telegram-ask: notifications not supported by this provider'])
+  expect(errors).toEqual(['jaypost: notifications not supported by this provider'])
 })
 
 test('service down fails with a hint', async () => {
@@ -228,7 +228,7 @@ test('service down fails with a hint', async () => {
   const { deps, errors } = createDeps(port)
   expect(await runSendNotify({ text: 'done' }, deps)).toBe(1)
   expect(errors).toEqual([
-    `telegram-ask: telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`,
+    `jaypost: jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   ])
 })
 
@@ -256,7 +256,7 @@ test('an unusable token fails without calling the service', async () => {
   expect(await runSendRequest(ASK, deps)).toBe(1)
   expect(await runSendNotify({ text: 'hi' }, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['telegram-ask: bad token here', 'telegram-ask: bad token here'])
+  expect(errors).toEqual(['jaypost: bad token here', 'jaypost: bad token here'])
   expect(messenger.sent).toEqual([])
 })
 
@@ -268,7 +268,7 @@ test('a wrong token prints the rejected message', async () => {
     source: 'file',
   })
   expect(await runSendRequest(ASK, deps)).toBe(1)
-  expect(errors).toEqual([`telegram-ask: ${TOKEN_REJECTED_MESSAGE}`])
+  expect(errors).toEqual([`jaypost: ${TOKEN_REJECTED_MESSAGE}`])
   expect(messenger.sent).toEqual([])
 })
 
@@ -295,7 +295,7 @@ test('notify passes format', async () => {
 })
 
 function createTempDirectory(): string {
-  const directory = mkdtempSync(join(tmpdir(), 'telegram-ask-send-'))
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-send-'))
   directories.push(directory)
   return directory
 }
@@ -337,8 +337,8 @@ test('a missing attachment prints the reason and exits 1', async () => {
   expect(await runSendNotify({ text: 'done', attachment: { path } }, deps)).toBe(1)
   expect(await runSendRequest({ ...ASK, attachment: { path } }, deps)).toBe(1)
   expect(errors).toEqual([
-    `telegram-ask: attachment ${JSON.stringify(path)} not found`,
-    `telegram-ask: attachment ${JSON.stringify(path)} not found`,
+    `jaypost: attachment ${JSON.stringify(path)} not found`,
+    `jaypost: attachment ${JSON.stringify(path)} not found`,
   ])
   expect(notifier.sent).toEqual([])
   expect(messenger.sent).toEqual([])
@@ -360,7 +360,7 @@ function runCli(args: readonly string[], port: number, stdin?: Readable | string
       env: {
         ...process.env,
         XDG_CONFIG_HOME: createTempDirectory(),
-        TELEGRAM_ASK_TOKEN: '',
+        JAYPOST_TOKEN: '',
       },
     })
     let stdout = ''
@@ -425,7 +425,7 @@ test('send notify --attach - stops at the size cap on an endless stdin', async (
   endless.destroy()
   expect(result.code).toBe(1)
   expect(result.stderr).toBe(
-    `telegram-ask: attachment from stdin is over ${MAX_ATTACHMENT_BYTES} bytes\n`,
+    `jaypost: attachment from stdin is over ${MAX_ATTACHMENT_BYTES} bytes\n`,
   )
   expect(notifier.sent).toEqual([])
 })

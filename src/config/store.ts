@@ -104,7 +104,7 @@ function resolveMutedUntil(
  * Provider (PROVIDER env, else the file, else telegram), its settings, port and host. Env vars
  * (e.g. PROVIDER, PORT, HOST) override the config file. Throws a user-facing error on an unknown
  * provider, a missing required setting, or an invalid setting, port or api token
- * (TELEGRAM_ASK_TOKEN, else apiToken in the file; the message never quotes it); read errors other
+ * (JAYPOST_TOKEN, else apiToken in the file; the message never quotes it); read errors other
  * than a missing config file are rethrown. quietHours (HH:MM-HH:MM; empty means off) throws when
  * invalid; an unparseable mutedUntil is dropped and reported through `log`.
  */

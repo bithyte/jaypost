@@ -3,7 +3,7 @@ export const ALWAYS_ALLOW_OPTION = 'Always allow'
 export const DENY_OPTION = 'Deny'
 export const ASK_IN_TERMINAL_OPTION = 'Ask in terminal'
 /** Reason Claude Code gets with a Deny, so it knows the user said no from Telegram. */
-export const DENY_MESSAGE = 'the user denied this from telegram-ask'
+export const DENY_MESSAGE = 'the user denied this from jaypost'
 /** Ends a question whose primary field was cut; only Deny and Ask in terminal are offered. */
 export const TOO_LONG_LINE = 'Too long to show in full; answer in the terminal to allow it.'
 /** Cap on any hook-built Telegram text. */

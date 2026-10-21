@@ -190,7 +190,7 @@ test('legacy and 0.4.0 installs are too old and nothing runs', async () => {
     const targets = setup('', '1.0.0', recordVersion)
     expect(await runLog({}, deps(targets))).toBe(1)
     expect(err).toEqual([
-      `the installed service (${recordVersion}) doesn't keep a log; run telegram-ask init to upgrade`,
+      `the installed service (${recordVersion}) doesn't keep a log; run jaypost init to upgrade`,
     ])
     expect(targets.systemd.readAuditLog).not.toHaveBeenCalled()
   }
@@ -222,7 +222,7 @@ test('without an install reads the files next to the env config', async () => {
   }
   const code = await runLog(
     {},
-    deps(targets, { env: { HOME: tmp, TELEGRAM_ASK_CONFIG: join(directory, 'config.json') } }),
+    deps(targets, { env: { HOME: tmp, JAYPOST_CONFIG: join(directory, 'config.json') } }),
   )
   expect(code).toBe(0)
   expect(out[0]).toContain('question a')
@@ -245,7 +245,7 @@ test.skipIf(process.getuid?.() === 0)(
     }
     const code = await runLog(
       {},
-      deps(targets, { env: { HOME: tmp, TELEGRAM_ASK_CONFIG: join(directory, 'config.json') } }),
+      deps(targets, { env: { HOME: tmp, JAYPOST_CONFIG: join(directory, 'config.json') } }),
     )
     expect(code).toBe(1)
     expect(err).toHaveLength(1)

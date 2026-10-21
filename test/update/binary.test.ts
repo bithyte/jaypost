@@ -9,7 +9,7 @@ import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
 import type { Exec } from '../../src/system/index.ts'
 import { replaceBinary, type LatestRelease } from '../../src/update/index.ts'
 
-const ASSET = 'telegram-ask-linux-x64.gz'
+const ASSET = 'jaypost-linux-x64.gz'
 const NEW_BINARY = Buffer.from('#!/bin/sh\necho new\n')
 const OLD_BINARY = 'old binary'
 const GZIPPED = gzipSync(NEW_BINARY)
@@ -20,7 +20,7 @@ let destination = ''
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'update-binary-'))
-  destination = join(directory, 'telegram-ask')
+  destination = join(directory, 'jaypost')
   writeFileSync(destination, OLD_BINARY, { mode: 0o644 })
 })
 
@@ -85,7 +85,7 @@ test('replaces the destination with the verified binary', async () => {
   expect(readFileSync(destination)).toEqual(NEW_BINARY)
   expect(statSync(destination).mode & 0o777).toBe(0o755)
   expect(statSync(destination).ino).not.toBe(inodeBefore)
-  expect(readdirSync(directory)).toEqual(['telegram-ask'])
+  expect(readdirSync(directory)).toEqual(['jaypost'])
 })
 
 test('refuses a missing asset', async () => {
@@ -98,7 +98,7 @@ test('refuses a missing asset', async () => {
       destination,
       exec: reportsVersion('0.5.0\n'),
     }),
-  ).rejects.toThrow('no telegram-ask-linux-x64.gz on release 0.5.0 yet')
+  ).rejects.toThrow('no jaypost-linux-x64.gz on release 0.5.0 yet')
   assertUntouched()
 })
 

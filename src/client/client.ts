@@ -14,13 +14,13 @@ import type {
 } from './types.ts'
 
 /** Thrown by `Client` when the service is unreachable, rejects the input or can't send. */
-export class TelegramAskError extends Error {
-  override name = 'TelegramAskError'
+export class JaypostError extends Error {
+  override name = 'JaypostError'
 }
 
 /**
- * Asks questions and sends notifications through a running telegram-ask service. Calls throw
- * `TelegramAskError` when the token lookup finds an unusable token.
+ * Asks questions and sends notifications through a running jaypost service. Calls throw
+ * `JaypostError` when the token lookup finds an unusable token.
  */
 export class Client {
   #host: string
@@ -35,7 +35,7 @@ export class Client {
     if (options.token !== undefined) {
       const token = parseToken(options.token)
       if (token === undefined) {
-        throw new RangeError("token isn't a valid telegram-ask token")
+        throw new RangeError("token isn't a valid jaypost token")
       }
       this.#token = token
     }
@@ -43,7 +43,7 @@ export class Client {
 
   /**
    * Resolves once the user taps a button or replies with text (`allowText`), or the timeout fires
-   * (then with `timeoutOption`). Throws `TelegramAskError` on failure (including an unusable token
+   * (then with `timeoutOption`). Throws `JaypostError` on failure (including an unusable token
    * lookup), or the signal's reason if aborted.
    */
   async request(request: AskRequest): Promise<Answer> {
@@ -69,7 +69,7 @@ export class Client {
       throw signal.reason
     }
     if (result.kind === 'failed') {
-      throw new TelegramAskError(result.message)
+      throw new JaypostError(result.message)
     }
     return result.outcome
   }
@@ -93,7 +93,7 @@ export class Client {
     )
   }
 
-  /** Reads and checks the attachment, if any; throws `TelegramAskError` when it can't be sent. */
+  /** Reads and checks the attachment, if any; throws `JaypostError` when it can't be sent. */
   async #prepare(
     input: AttachmentInput | undefined,
     signal: AbortSignal,
@@ -111,7 +111,7 @@ export class Client {
       throw signal.reason
     }
     if (result.kind === 'failed') {
-      throw new TelegramAskError(result.message)
+      throw new JaypostError(result.message)
     }
     return result.attachment
   }
@@ -140,7 +140,7 @@ export class Client {
       throw signal.reason
     }
     if (result.kind === 'failed') {
-      throw new TelegramAskError(result.message)
+      throw new JaypostError(result.message)
     }
     return result.body
   }
@@ -156,7 +156,7 @@ export class Client {
       case 'none':
         return undefined
       case 'unusable':
-        throw new TelegramAskError(found.message)
+        throw new JaypostError(found.message)
     }
   }
 }

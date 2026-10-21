@@ -40,7 +40,7 @@ test('telegram is registered and is the default', () => {
 
 test('the api token key and env var are reserved', () => {
   expect(RESERVED_CONFIG_KEYS).toContain('apiToken')
-  expect(RESERVED_ENV_VARS).toContain('TELEGRAM_ASK_TOKEN')
+  expect(RESERVED_ENV_VARS).toContain('JAYPOST_TOKEN')
 })
 
 test('the quiet settings keys are reserved', () => {

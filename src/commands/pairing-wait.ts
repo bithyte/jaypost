@@ -54,7 +54,7 @@ export async function waitForPairing(options: WaitOptions): Promise<WaitResult> 
   for (;;) {
     if (options.signal?.aborted) {
       print(
-        'Service is still running and waiting for pairing. Run "telegram-ask status" to see the code again.',
+        'Service is still running and waiting for pairing. Run "jaypost status" to see the code again.',
       )
       return 'interrupted'
     }

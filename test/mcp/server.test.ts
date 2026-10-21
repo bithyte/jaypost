@@ -94,9 +94,9 @@ const clients: Client[] = []
 let directory = ''
 let tokenFile = ''
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'telegram-ask-mcp-'))
-  mkdirSync(join(directory, 'telegram-ask'))
-  tokenFile = join(directory, 'telegram-ask', 'token')
+  directory = mkdtempSync(join(tmpdir(), 'jaypost-mcp-'))
+  mkdirSync(join(directory, 'jaypost'))
+  tokenFile = join(directory, 'jaypost', 'token')
 })
 afterEach(async () => {
   rmSync(directory, { recursive: true, force: true })
@@ -410,7 +410,7 @@ test('service down is a tool error and the server keeps going', async () => {
     content: [
       {
         type: 'text',
-        text: `telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`,
+        text: `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
       },
     ],
   }
@@ -489,9 +489,9 @@ test('tool calls send the token from the token file', async () => {
   })
 })
 
-test('TELEGRAM_ASK_TOKEN reaches the service', async () => {
+test('JAYPOST_TOKEN reaches the service', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
-  const client = await connect(port, { TELEGRAM_ASK_TOKEN: TOKEN })
+  const client = await connect(port, { JAYPOST_TOKEN: TOKEN })
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     content: [{ type: 'text', text: 'sent' }],
   })
@@ -520,7 +520,7 @@ test('an unusable token fails only the call that hit it', async () => {
     content: [
       {
         type: 'text',
-        text: `token file ${JSON.stringify(tokenFile)} isn't a valid telegram-ask token`,
+        text: `token file ${JSON.stringify(tokenFile)} isn't a valid jaypost token`,
       },
     ],
   }
@@ -771,7 +771,7 @@ test('an unknown id is a tool error', async () => {
     content: [
       {
         type: 'text',
-        text: "telegram-ask doesn't know request nope (the service restarted, or the answer expired after 24 h)",
+        text: "jaypost doesn't know request nope (the service restarted, or the answer expired after 24 h)",
       },
     ],
   })

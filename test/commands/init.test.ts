@@ -35,7 +35,7 @@ const NO_TOKEN_LINE = 'No API token: any local process can use the API.'
 const savedToken = () => readFileSync(paths.tokenFile, 'utf8').trim()
 
 function savedToLine(): string {
-  return `API token saved to ${paths.tokenFile}. Agents in containers need TELEGRAM_ASK_TOKEN set to it.`
+  return `API token saved to ${paths.tokenFile}. Agents in containers need JAYPOST_TOKEN set to it.`
 }
 
 function wasAsked(d: InitDeps): boolean {
@@ -126,7 +126,7 @@ test('fresh install: default target, default port, writes install record', async
     expect.objectContaining({ port: 8787, settings: { botToken: 'good-token' }, version: '1.2.3' }),
   )
   expect(readInstall(paths.installFile)?.target).toBe('quadlet')
-  expect(out.join('\n')).toContain('Done. Try it: telegram-ask test')
+  expect(out.join('\n')).toContain('Done. Try it: jaypost test')
 })
 
 test('passes the time zone to the target install when given', async () => {
@@ -399,7 +399,7 @@ test('install throwing returns 1 with generic message, no secrets', async () => 
   expect(await runInit({}, d)).toBe(1)
   const text = out.join('\n')
   expect(text).toContain('Install failed: boom ***')
-  expect(text).toContain('Run telegram-ask init again')
+  expect(text).toContain('Run jaypost init again')
   expect(text).not.toContain('good-token')
 })
 
@@ -545,8 +545,8 @@ test('single provider: no provider prompt and unchanged output', async () => {
   expect(d.prompt.select).toHaveBeenCalledTimes(1)
   expect(vi.mocked(d.prompt.select).mock.calls[0]?.[0]).toBe('Where should the bot run?')
   expect(out).toEqual([
-    'Done. Try it: telegram-ask test',
-    'Check state: telegram-ask status',
+    'Done. Try it: jaypost test',
+    'Check state: jaypost status',
     savedToLine(),
     'Logs: logs for quadlet',
   ])
@@ -822,8 +822,8 @@ test('a failed install keeps the new token for the retry', async () => {
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: first }))
 })
 
-test('a stale TELEGRAM_ASK_TOKEN in the shell does not reach the wait', async () => {
-  const d = deps({ env: { TELEGRAM_ASK_TOKEN: OTHER_TOKEN } })
+test('a stale JAYPOST_TOKEN in the shell does not reach the wait', async () => {
+  const d = deps({ env: { JAYPOST_TOKEN: OTHER_TOKEN } })
   expect(await runInit({}, d)).toBe(0)
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: savedToken() }))
   expect(savedToken()).not.toBe(OTHER_TOKEN)

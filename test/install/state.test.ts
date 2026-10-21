@@ -76,7 +76,7 @@ test('cliKind roundtrips and is optional', () => {
     target: 'systemd',
     port: 1,
     version: 'v',
-    cliPath: '/h/.local/bin/telegram-ask',
+    cliPath: '/h/.local/bin/jaypost',
     cliKind: 'binary',
   } as const
   writeInstall(file, rec)

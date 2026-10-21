@@ -1,5 +1,5 @@
 {
-  "name": "telegram-ask",
+  "name": "jaypost",
   "version": "0.5.0",
   "description": "Local HTTP API that asks you a question on Telegram with inline buttons and returns your answer",
   "keywords": [
@@ -12,10 +12,10 @@
   "author": "Cozmin",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cozminu/telegram-ask.git"
+    "url": "git+https://github.com/bithyte/jaypost.git"
   },
   "bin": {
-    "telegram-ask": "dist/cli.js"
+    "jaypost": "dist/cli.js"
   },
   "files": [
     "dist",

@@ -203,7 +203,7 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       return result.code === 0 && LAUNCHD_PID_PATTERN.test(result.stdout)
     },
     logsHint() {
-      return 'tail -f ~/Library/Logs/telegram-ask/telegram-ask.log'
+      return 'tail -f ~/Library/Logs/jaypost/jaypost.log'
     },
   }
   return target

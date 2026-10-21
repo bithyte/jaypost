@@ -107,7 +107,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'telegram-ask',
+      title: 'jaypost',
       version: VERSION,
       description:
         'Local HTTP API that asks you a question in a chat app with buttons and returns your answer.',
@@ -294,7 +294,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           type: 'http',
           scheme: 'bearer',
           description:
-            'The token `init` saved to `~/.config/telegram-ask/token`. A service installed without a token ignores the header.',
+            'The token `init` saved to `~/.config/jaypost/token`. A service installed without a token ignores the header.',
         },
       },
       schemas: {

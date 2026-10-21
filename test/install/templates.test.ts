@@ -20,7 +20,7 @@ import { createFakeProvider } from '../provider/fake.ts'
 const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'
 
 test('formatDockerfile pins version', () =>
-  expect(formatDockerfile({ version: '0.1.0' })).toContain('npm i -g telegram-ask@0.1.0'))
+  expect(formatDockerfile({ version: '0.1.0' })).toContain('npm i -g jaypost@0.1.0'))
 test('formatDockerfile from tarball', () => {
   const d = formatDockerfile({ version: '0.1.0', tarball: '/a/b/pkg.tgz' })
   expect(d).toContain('COPY pkg.tgz /tmp/pkg.tgz')
@@ -29,7 +29,7 @@ test('formatDockerfile from tarball', () => {
 test('formatDockerfile binds all interfaces inside', () => {
   const d = formatDockerfile({ version: '1' })
   expect(d).toContain('HOST=0.0.0.0')
-  expect(d).toContain('CMD ["telegram-ask","start"]')
+  expect(d).toContain('CMD ["jaypost","start"]')
 })
 test('compose publishes on localhost only, restarts', () => {
   const y = formatComposeYaml(9000)
@@ -41,7 +41,7 @@ test('quadlet publishes on localhost and quotes the env file path', () => {
   const q = formatQuadletContainer({ version: '0.1.0', port: 8787, envFile: '/home/a b/.env' })
   expect(q).toContain('PublishPort=127.0.0.1:8787:8787')
   expect(q).toContain('EnvironmentFile="/home/a b/.env"')
-  expect(q).toContain('Image=localhost/telegram-ask:0.1.0')
+  expect(q).toContain('Image=localhost/jaypost:0.1.0')
 })
 test('systemd unit quotes paths with spaces and percent', () => {
   const u = formatSystemdUnit({
@@ -49,7 +49,7 @@ test('systemd unit quotes paths with spaces and percent', () => {
     config: '/h/50%/c.json',
   })
   expect(u).toContain('ExecStart="/opt/node 24/bin/node" "/x/cli.js" start')
-  expect(u).toContain('Environment="TELEGRAM_ASK_CONFIG=/h/50%%/c.json"')
+  expect(u).toContain('Environment="JAYPOST_CONFIG=/h/50%%/c.json"')
   expect(u).not.toContain('WorkingDirectory')
 })
 test('systemd unit escapes $ in ExecStart only', () => {
@@ -58,11 +58,11 @@ test('systemd unit escapes $ in ExecStart only', () => {
     config: '/h/$z/c.json',
   })
   expect(u).toContain('ExecStart="/n$$x/node" "/c$$y/cli.js" start')
-  expect(u).toContain('Environment="TELEGRAM_ASK_CONFIG=/h/$z/c.json"')
+  expect(u).toContain('Environment="JAYPOST_CONFIG=/h/$z/c.json"')
 })
 test('systemd unit with a single exec word runs it directly', () => {
-  const u = formatSystemdUnit({ exec: ['/h/.local/bin/telegram-ask'], config: '/h/c.json' })
-  expect(u).toContain('ExecStart="/h/.local/bin/telegram-ask" start\n')
+  const u = formatSystemdUnit({ exec: ['/h/.local/bin/jaypost'], config: '/h/c.json' })
+  expect(u).toContain('ExecStart="/h/.local/bin/jaypost" start\n')
 })
 test('quoteSystemdValue escapes backslash and quote', () =>
   expect(quoteSystemdValue('a\\b"c%')).toBe('"a\\\\b\\"c%%"'))
@@ -83,9 +83,9 @@ test('formatEnvFile writes the api token right after PORT', () =>
       settings: { botToken: 't', ownerId: 42 },
       auth: { kind: 'token', token: TOKEN },
     }),
-  ).toBe(`PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nTELEGRAM_ASK_TOKEN=${TOKEN}\nOWNER_ID=42\n`))
+  ).toBe(`PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nJAYPOST_TOKEN=${TOKEN}\nOWNER_ID=42\n`))
 test('formatDockerfile never carries the token', () =>
-  expect(formatDockerfile({ version: '0.1.0' })).not.toContain('TELEGRAM_ASK_TOKEN'))
+  expect(formatDockerfile({ version: '0.1.0' })).not.toContain('JAYPOST_TOKEN'))
 test('formatEnvFile omits OWNER_ID when unknown', () =>
   expect(
     formatEnvFile({
@@ -138,26 +138,26 @@ test('formatEnvFile rejects a value with a newline', () => {
 test('formatLaunchdPlist writes the agent plist', () => {
   expect(
     formatLaunchdPlist({
-      label: 'io.github.cozminu.telegram-ask',
-      exec: ['/h/.local/bin/telegram-ask'],
-      config: '/h/.config/telegram-ask/config.json',
-      logFile: '/h/Library/Logs/telegram-ask/telegram-ask.log',
+      label: 'io.github.bithyte.jaypost',
+      exec: ['/h/.local/bin/jaypost'],
+      config: '/h/.config/jaypost/config.json',
+      logFile: '/h/Library/Logs/jaypost/jaypost.log',
     }),
   ).toBe(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.github.cozminu.telegram-ask</string>
+  <string>io.github.bithyte.jaypost</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/h/.local/bin/telegram-ask</string>
+    <string>/h/.local/bin/jaypost</string>
     <string>start</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>TELEGRAM_ASK_CONFIG</key>
-    <string>/h/.config/telegram-ask/config.json</string>
+    <key>JAYPOST_CONFIG</key>
+    <string>/h/.config/jaypost/config.json</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -169,9 +169,9 @@ test('formatLaunchdPlist writes the agent plist', () => {
   <key>ThrottleInterval</key>
   <integer>5</integer>
   <key>StandardOutPath</key>
-  <string>/h/Library/Logs/telegram-ask/telegram-ask.log</string>
+  <string>/h/Library/Logs/jaypost/jaypost.log</string>
   <key>StandardErrorPath</key>
-  <string>/h/Library/Logs/telegram-ask/telegram-ask.log</string>
+  <string>/h/Library/Logs/jaypost/jaypost.log</string>
 </dict>
 </plist>
 `)
@@ -204,7 +204,7 @@ test.skipIf(process.platform !== 'darwin')(
     await writeFile(
       file,
       formatLaunchdPlist({
-        label: 'io.github.cozminu.telegram-ask',
+        label: 'io.github.bithyte.jaypost',
         exec: ['/a & b/<n>/node', '/c d/cli.js'],
         config: '/x & y/<c>/config.json',
         logFile: '/l & <g>/my log.log',

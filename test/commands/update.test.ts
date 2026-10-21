@@ -30,13 +30,13 @@ import { createFakeProvider } from '../provider/fake.ts'
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 type Call = readonly [string, readonly string[], ExecOptions | undefined]
 
-const ASSET = 'telegram-ask-linux-x64.gz'
+const ASSET = 'jaypost-linux-x64.gz'
 const NEW_BINARY = Buffer.from('#!/bin/sh\necho 0.5.0\n')
 const OLD_BINARY = 'old binary'
 const GZIPPED = gzipSync(NEW_BINARY)
 const NODE = '/opt/node/bin/node'
 const NPM_ROOT = '/usr/lib/node_modules'
-const NPM_CLI = `${NPM_ROOT}/telegram-ask/dist/cli.js`
+const NPM_CLI = `${NPM_ROOT}/jaypost/dist/cli.js`
 const TOKEN = 'T'.repeat(43)
 
 let tmp: string
@@ -248,7 +248,7 @@ test('npm systemd install runs npm i -g then hands off with the unit node', asyn
   expect(await runUpdate(d)).toBe(0)
   expect(calls.map(([command, args]) => [command, args])).toContainEqual([
     'npm',
-    ['i', '-g', 'telegram-ask@0.5.0'],
+    ['i', '-g', 'jaypost@0.5.0'],
   ])
   expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
 })
@@ -279,7 +279,7 @@ test('launchd npm install updates the package the plist runs', async () => {
   expect(await runUpdate(d)).toBe(0)
   expect(calls.map(([command, args]) => [command, args])).toContainEqual([
     'npm',
-    ['i', '-g', 'telegram-ask@0.5.0'],
+    ['i', '-g', 'jaypost@0.5.0'],
   ])
   expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
 })
@@ -296,13 +296,13 @@ test('launchd binary install replaces the recorded copy', async () => {
 })
 
 test('npm install under the fallback prefix passes --prefix', async () => {
-  const cliPath = join(paths.userNpmPrefix, 'lib', 'node_modules', 'telegram-ask', 'dist', 'cli.js')
+  const cliPath = join(paths.userNpmPrefix, 'lib', 'node_modules', 'jaypost', 'dist', 'cli.js')
   seedNpm(cliPath)
   const d = deps({ exec: createExec({ [cliPath]: '0.4.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(calls.map(([command, args]) => [command, args])).toContainEqual([
     'npm',
-    ['i', '-g', '--prefix', paths.userNpmPrefix, 'telegram-ask@0.5.0'],
+    ['i', '-g', '--prefix', paths.userNpmPrefix, 'jaypost@0.5.0'],
   ])
   expect(lastCall()).toEqual([NODE, [cliPath, 'update', '--finish'], { inherit: true }])
 })
@@ -313,7 +313,7 @@ test('legacy install takes cliPath and node from the unit', async () => {
   expect(await runUpdate(d)).toBe(0)
   expect(calls.map(([command, args]) => [command, args])).toContainEqual([
     'npm',
-    ['i', '-g', 'telegram-ask@0.5.0'],
+    ['i', '-g', 'jaypost@0.5.0'],
   ])
   expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
 })
@@ -339,7 +339,7 @@ test('npm install that leaves the CLI on the old version exits 1 without handing
   const d = deps({ exec: createExec({ [NPM_CLI]: '0.4.0' }, { isNpmStale: true }) })
   expect(await runUpdate(d)).toBe(1)
   expect(out).toEqual([
-    `Update failed: npm installed telegram-ask@0.5.0 but ${NPM_CLI} still reports another version`,
+    `Update failed: npm installed jaypost@0.5.0 but ${NPM_CLI} still reports another version`,
   ])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
   expect(d.targets.systemd.upgrade).not.toHaveBeenCalled()
@@ -368,7 +368,7 @@ test('missing asset exits 1 and leaves the copy', async () => {
   expect(await runUpdate(d)).toBe(1)
   expect(out).toEqual([`Update failed: no ${ASSET} on release 0.5.0 yet`])
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
-  expect(readdirSync(dirname(copy))).toEqual(['telegram-ask'])
+  expect(readdirSync(dirname(copy))).toEqual(['jaypost'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -389,12 +389,12 @@ test('unsupported platform names the platform', async () => {
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
 })
 
-test('container install with an old npx CLI asks for npx telegram-ask@latest', async () => {
+test('container install with an old npx CLI asks for npx jaypost@latest', async () => {
   writeInstall(paths.installFile, { target: 'quadlet', port: 9000, version: '0.4.0' })
-  const d = deps({ cli: npmCli('/home/u/.npm/_npx/abc/node_modules/telegram-ask/dist/cli.js') })
+  const d = deps({ cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js') })
   expect(await runUpdate(d)).toBe(1)
   expect(out).toEqual([
-    `Can't update this copy; run "npx telegram-ask@latest update" or download the latest binary.`,
+    `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
   ])
   expect(d.targets.quadlet.upgrade).not.toHaveBeenCalled()
   expect(calls.filter(([command, args]) => command === 'npm' && args[0] === 'i')).toEqual([])
@@ -404,7 +404,7 @@ test('container install already on the latest CLI finishes in-process', async ()
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
   writeTokenFile(paths.tokenFile, TOKEN)
   const d = deps({
-    cli: npmCli('/home/u/.npm/_npx/abc/node_modules/telegram-ask/dist/cli.js'),
+    cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js'),
     version: '0.5.0',
   })
   expect(await runUpdate(d)).toBe(0)
@@ -413,7 +413,7 @@ test('container install already on the latest CLI finishes in-process', async ()
     expect.objectContaining({ version: '0.4.0' }),
   )
   expect(readInstall(paths.installFile)?.version).toBe('0.5.0')
-  expect(out).toEqual(['Updated telegram-ask 0.4.0 -> 0.5.0.'])
+  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -423,7 +423,7 @@ test('container install with a global npm CLI runs npm i -g then hands off', asy
   expect(await runUpdate(d)).toBe(0)
   expect(calls.map(([command, args]) => [command, args])).toContainEqual([
     'npm',
-    ['i', '-g', 'telegram-ask@0.5.0'],
+    ['i', '-g', 'jaypost@0.5.0'],
   ])
   expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
 })
@@ -434,7 +434,7 @@ test('nothing installed updates the running binary only', async () => {
   const d = deps()
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(running)).toEqual(NEW_BINARY)
-  expect(out).toEqual(['Updated telegram-ask 0.4.0 -> 0.5.0.'])
+  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -443,7 +443,7 @@ test('failed handoff prints the retry hint', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }, { handoff: 1 }) })
   expect(await runUpdate(d)).toBe(1)
   expect(out).toEqual([
-    'The new version is in place; run "telegram-ask update" again or "telegram-ask init".',
+    'The new version is in place; run "jaypost update" again or "jaypost init".',
   ])
 })
 
@@ -455,7 +455,7 @@ test('interrupt during download exits 130', async () => {
   setTimeout(() => controller.abort(), 100)
   expect(await runUpdate(d)).toBe(130)
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
-  expect(readdirSync(dirname(copy))).toEqual(['telegram-ask'])
+  expect(readdirSync(dirname(copy))).toEqual(['jaypost'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -485,7 +485,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
     version: '0.5.0',
     provider: 'telegram',
   })
-  expect(out).toEqual(['Updated telegram-ask 0.4.0 -> 0.5.0.'])
+  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
 })
 
 test('runFinishUpdate without a token file warns and installs without auth', async () => {
@@ -496,8 +496,8 @@ test('runFinishUpdate without a token file warns and installs without auth', asy
     auth: { kind: 'none' },
   })
   expect(out).toEqual([
-    `No API token file at ${paths.tokenFile}; the service will not require an API token. Run "telegram-ask init" to set one.`,
-    'Updated telegram-ask 0.4.0 -> 0.5.0.',
+    `No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'Updated jaypost 0.4.0 -> 0.5.0.',
   ])
 })
 

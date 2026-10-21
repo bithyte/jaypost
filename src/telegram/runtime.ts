@@ -44,7 +44,7 @@ export function createTelegramRuntime(
           ok: false,
           reason:
             error instanceof GrammyError
-              ? `Telegram rejected the bot token (${error.error_code}); check it with \`telegram-ask init\``
+              ? `Telegram rejected the bot token (${error.error_code}); check it with \`jaypost init\``
               : 'could not reach Telegram to verify the bot token',
         }
       }

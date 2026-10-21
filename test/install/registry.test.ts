@@ -102,9 +102,9 @@ test('legacy port defaults to 8787', () => {
   expect(found?.record.port).toBe(8787)
 })
 
-test('legacy port honors TELEGRAM_ASK_CONFIG', () => {
-  const env = { HOME: tmp, TELEGRAM_ASK_CONFIG: join(tmp, 'other.json') }
-  writeFileSync(env.TELEGRAM_ASK_CONFIG, JSON.stringify({ port: 9100 }))
+test('legacy port honors JAYPOST_CONFIG', () => {
+  const env = { HOME: tmp, JAYPOST_CONFIG: join(tmp, 'other.json') }
+  writeFileSync(env.JAYPOST_CONFIG, JSON.stringify({ port: 9100 }))
   const paths = resolveInstallPaths(env)
   mkdirSync(dirname(paths.systemdUnit), { recursive: true })
   writeFileSync(paths.systemdUnit, '[Unit]\n')
@@ -137,15 +137,15 @@ test('install.json wins over legacy unit', () => {
   })
 })
 
-test('legacy unit Environment=TELEGRAM_ASK_CONFIG wins over the env', () => {
-  const env = { HOME: tmp, TELEGRAM_ASK_CONFIG: join(tmp, 'env.json') }
+test('legacy unit Environment=JAYPOST_CONFIG wins over the env', () => {
+  const env = { HOME: tmp, JAYPOST_CONFIG: join(tmp, 'env.json') }
   const paths = resolveInstallPaths(env)
   const pinned = join(tmp, 'pin ned.json')
   writeFileSync(pinned, JSON.stringify({ port: 9200 }))
   mkdirSync(dirname(paths.systemdUnit), { recursive: true })
   writeFileSync(
     paths.systemdUnit,
-    `[Service]\nEnvironment="TELEGRAM_ASK_CONFIG=${pinned}"\nExecStart=/n /c start\n`,
+    `[Service]\nEnvironment="JAYPOST_CONFIG=${pinned}"\nExecStart=/n /c start\n`,
   )
   expect(
     findExistingInstall(paths, fakes({ systemd: true, compose: true, quadlet: true }), env),
@@ -159,9 +159,9 @@ test('leftover secrets: none', () => {
   expect(findLeftoverSecrets(resolveInstallPaths({ HOME: tmp }), { HOME: tmp })).toBeUndefined()
 })
 
-test('leftover secrets from config.json (honoring TELEGRAM_ASK_CONFIG)', () => {
-  const env = { HOME: tmp, TELEGRAM_ASK_CONFIG: join(tmp, 'c.json') }
-  writeFileSync(env.TELEGRAM_ASK_CONFIG, JSON.stringify({ botToken: 'ct', ownerId: 3 }))
+test('leftover secrets from config.json (honoring JAYPOST_CONFIG)', () => {
+  const env = { HOME: tmp, JAYPOST_CONFIG: join(tmp, 'c.json') }
+  writeFileSync(env.JAYPOST_CONFIG, JSON.stringify({ botToken: 'ct', ownerId: 3 }))
   expect(findLeftoverSecrets(resolveInstallPaths(env), env)).toEqual({
     provider: 'telegram',
     settings: { botToken: 'ct', ownerId: 3 },
@@ -219,4 +219,4 @@ test('leftover needs every required secret', () => {
 })
 
 test('resolveInstallPaths locates the token file next to the config', () =>
-  expect(resolveInstallPaths({ HOME: '/h' }).tokenFile).toBe('/h/.config/telegram-ask/token'))
+  expect(resolveInstallPaths({ HOME: '/h' }).tokenFile).toBe('/h/.config/jaypost/token'))

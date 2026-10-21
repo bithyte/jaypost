@@ -9,7 +9,7 @@ function describeTokenSource(token: ClientToken, tokenFile: string): string {
     case 'none':
       return 'none'
     case 'token':
-      return token.source === 'env' ? 'from TELEGRAM_ASK_TOKEN' : `from ${tokenFile}`
+      return token.source === 'env' ? 'from JAYPOST_TOKEN' : `from ${tokenFile}`
     case 'unusable':
       return `unusable (${token.message})`
   }
@@ -23,7 +23,7 @@ export async function runStatus(deps: StatusDeps): Promise<number> {
   const { print } = deps
   const existing = findExistingInstall(deps.paths, deps.targets)
   if (!existing) {
-    print('Not installed. Run "telegram-ask init".')
+    print('Not installed. Run "jaypost init".')
     return 1
   }
   const { record } = existing

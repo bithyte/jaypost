@@ -173,7 +173,7 @@ export function createMcpServer(
 ): McpServer {
   const progressIntervalMs = options.progressIntervalMs ?? PROGRESS_INTERVAL_MS
   const openQuestions = options.openQuestions ?? new OpenQuestions()
-  const server = new McpServer({ name: 'telegram-ask', version: VERSION })
+  const server = new McpServer({ name: 'jaypost', version: VERSION })
   server.registerTool(
     'ask_for_permission',
     {
@@ -511,7 +511,7 @@ function formatAnswer(answer: string, timedOut: boolean): string {
 }
 
 function describeUnreadable(body: unknown): string {
-  return `telegram-ask service sent an unreadable answer: ${JSON.stringify(body)}`
+  return `jaypost service sent an unreadable answer: ${JSON.stringify(body)}`
 }
 
 function toErrorResult(message: string): CallToolResult {

@@ -9,7 +9,7 @@ export type ClientOptions = {
   /** Shown as `[project]` on the first line of every message, unless a call sets its own. */
   readonly project?: string
   /**
-   * Sent as a bearer token. Default: `TELEGRAM_ASK_TOKEN`, else `~/.config/telegram-ask/token`,
+   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`,
    * looked up on every call. Throws a `RangeError` at construction if it isn't a valid token.
    */
   readonly token?: string

@@ -23,7 +23,7 @@ import type { Exec } from '../../src/system/index.ts'
 import { telegramProvider } from '../../src/telegram/index.ts'
 import { createFakeProvider } from '../provider/fake.ts'
 
-const LABEL = 'io.github.cozminu.telegram-ask'
+const LABEL = 'io.github.bithyte.jaypost'
 const SERVICE = `gui/501/${LABEL}`
 
 let tmp: string
@@ -110,7 +110,7 @@ function make(
 }
 
 function makeBinary(env: NodeJS.ProcessEnv = {}) {
-  const binaryPath = join(tmp, 'dl', 'telegram-ask')
+  const binaryPath = join(tmp, 'dl', 'jaypost')
   if (!existsSync(binaryPath)) {
     mkdirSync(dirname(binaryPath), { recursive: true })
     writeFileSync(binaryPath, 'binary v2')
@@ -159,9 +159,7 @@ test('install from the binary writes the plist, copies, clears quarantine and bo
   const { t, paths } = makeBinary()
   const rec = await t.install(base)
   expect(paths.launchdPlist).toBe(join(tmp, 'Library', 'LaunchAgents', `${LABEL}.plist`))
-  expect(paths.launchdLogFile).toBe(
-    join(tmp, 'Library', 'Logs', 'telegram-ask', 'telegram-ask.log'),
-  )
+  expect(paths.launchdLogFile).toBe(join(tmp, 'Library', 'Logs', 'jaypost', 'jaypost.log'))
   expect(readFileSync(paths.launchdPlist, 'utf8')).toBe(
     formatLaunchdPlist({
       label: LABEL,
@@ -358,7 +356,7 @@ test('readSecrets, clearOwner and readAuditLog use the recorded configFile', asy
   const recorded = join(tmp, 'recorded.json')
   writeFileSync(recorded, JSON.stringify({ botToken: 'rt', ownerId: 5 }))
   writeFileSync(join(tmp, 'audit.jsonl'), 'new\n')
-  const { t } = make({ TELEGRAM_ASK_CONFIG: join(tmp, 'other.json') })
+  const { t } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
   const rec = {
     target: 'launchd' as const,
     port: 1,
@@ -408,15 +406,14 @@ test('available without a desktop session', async () => {
 test('available reports a symlink at the binary copy', async () => {
   const { t, paths } = makeBinary()
   mkdirSync(dirname(paths.binaryCopy), { recursive: true })
-  symlinkSync('../lib/node_modules/telegram-ask/dist/cli.js', paths.binaryCopy)
+  symlinkSync('../lib/node_modules/jaypost/dist/cli.js', paths.binaryCopy)
   expect(await t.available()).toEqual({
     ok: false,
-    reason:
-      '~/.local/bin/telegram-ask is a symlink (npm\'s launcher?); run "npm rm -g telegram-ask" first',
+    reason: '~/.local/bin/jaypost is a symlink (npm\'s launcher?); run "npm rm -g jaypost" first',
   })
 })
 
 test('logsHint names the log file', () => {
   const { t } = make()
-  expect(t.logsHint({} as never)).toBe('tail -f ~/Library/Logs/telegram-ask/telegram-ask.log')
+  expect(t.logsHint({} as never)).toBe('tail -f ~/Library/Logs/jaypost/jaypost.log')
 })

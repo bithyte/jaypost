@@ -64,7 +64,7 @@ function seed(target: TargetName = 'systemd') {
 }
 
 const TOKEN = 'T'.repeat(43)
-const TOKEN_FILE = '/h/.config/telegram-ask/token'
+const TOKEN_FILE = '/h/.config/jaypost/token'
 
 function answered(status: StatusInfo) {
   return { kind: 'answered' as const, status }
@@ -85,7 +85,7 @@ function base(over = {}) {
 
 test('status not installed -> 1', async () => {
   expect(await runStatus({ ...base(), fetchStatus: vi.fn() })).toBe(1)
-  expect(out.join('\n')).toContain('Not installed. Run "telegram-ask init".')
+  expect(out.join('\n')).toContain('Not installed. Run "jaypost init".')
 })
 
 test('status running and paired -> 0', async () => {
@@ -223,7 +223,7 @@ test('reset-owner with an unknown provider returns 1 before prompting', async ()
   })
   const d = { ...base(), wait: vi.fn() }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out).toEqual(['unknown provider "nope"; run `telegram-ask init`'])
+  expect(out).toEqual(['unknown provider "nope"; run `jaypost init`'])
   expect(d.confirm).not.toHaveBeenCalled()
 })
 
@@ -408,7 +408,7 @@ test('status prints where the token comes from, never its value', async () => {
   seed()
   const cases: [ClientToken, string, string | undefined][] = [
     [NO_CLIENT_TOKEN, 'Token:   none', undefined],
-    [{ kind: 'token', token: TOKEN, source: 'env' }, 'Token:   from TELEGRAM_ASK_TOKEN', TOKEN],
+    [{ kind: 'token', token: TOKEN, source: 'env' }, 'Token:   from JAYPOST_TOKEN', TOKEN],
     [{ kind: 'token', token: TOKEN, source: 'file' }, `Token:   from ${TOKEN_FILE}`, TOKEN],
   ]
   for (const [token, line, sent] of cases) {

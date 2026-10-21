@@ -63,7 +63,7 @@ function options(timeoutMs = 5000): { signal: AbortSignal; timeoutMs: number } {
 const TOKEN = 'A'.repeat(43)
 
 function unreachable(port: number): string {
-  return `telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`
+  return `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`
 }
 
 test('200 returns the parsed body', async () => {
@@ -102,7 +102,7 @@ test.each([
     404,
     '/notify',
     '{"error":"not found"}',
-    'telegram-ask service is too old for notifications (run telegram-ask init to upgrade)',
+    'jaypost service is too old for notifications (run jaypost init to upgrade)',
   ],
   [501, '/notify', '{"error":"x"}', 'notifications not supported by this provider'],
   [501, '/request', '{"error":"attachments not supported"}', ATTACHMENT_NOT_SUPPORTED_MESSAGE],
@@ -113,13 +113,13 @@ test.each([
     '{"error":"notifications not supported"}',
     'notifications not supported by this provider',
   ],
-  [503, '/request', '{"error":"x"}', "telegram-ask isn't paired yet (run telegram-ask status)"],
+  [503, '/request', '{"error":"x"}', "jaypost isn't paired yet (run jaypost status)"],
   [502, '/request', '{"error":"x"}', "couldn't send the message to the user"],
   [
     500,
     '/request',
     '{"error":"internal server error"}',
-    'telegram-ask service error 500: internal server error',
+    'jaypost service error 500: internal server error',
   ],
 ] as const)('status %i on %s maps to a message', async (status, path, body, message) => {
   const port = await startStub(reply(status, body))
@@ -133,7 +133,7 @@ test('non-json error body is used as is', async () => {
   const port = await startStub(reply(404, '<html>nope</html>\n'))
   expect(await postApi(port, '/request', {}, options())).toEqual({
     kind: 'failed',
-    message: 'telegram-ask service error 404: <html>nope</html>',
+    message: 'jaypost service error 404: <html>nope</html>',
   })
 })
 
@@ -175,7 +175,7 @@ test('timeout', async () => {
   const port = await startStub(() => {})
   expect(await postApi(port, '/request', {}, options(50))).toEqual({
     kind: 'failed',
-    message: "telegram-ask service didn't answer within 0.05 s",
+    message: "jaypost service didn't answer within 0.05 s",
   })
 })
 
@@ -279,7 +279,7 @@ test('404 on a request id means the service lost it', async () => {
   expect(await callApi(port, 'GET', '/request/abc?wait=0', undefined, options())).toEqual({
     kind: 'failed',
     message:
-      "telegram-ask doesn't know request abc (the service restarted, or the answer expired after 24 h)",
+      "jaypost doesn't know request abc (the service restarted, or the answer expired after 24 h)",
   })
 })
 
@@ -349,7 +349,7 @@ test.each([300, undefined])('requests of 300 s or less are never flagged (%s)', 
 test('an unreadable /request answer fails with the body', async () => {
   expect(await ask(undefined, '{"answer":1}', [0, 1000])).toEqual({
     kind: 'failed',
-    message: 'telegram-ask service sent an unreadable answer: {"answer":1}',
+    message: 'jaypost service sent an unreadable answer: {"answer":1}',
   })
 })
 
@@ -366,16 +366,16 @@ test('isStateBody accepts the three states and rejects the rest', () => {
 
 test('the too-old messages use the spec wording', () => {
   expect(TIMEOUT_TOO_OLD_MESSAGE).toBe(
-    'telegram-ask service is too old for timeouts over 300 s (run telegram-ask init to upgrade)',
+    'jaypost service is too old for timeouts over 300 s (run jaypost init to upgrade)',
   )
   expect(BACKGROUND_TOO_OLD_MESSAGE).toBe(
-    'telegram-ask service is too old for background questions (run telegram-ask init to upgrade)',
+    'jaypost service is too old for background questions (run jaypost init to upgrade)',
   )
 })
 
 test('the attachment messages use the spec wording', () => {
   expect(ATTACHMENT_TOO_OLD_MESSAGE).toBe(
-    'telegram-ask service is too old for attachments (run telegram-ask init to upgrade)',
+    'jaypost service is too old for attachments (run jaypost init to upgrade)',
   )
   expect(ATTACHMENT_NOT_SUPPORTED_MESSAGE).toBe('attachments not supported by this provider')
 })

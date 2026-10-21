@@ -69,7 +69,7 @@ test('send request --allow-text without -o reaches the service', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.spyOn(console, 'error').mockImplementation(() => {})
   // An invalid token makes send exit 1 before any network call; a usage error would be 2.
-  vi.stubEnv('TELEGRAM_ASK_TOKEN', 'short-secret')
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   const ask = ['send', 'request', 'Which?', '--allow-text', '-d', 'main']
   expect(await main([...ask, '--port', '1'])).toBe(1)
 })
@@ -124,17 +124,15 @@ test('hook rejects a bad port, a bad timeout and positional arguments with 2', a
   expect(await main(['hook', 'extra'])).toBe(2)
 })
 
-test('send exits 1 with the message on an invalid TELEGRAM_ASK_TOKEN', async () => {
-  vi.stubEnv('TELEGRAM_ASK_TOKEN', 'short-secret')
+test('send exits 1 with the message on an invalid JAYPOST_TOKEN', async () => {
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   expect(await main(['send', 'notify', 'hi', '--port', '1'])).toBe(1)
-  expect(error).toHaveBeenCalledWith(
-    "telegram-ask: TELEGRAM_ASK_TOKEN isn't a valid telegram-ask token",
-  )
+  expect(error).toHaveBeenCalledWith("jaypost: JAYPOST_TOKEN isn't a valid jaypost token")
 })
 
 test('openapi writes the spec with the given port to a file', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'telegram-ask-openapi-'))
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-openapi-'))
   try {
     const file = join(directory, 'openapi.yaml')
     expect(await main(['openapi', '--port', '9999', file])).toBe(0)
@@ -164,7 +162,7 @@ test('send rejects an unknown format with 2', async () => {
 
 function runAuditDump(args: readonly string[], directory: string) {
   return spawnSync(process.execPath, ['src/cli.ts', 'audit', ...args], {
-    env: { ...process.env, TELEGRAM_ASK_CONFIG: join(directory, 'config.json') },
+    env: { ...process.env, JAYPOST_CONFIG: join(directory, 'config.json') },
     maxBuffer: 8 * 1024 * 1024,
     encoding: 'utf8',
   })
@@ -229,7 +227,7 @@ function runLogCli(args: readonly string[], directory: string) {
       ...process.env,
       HOME: directory,
       XDG_CONFIG_HOME: join(directory, 'xdg'),
-      TELEGRAM_ASK_CONFIG: join(directory, 'config.json'),
+      JAYPOST_CONFIG: join(directory, 'config.json'),
     },
     maxBuffer: 16 * 1024 * 1024,
     encoding: 'utf8',

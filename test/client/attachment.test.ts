@@ -18,7 +18,7 @@ let directory = ''
 const servers: Server[] = []
 
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'telegram-ask-attachment-'))
+  directory = mkdtempSync(join(tmpdir(), 'jaypost-attachment-'))
 })
 
 afterEach(async () => {
@@ -229,6 +229,6 @@ test('an unreachable service fails with the not reachable message', async () => 
   const result = await prepareAttachment(port, { name: 'a', text: 'x' }, OPTIONS)
   expect(result).toEqual({
     kind: 'failed',
-    message: `telegram-ask service not reachable on 127.0.0.1:${port} (run telegram-ask status)`,
+    message: `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   })
 })

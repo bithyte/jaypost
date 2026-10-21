@@ -1,6 +1,6 @@
 openapi: 3.1.0
 info:
-  title: telegram-ask
+  title: jaypost
   version: 0.5.0
   description: Local HTTP API that asks you a question in a chat app with buttons and returns your answer.
   license:
@@ -195,7 +195,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: The token `init` saved to `~/.config/telegram-ask/token`. A service installed without a token ignores the header.
+      description: The token `init` saved to `~/.config/jaypost/token`. A service installed without a token ignores the header.
   schemas:
     ApprovalRequest:
       type: object

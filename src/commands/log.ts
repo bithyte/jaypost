@@ -49,7 +49,7 @@ async function readRaw(deps: LogDeps): Promise<string | { readonly message: stri
     const { record } = existing
     if (isTooOld(record.version, deps.version)) {
       return {
-        message: `the installed service (${record.version}) doesn't keep a log; run telegram-ask init to upgrade`,
+        message: `the installed service (${record.version}) doesn't keep a log; run jaypost init to upgrade`,
       }
     }
     return await deps.targets[record.target].readAuditLog(record)

@@ -10,11 +10,11 @@ export const DARWIN_TARGET_ORDER: readonly TargetName[] = [
   'systemd',
 ]
 /** Name of the systemd unit and container. */
-export const SERVICE_NAME = 'telegram-ask'
+export const SERVICE_NAME = 'jaypost'
 /** npm package name, also the container's command. */
-export const PACKAGE_NAME = 'telegram-ask'
+export const PACKAGE_NAME = 'jaypost'
 /** Podman volume holding /data (the config file). */
-export const VOLUME_NAME = 'telegram-ask-data'
+export const VOLUME_NAME = 'jaypost-data'
 /** Keeps the .env file with the credentials out of the image build context. */
 export const DOCKERIGNORE = '.env\n'
 /** Quadlet needs podman 4.4 or newer (major part). */
@@ -34,16 +34,15 @@ export const EXEC_START_LINE_PATTERN = /^\s*ExecStart=(.*)$/
 /** Matches a backslash escape inside a quoted unit value. */
 export const ESCAPED_CHAR_PATTERN = /\\(.)/g
 /** Variable the unit sets to pin the config file path. */
-export const CONFIG_ENV_PREFIX = 'TELEGRAM_ASK_CONFIG='
+export const CONFIG_ENV_PREFIX = 'JAYPOST_CONFIG='
 /** Owner read/write only, for files that hold credentials. */
 export const SECRET_FILE_MODE = 0o600
 /** Mode for the binary copy systemd runs. */
 export const EXECUTABLE_MODE = 0o755
 /** Printed when a binary install's ~/.local/bin isn't on PATH. */
-export const PATH_HINT =
-  "~/.local/bin isn't on your PATH; add it to run telegram-ask from anywhere."
+export const PATH_HINT = "~/.local/bin isn't on your PATH; add it to run jaypost from anywhere."
 /** The launchd agent's label, reverse-DNS as launchd labels conventionally are. */
-export const LAUNCHD_LABEL = 'io.github.cozminu.telegram-ask'
+export const LAUNCHD_LABEL = 'io.github.bithyte.jaypost'
 /** `launchctl bootout` stderr meaning the agent wasn't loaded, which is fine. */
 export const LAUNCHD_NOT_LOADED_PATTERN = /no such process|could not find/i
 /** The service's own top-level `pid = N` line in `launchctl print` output. */

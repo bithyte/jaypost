@@ -24,7 +24,7 @@ export function parseToken(raw: string): string | undefined {
   return TOKEN_PATTERN.test(trimmed) ? trimmed : undefined
 }
 
-/** Path of the client token file in the install config directory; ignores TELEGRAM_ASK_CONFIG. */
+/** Path of the client token file in the install config directory; ignores JAYPOST_CONFIG. */
 export function resolveTokenFile(env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveConfigDirectory(env), TOKEN_FILE_NAME)
 }
@@ -61,7 +61,7 @@ export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): C
   if (fromEnv !== undefined) {
     const token = parseToken(fromEnv)
     return token === undefined
-      ? { kind: 'unusable', message: `${TOKEN_ENV_VAR} isn't a valid telegram-ask token` }
+      ? { kind: 'unusable', message: `${TOKEN_ENV_VAR} isn't a valid jaypost token` }
       : { kind: 'token', token, source: 'env' }
   }
   let raw: string | undefined
@@ -81,7 +81,7 @@ export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): C
   return token === undefined
     ? {
         kind: 'unusable',
-        message: `token file ${JSON.stringify(tokenFile)} isn't a valid telegram-ask token`,
+        message: `token file ${JSON.stringify(tokenFile)} isn't a valid jaypost token`,
       }
     : { kind: 'token', token, source: 'file' }
 }

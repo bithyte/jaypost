@@ -1,6 +1,6 @@
 name: publish
 
-# The npm trusted publisher for telegram-ask is tied to this file name; renaming it breaks publishing.
+# The npm trusted publisher for jaypost is tied to this file name; renaming it breaks publishing.
 on:
   push:
     branches:
@@ -154,7 +154,7 @@ jobs:
         run: |
           mkdir release
           for binary in dist-exe/cli-"$PLATFORM"-*; do
-            name="telegram-ask-${binary#dist-exe/cli-}"
+            name="jaypost-${binary#dist-exe/cli-}"
             cp "$binary" "release/$name"
             if [ "$PLATFORM" = darwin ]; then
               codesign --sign - --force "release/$name"
@@ -192,6 +192,6 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           cd release
-          sha256sum telegram-ask-*.gz > SHA256SUMS
+          sha256sum jaypost-*.gz > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "v$version" telegram-ask-*.gz SHA256SUMS --clobber
+          gh release upload "v$version" jaypost-*.gz SHA256SUMS --clobber

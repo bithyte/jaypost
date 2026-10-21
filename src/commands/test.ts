@@ -34,7 +34,7 @@ export async function runTest(
     return response.status === 200 ? 0 : 1
   } catch (error) {
     console.error(
-      `could not reach the service on port ${port} (is it running? try telegram-ask status): ${error instanceof Error ? error.message : String(error)}`,
+      `could not reach the service on port ${port} (is it running? try jaypost status): ${error instanceof Error ? error.message : String(error)}`,
     )
     return 1
   }

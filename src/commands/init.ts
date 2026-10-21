@@ -162,7 +162,7 @@ export async function runInit(args: InitArgs, deps: InitDeps): Promise<number> {
     }
     const message = error instanceof Error ? error.message : String(error)
     deps.print(`Install failed: ${redact(message, seen)}`)
-    deps.print('Run telegram-ask init again. Check the logs for details.')
+    deps.print('Run jaypost init again. Check the logs for details.')
     return 1
   }
 }
@@ -319,7 +319,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   if (auth.kind === 'none') {
     removeTokenFile(deps.paths.tokenFile)
   }
-  // The token just chosen, never TELEGRAM_ASK_TOKEN: a stale one in the shell would fail pairing.
+  // The token just chosen, never JAYPOST_TOKEN: a stale one in the shell would fail pairing.
   const result = await deps.wait({
     port,
     isRunning: () => target.isRunning(installed),
@@ -329,11 +329,11 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     print,
   })
   if (result === 'paired') {
-    print('Done. Try it: telegram-ask test')
-    print('Check state: telegram-ask status')
+    print('Done. Try it: jaypost test')
+    print('Check state: jaypost status')
     print(
       auth.kind === 'token'
-        ? `API token saved to ${deps.paths.tokenFile}. Agents in containers need TELEGRAM_ASK_TOKEN set to it.`
+        ? `API token saved to ${deps.paths.tokenFile}. Agents in containers need JAYPOST_TOKEN set to it.`
         : 'No API token: any local process can use the API.',
     )
     print(`Logs: ${target.logsHint(installed)}`)

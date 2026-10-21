@@ -372,7 +372,7 @@ test('deny carries the message and no interrupt', () => {
     output: {
       hookSpecificOutput: {
         hookEventName: 'PermissionRequest',
-        decision: { behavior: 'deny', message: 'the user denied this from telegram-ask' },
+        decision: { behavior: 'deny', message: 'the user denied this from jaypost' },
       },
     },
   })

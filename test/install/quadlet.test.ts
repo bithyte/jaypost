@@ -73,7 +73,7 @@ const base = {
 }
 const withOwner = { ...base, settings: { botToken: 't', ownerId: 9 } }
 const rec = { target: 'quadlet' as const, port: 8787, version: '0.1.0' }
-const TAG = 'localhost/telegram-ask:0.1.0'
+const TAG = 'localhost/jaypost:0.1.0'
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'qd-'))
@@ -125,7 +125,7 @@ test('quadlet install builds tagged image then starts', async () => {
   expect(calls.filter(([c]) => c !== 'loginctl')).toEqual([
     ['podman', ['build', '-t', TAG, paths.quadletDirectory]],
     ['systemctl', ['--user', 'daemon-reload']],
-    ['systemctl', ['--user', 'start', 'telegram-ask']],
+    ['systemctl', ['--user', 'start', 'jaypost']],
   ])
   const envPath = join(paths.quadletDirectory, '.env')
   expect(statSync(envPath).mode & 0o777).toBe(0o600)
@@ -158,7 +158,7 @@ test('readSecrets prefers .env, falls back to owner get in container', async () 
   })
   expect(calls[0]).toEqual([
     'podman',
-    ['run', '--rm', '-v', 'telegram-ask-data:/data', TAG, 'telegram-ask', 'owner', 'get'],
+    ['run', '--rm', '-v', 'jaypost-data:/data', TAG, 'jaypost', 'owner', 'get'],
   ])
 })
 
@@ -192,10 +192,7 @@ test('clearOwner uses podman exec', async () => {
   await t.install(withOwner)
   calls = []
   await t.clearOwner(rec)
-  expect(calls).toContainEqual([
-    'podman',
-    ['exec', 'telegram-ask', 'telegram-ask', 'owner', 'clear'],
-  ])
+  expect(calls).toContainEqual(['podman', ['exec', 'jaypost', 'jaypost', 'owner', 'clear']])
 })
 
 test('remove without purge keeps volume, image and .env', async () => {
@@ -203,7 +200,7 @@ test('remove without purge keeps volume, image and .env', async () => {
   await t.install(base)
   calls = []
   await t.remove(rec, false)
-  expect(calls).toContainEqual(['systemctl', ['--user', 'stop', 'telegram-ask']])
+  expect(calls).toContainEqual(['systemctl', ['--user', 'stop', 'jaypost']])
   expect(calls.some(([c]) => c === 'podman')).toBe(false)
   expect(existsSync(paths.quadletUnit)).toBe(false)
   expect(existsSync(join(paths.quadletDirectory, '.env'))).toBe(true)
@@ -214,7 +211,7 @@ test('remove with purge drops volume, image, dir', async () => {
   await t.install(base)
   calls = []
   await t.remove(rec, true)
-  expect(calls).toContainEqual(['podman', ['volume', 'rm', 'telegram-ask-data']])
+  expect(calls).toContainEqual(['podman', ['volume', 'rm', 'jaypost-data']])
   expect(calls).toContainEqual(['podman', ['rmi', TAG]])
   expect(existsSync(paths.quadletDirectory)).toBe(false)
 })
@@ -222,9 +219,9 @@ test('remove with purge drops volume, image, dir', async () => {
 test('restart, isRunning, logsHint', async () => {
   const { t } = make()
   await t.restart(rec)
-  expect(calls[0]).toEqual(['systemctl', ['--user', 'restart', 'telegram-ask']])
+  expect(calls[0]).toEqual(['systemctl', ['--user', 'restart', 'jaypost']])
   expect(await t.isRunning(rec)).toBe(true)
-  expect(t.logsHint(rec)).toBe('journalctl --user -u telegram-ask -f')
+  expect(t.logsHint(rec)).toBe('journalctl --user -u jaypost -f')
 })
 
 test('clearOwner falls back to a one-off container when exec fails', async () => {
@@ -235,7 +232,7 @@ test('clearOwner falls back to a one-off container when exec fails', async () =>
   await t.clearOwner(rec)
   expect(calls).toContainEqual([
     'podman',
-    ['run', '--rm', '-v', 'telegram-ask-data:/data', TAG, 'telegram-ask', 'owner', 'clear'],
+    ['run', '--rm', '-v', 'jaypost-data:/data', TAG, 'jaypost', 'owner', 'clear'],
   ])
 })
 
@@ -251,7 +248,7 @@ test('readAuditLog execs audit dump in the running container', async () => {
   execOut = 'LINES'
   calls = []
   expect(await t.readAuditLog(rec)).toBe('LINES')
-  expect(calls).toEqual([['podman', ['exec', 'telegram-ask', 'telegram-ask', 'audit', 'dump']]])
+  expect(calls).toEqual([['podman', ['exec', 'jaypost', 'jaypost', 'audit', 'dump']]])
 })
 
 test('readAuditLog falls back to a one-off container when exec fails', async () => {
@@ -262,7 +259,7 @@ test('readAuditLog falls back to a one-off container when exec fails', async () 
   expect(await t.readAuditLog(rec)).toBe('FROM RUN')
   expect(calls).toContainEqual([
     'podman',
-    ['run', '--rm', '-v', 'telegram-ask-data:/data', TAG, 'telegram-ask', 'audit', 'dump'],
+    ['run', '--rm', '-v', 'jaypost-data:/data', TAG, 'jaypost', 'audit', 'dump'],
   ])
 })
 
@@ -324,7 +321,7 @@ test('install writes the api token into .env and keeps it out of the Dockerfile'
   const { t, paths } = make()
   await t.install({ ...base, auth: { kind: 'token', token: TOKEN } })
   const directory = paths.quadletDirectory
-  expect(readFileSync(join(directory, '.env'), 'utf8')).toContain(`TELEGRAM_ASK_TOKEN=${TOKEN}\n`)
+  expect(readFileSync(join(directory, '.env'), 'utf8')).toContain(`JAYPOST_TOKEN=${TOKEN}\n`)
   expect(readFileSync(join(directory, 'Dockerfile'), 'utf8')).not.toContain(TOKEN)
 })
 
@@ -335,13 +332,13 @@ test('upgrade builds the new tag, restarts, then removes the old image', async (
   const record = await t.upgrade({ ...base, version: '0.5.0' }, previous)
   expect(record).toEqual({ target: 'quadlet', provider: 'telegram', port: 8787, version: '0.5.0' })
   expect(calls.filter(([c]) => c !== 'loginctl')).toEqual([
-    ['podman', ['build', '-t', 'localhost/telegram-ask:0.5.0', paths.quadletDirectory]],
+    ['podman', ['build', '-t', 'localhost/jaypost:0.5.0', paths.quadletDirectory]],
     ['systemctl', ['--user', 'daemon-reload']],
-    ['systemctl', ['--user', 'start', 'telegram-ask']],
-    ['systemctl', ['--user', 'restart', 'telegram-ask']],
-    ['podman', ['rmi', 'localhost/telegram-ask:0.4.0']],
+    ['systemctl', ['--user', 'start', 'jaypost']],
+    ['systemctl', ['--user', 'restart', 'jaypost']],
+    ['podman', ['rmi', 'localhost/jaypost:0.4.0']],
   ])
-  expect(readFileSync(paths.quadletUnit, 'utf8')).toContain('Image=localhost/telegram-ask:0.5.0')
+  expect(readFileSync(paths.quadletUnit, 'utf8')).toContain('Image=localhost/jaypost:0.5.0')
 })
 
 test('upgrade leaves the old unit when the build fails', async () => {
@@ -374,9 +371,7 @@ test('upgrade prints a failed rmi instead of throwing', async () => {
     previous,
   )
   expect(record.version).toBe('0.5.0')
-  expect(printed).toContain(
-    "Couldn't remove the old image localhost/telegram-ask:0.4.0: image in use",
-  )
+  expect(printed).toContain("Couldn't remove the old image localhost/jaypost:0.4.0: image in use")
 })
 
 test('upgrade throws when the restart fails', async () => {

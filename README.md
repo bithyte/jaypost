@@ -1,4 +1,4 @@
-# telegram-ask
+# jaypost
 
 **Let your AI agents and scripts ask you before they act.** They send a question, it pops up on your phone in Telegram, you tap a button, and they get the answer back.
 
@@ -11,7 +11,7 @@ Good for an agent that wants to force-push, a deploy script that needs a go-ahea
 You need Node 24+ and a bot token from [@BotFather](https://t.me/BotFather).
 
 ```
-npx telegram-ask init
+npx jaypost init
 ```
 
 It asks for the token, installs the service and prints a pairing code like `ABCD-EFGH`. Send `/start ABCD-EFGH` to your bot (or open the link it prints) and you're paired.
@@ -19,37 +19,37 @@ It asks for the token, installs the service and prints a pairing code like `ABCD
 Then give your agent the tools. For Claude Code:
 
 ```
-claude mcp add telegram-ask -- telegram-ask mcp
+claude mcp add jaypost -- jaypost mcp
 ```
 
 Or try it from the shell:
 
 ```
-telegram-ask test
+jaypost test
 ```
 
-`init` also makes an API token (see [Security](#security)). The CLI, `mcp` and the Node client read it from `~/.config/telegram-ask/token` on their own. An agent in a container can't see that file, so pass it in: `export TELEGRAM_ASK_TOKEN=$(cat ~/.config/telegram-ask/token)`, then add `-e TELEGRAM_ASK_TOKEN` (name only) to `docker run` or `podman run`. Putting the value on the command line would show it in `ps`.
+`init` also makes an API token (see [Security](#security)). The CLI, `mcp` and the Node client read it from `~/.config/jaypost/token` on their own. An agent in a container can't see that file, so pass it in: `export JAYPOST_TOKEN=$(cat ~/.config/jaypost/token)`, then add `-e JAYPOST_TOKEN` (name only) to `docker run` or `podman run`. Putting the value on the command line would show it in `ps`.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    agent["AI agent"] -- "MCP (stdio)" --> mcp["telegram-ask mcp"]
+    agent["AI agent"] -- "MCP (stdio)" --> mcp["jaypost mcp"]
     mcp -- HTTP --> svc
-    script["Script / n8n"] -- "HTTP<br>POST /request, /notify" --> svc["telegram-ask service<br>127.0.0.1:8787"]
+    script["Script / n8n"] -- "HTTP<br>POST /request, /notify" --> svc["jaypost service<br>127.0.0.1:8787"]
     svc -- "message with buttons" --> tg["Telegram"]
     tg --> you(["You, on your phone"])
     you -- "tap a button or reply" --> tg
     tg -- answer --> svc
 ```
 
-A small service runs in the background on localhost. Callers POST a question with button options; the bot sends it to you and the HTTP request stays open until you tap a button or (with `allowText`) reply with text, or the timeout fires, then returns your answer. Agents reach the same API through `telegram-ask mcp`, a stdio MCP server. Notifications work the same way but don't wait for an answer.
+A small service runs in the background on localhost. Callers POST a question with button options; the bot sends it to you and the HTTP request stays open until you tap a button or (with `allowText`) reply with text, or the timeout fires, then returns your answer. Agents reach the same API through `jaypost mcp`, a stdio MCP server. Notifications work the same way but don't wait for an answer.
 
 It's single owner: one Telegram user, proven by a pairing code. The service can run as a Podman Quadlet, a Docker Compose project, a plain systemd user service or, on macOS, a launchd agent.
 
 ## Agents (MCP)
 
-`telegram-ask mcp [--port N]` is a stdio MCP server with four tools that forward to the [HTTP API](#scripts-and-tools-http-api). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking.
+`jaypost mcp [--port N]` is a stdio MCP server with four tools that forward to the [HTTP API](#scripts-and-tools-http-api). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking.
 
 `ask_for_permission` asks a question with buttons, a typed reply or both, and waits for the answer or the timeout:
 
@@ -107,36 +107,36 @@ Closing the agent session (the MCP server's stdin) cancels the background questi
 Register it with Claude Code:
 
 ```
-claude mcp add telegram-ask -- telegram-ask mcp
+claude mcp add jaypost -- jaypost mcp
 ```
 
-In a container or anywhere the package isn't installed, use `npx -y telegram-ask mcp` as the command. Other clients take the usual JSON:
+In a container or anywhere the package isn't installed, use `npx -y jaypost mcp` as the command. Other clients take the usual JSON:
 
 ```json
 {
   "mcpServers": {
-    "telegram-ask": { "command": "telegram-ask", "args": ["mcp"] }
+    "jaypost": { "command": "jaypost", "args": ["mcp"] }
   }
 }
 ```
 
-If the token file isn't readable where the MCP server runs (a container, another user), set `TELEGRAM_ASK_TOKEN` to its contents, which wins over the file. In a client's JSON, add an `env` block:
+If the token file isn't readable where the MCP server runs (a container, another user), set `JAYPOST_TOKEN` to its contents, which wins over the file. In a client's JSON, add an `env` block:
 
 ```json
 {
   "mcpServers": {
-    "telegram-ask": {
-      "command": "telegram-ask",
+    "jaypost": {
+      "command": "jaypost",
       "args": ["mcp"],
       "env": {
-        "TELEGRAM_ASK_TOKEN": "<contents of ~/.config/telegram-ask/token>"
+        "JAYPOST_TOKEN": "<contents of ~/.config/jaypost/token>"
       }
     }
   }
 }
 ```
 
-For a container, `export TELEGRAM_ASK_TOKEN=$(cat ~/.config/telegram-ask/token)` and then `-e TELEGRAM_ASK_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`.
+For a container, `export JAYPOST_TOKEN=$(cat ~/.config/jaypost/token)` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`.
 
 The port comes from `--port`, then `PORT`, then the install's `install.json`, then 8787. If you run `start` by hand on a custom port without an install, pass `--port` or set `PORT`.
 
@@ -146,7 +146,7 @@ The service has to be running. A call made while it's down returns an error to t
 
 ## Claude Code hook
 
-`telegram-ask hook` is a Claude Code hook command. It sends permission prompts to your phone and hands your tap back to Claude Code as the decision. It also forwards a few notifications (Claude is idle, needs input) as plain messages. Claude Code doesn't need to know about telegram-ask; it just runs the command.
+`jaypost hook` is a Claude Code hook command. It sends permission prompts to your phone and hands your tap back to Claude Code as the decision. It also forwards a few notifications (Claude is idle, needs input) as plain messages. Claude Code doesn't need to know about jaypost; it just runs the command.
 
 Add this to `~/.claude/settings.json`, or to a project's `.claude/settings.json`:
 
@@ -155,13 +155,13 @@ Add this to `~/.claude/settings.json`, or to a project's `.claude/settings.json`
   "hooks": {
     "PermissionRequest": [
       {
-        "hooks": [{ "type": "command", "command": "telegram-ask hook", "timeout": 360 }]
+        "hooks": [{ "type": "command", "command": "jaypost hook", "timeout": 360 }]
       }
     ],
     "Notification": [
       {
         "matcher": "idle_prompt|elicitation_dialog|agent_needs_input",
-        "hooks": [{ "type": "command", "command": "telegram-ask hook" }]
+        "hooks": [{ "type": "command", "command": "jaypost hook" }]
       }
     ]
   }
@@ -184,11 +184,11 @@ A timeout behaves like `Ask in terminal`. Long inputs that don't fit in the mess
 - `PermissionRequest` has no matcher in the snippet, so every prompt goes to the phone. To narrow it, add `"matcher": "Bash|Edit|Write"` to that entry.
 - The `Notification` matcher leaves out `permission_prompt` on purpose. That notification fires a few seconds after a prompt appears, and the `PermissionRequest` hook has already asked.
 - `timeout: 360` is the default 300 s wait, the 30 s HTTP grace and some slack, so Claude Code doesn't kill the hook before the service answers. If you pass a longer `--timeout`, the Claude Code hook `timeout` must be at least `--timeout` + 60.
-- Without the package on `PATH`, use `npx -y telegram-ask hook` as the command. npx adds startup time to every prompt.
+- Without the package on `PATH`, use `npx -y jaypost hook` as the command. npx adds startup time to every prompt.
 - `--project NAME` sets the `[name]` line. Default is the Claude Code project folder.
 - `--timeout S` is how long to wait for a tap on a permission prompt. Default 300, max 86400 (24 h); longer values are capped.
 - `--port N` picks the port as for [`mcp`](#agents-mcp), including `PORT`. Hooks inherit Claude Code's environment, so a `PORT` meant for your own app (say `PORT=3000`) points the hook at the wrong place. Pass `--port` then.
-- It finds the API token the same way `mcp` and `send` do: `TELEGRAM_ASK_TOKEN`, else `~/.config/telegram-ask/token`.
+- It finds the API token the same way `mcp` and `send` do: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`.
 
 It fails open. If the service is down or not paired, the hook does nothing and the terminal prompt works as usual. In `-p` (non-interactive) mode there's no terminal prompt, so no decision means Claude Code denies.
 
@@ -196,23 +196,23 @@ It fails open. If the service is down or not paired, the hook does nothing and t
 
 ### From the shell
 
-`telegram-ask send` wraps `/request` and `/notify` so scripts don't need curl:
+`jaypost send` wraps `/request` and `/notify` so scripts don't need curl:
 
 ```
-answer=$(telegram-ask send request 'Deploy?' -o Approve -d Decline --timeout 60)
-telegram-ask send notify 'backup finished' --project nas
-telegram-ask send request $'Force-push `main`?' -o Yes -d No --format markdown
-git diff | telegram-ask send request 'Ship it?' -o Yes -d Stop --attach - --attach-name changes.diff
+answer=$(jaypost send request 'Deploy?' -o Approve -d Decline --timeout 60)
+jaypost send notify 'backup finished' --project nas
+jaypost send request $'Force-push `main`?' -o Yes -d No --format markdown
+git diff | jaypost send request 'Ship it?' -o Yes -d Stop --attach - --attach-name changes.diff
 ```
 
 `send request` prints the answer on stdout (the `-d` default on timeout) and exits 0. `--json` prints `{"answer":"...","timedOut":false}` instead, if you need to tell a timeout from a tap. `-o` repeats once per button; `-d` adds the default as the last button unless an `-o` already names it. `--allow-text` also lets you answer by replying with text; then `-o` is optional and `-d` can be any short answer, not added as a button. `send notify` prints nothing and exits 0 once sent. `--format markdown` on either one reads the text as [markdown](#formatting). Errors go to stderr with exit 1, and bad arguments exit 2. Ctrl-C cancels a pending question, which edits the Telegram message to a "cancelled" line. `--attach FILE` sends a file along with the message (10 MiB at most; the service's limit applies); `--attach -` reads stdin, named `attachment.txt` unless `--attach-name NAME` says otherwise. `--attach-name` without `--attach` exits 2. The port is picked the same way as for [`mcp`](#agents-mcp).
 
 ### From Node
 
-`npm i telegram-ask` and use the `Client`, which wraps the same two endpoints:
+`npm i jaypost` and use the `Client`, which wraps the same two endpoints:
 
 ```ts
-import { Client } from 'telegram-ask'
+import { Client } from 'jaypost'
 
 const client = new Client({ project: 'deploy' })
 const { answer, timedOut } = await client.request({
@@ -224,7 +224,7 @@ const { answer, timedOut } = await client.request({
 await client.notify({ text: 'backup finished' })
 ```
 
-`new Client()` takes optional `host` (default `127.0.0.1`), `port` (default 8787), `token` and `project`, which every call sends unless it passes its own. Without `token`, each call looks one up: `TELEGRAM_ASK_TOKEN` if set, else the token file, else none is sent. An invalid `token` throws a `RangeError`. `request` takes the [`/request` fields](#ask-a-question) plus an optional `signal`, and `request` and `notify` take `format: 'markdown'` (see [Formatting](#formatting)). When you put untrusted text into a markdown message, `escapeMarkdown(text)` makes it show as typed and `formatCodeBlock(code, language?)` wraps code in a fence that can't be closed from inside. Both are exported from the package; aborting it cancels the question and rejects with the signal's reason. Failures (service down, a 400, a send error) throw a `TelegramAskError` with the same message the CLI prints. A timeout isn't a failure: it resolves with `timeoutOption` and `timedOut: true`.
+`new Client()` takes optional `host` (default `127.0.0.1`), `port` (default 8787), `token` and `project`, which every call sends unless it passes its own. Without `token`, each call looks one up: `JAYPOST_TOKEN` if set, else the token file, else none is sent. An invalid `token` throws a `RangeError`. `request` takes the [`/request` fields](#ask-a-question) plus an optional `signal`, and `request` and `notify` take `format: 'markdown'` (see [Formatting](#formatting)). When you put untrusted text into a markdown message, `escapeMarkdown(text)` makes it show as typed and `formatCodeBlock(code, language?)` wraps code in a fence that can't be closed from inside. Both are exported from the package; aborting it cancels the question and rejects with the signal's reason. Failures (service down, a 400, a send error) throw a `JaypostError` with the same message the CLI prints. A timeout isn't a failure: it resolves with `timeoutOption` and `timedOut: true`.
 
 `request` and `notify` also take an `attachment`, one file sent along with the message (see the HTTP `attachment` field for limits):
 
@@ -235,14 +235,14 @@ type AttachmentInput =
   | { name: string; data: Uint8Array }
 ```
 
-The file is read and checked against the service's limit before anything is sent, so a missing file, an oversize file or a provider without attachment support fails with a `TelegramAskError` up front. Attachments need a service at least as new as this client; an older one fails with a message telling you to run `telegram-ask init`.
+The file is read and checked against the service's limit before anything is sent, so a missing file, an oversize file or a provider without attachment support fails with a `JaypostError` up front. Attachments need a service at least as new as this client; an older one fails with a message telling you to run `jaypost init`.
 
 ### Ask a question
 
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'
 ```
 
@@ -259,7 +259,7 @@ For a question with no sensible buttons, set `allowText` and leave out `options`
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
   -d '{"text":"Which branch?","allowText":true,"timeoutOption":"main","timeout":120}'
 ```
 
@@ -306,7 +306,7 @@ If the caller disconnects early, the request is dropped and the Telegram message
 ```
 curl -s -X POST http://127.0.0.1:8787/request/async \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":3600}'
 ```
 
@@ -327,7 +327,7 @@ For messages that don't need an answer, e.g. from n8n when someone joins a game 
 ```
 curl -s -X POST http://127.0.0.1:8787/notify \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
   -d '{"text":"alice joined the Core Keeper server"}'
 ```
 
@@ -406,7 +406,7 @@ Send exactly one of `text` and `data`. The content must be at least 1 byte and a
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
   -d '{"text":"Push this diff?","options":["Push","Stop"],"timeoutOption":"Stop",
        "attachment":{"name":"changes.diff","text":"diff --git a/x b/x\n..."}}'
 
@@ -414,7 +414,7 @@ jq -n --arg data "$(base64 -w0 screen.png)" \
   '{text:"Login page is blank, see screenshot",attachment:{name:"screen.png",data:$data}}' |
   curl -s -X POST http://127.0.0.1:8787/notify \
     -H 'content-type: application/json' \
-    -H "authorization: Bearer $(cat ~/.config/telegram-ask/token)" -d @-
+    -H "authorization: Bearer $(cat ~/.config/jaypost/token)" -d @-
 ```
 
 The body limit is 14 MiB, which fits the base64 of a 10 MiB file. Send big files as `data`: a `text` attachment near 10 MiB with many quotes or control characters grows when JSON-escaped and can hit the `413`.
@@ -423,11 +423,11 @@ Attachments need a service at least as new as this release; an older one ignores
 
 ### Status
 
-`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `telegram-ask status` is the friendlier way to read it.
+`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
 
 ### OpenAPI spec
 
-The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `telegram-ask openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `npm run openapi`.
+The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `jaypost openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `npm run openapi`.
 
 ## Install options
 
@@ -435,7 +435,7 @@ Create a bot with @BotFather first and have the token ready. `init`:
 
 1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; only `telegram` exists for now, and it's the default.
 2. Asks for the bot token (input hidden) and checks it with Telegram. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
-3. Makes an API token and saves it to `~/.config/telegram-ask/token` (mode 0600). It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses a valid saved token.
+3. Makes an API token and saves it to `~/.config/jaypost/token` (mode 0600). It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses a valid saved token.
 4. Installs and starts the service, then waits for pairing.
 
 If it finds an existing install it offers to replace it, reusing the saved bot token and owner (no re-pairing). If there's no install but a bot token was kept by `uninstall`, it reuses that (and the owner) too. If `init` fails partway, run it again; the old install record and saved bot token are kept until the new install succeeds.
@@ -447,89 +447,89 @@ Node 24+ is needed for `npx` and the systemd and launchd targets unless you use 
 Each GitHub Release has a single-file binary for Linux and macOS, so you can skip Node:
 
 ```
-curl -L https://github.com/cozminu/telegram-ask/releases/latest/download/telegram-ask-linux-x64.gz | gunzip > telegram-ask && chmod +x telegram-ask && ./telegram-ask init systemd
+curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-linux-x64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init systemd
 ```
 
 On macOS (Apple silicon):
 
 ```
-curl -L https://github.com/cozminu/telegram-ask/releases/latest/download/telegram-ask-darwin-arm64.gz | gunzip > telegram-ask && chmod +x telegram-ask && ./telegram-ask init launchd
+curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-darwin-arm64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init launchd
 ```
 
-If you downloaded the binary with a browser instead of curl, macOS may block it; run `xattr -d com.apple.quarantine telegram-ask` first.
+If you downloaded the binary with a browser instead of curl, macOS may block it; run `xattr -d com.apple.quarantine jaypost` first.
 
-`init` copies the binary to `~/.local/bin/telegram-ask` and runs the service from there. `SHA256SUMS` on the release lists the checksums.
+`init` copies the binary to `~/.local/bin/jaypost` and runs the service from there. `SHA256SUMS` on the release lists the checksums.
 
-The API token file `~/.config/telegram-ask/token` is written for every target; the service's own copy goes in the target's `.env` or in `config.json` as listed below. All targets keep their files under `~/.config/telegram-ask/` (or `$XDG_CONFIG_HOME/telegram-ask/`). `install.json` there records which target is installed, its port and version. It's what `status`, `reset-owner` and `uninstall` read.
+The API token file `~/.config/jaypost/token` is written for every target; the service's own copy goes in the target's `.env` or in `config.json` as listed below. All targets keep their files under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `install.json` there records which target is installed, its port and version. It's what `status`, `reset-owner` and `uninstall` read.
 
 ### Podman Quadlet
 
 Needs Podman 4.4 or newer and a systemd user session. Written:
 
-- `~/.config/telegram-ask/quadlet/` with a `Dockerfile`, `.env` (bot token, port, owner, `TELEGRAM_ASK_TOKEN`) and a `.dockerignore` that keeps `.env` out of the image build
-- `~/.config/containers/systemd/telegram-ask.container`
-- image `localhost/telegram-ask:<version>`, volume `telegram-ask-data` (holds the pairing state and `state.json`)
+- `~/.config/jaypost/quadlet/` with a `Dockerfile`, `.env` (bot token, port, owner, `JAYPOST_TOKEN`) and a `.dockerignore` that keeps `.env` out of the image build
+- `~/.config/containers/systemd/jaypost.container`
+- image `localhost/jaypost:<version>`, volume `jaypost-data` (holds the pairing state and `state.json`)
 
-Runs as a user service named `telegram-ask`. `init` enables linger (`loginctl enable-linger`) if needed so it survives logout; it tells you if that needs a password. Logs:
+Runs as a user service named `jaypost`. `init` enables linger (`loginctl enable-linger`) if needed so it survives logout; it tells you if that needs a password. Logs:
 
 ```
-journalctl --user -u telegram-ask -f
+journalctl --user -u jaypost -f
 ```
 
 ### Docker Compose
 
 Needs Docker with the compose v2 plugin, and your user in the `docker` group (otherwise `init` reports it can't talk to docker and skips this target). Written:
 
-- `~/.config/telegram-ask/compose/` with `Dockerfile`, `compose.yaml`, `.env` (bot token, port, owner, `TELEGRAM_ASK_TOKEN`) and `.dockerignore`
-- a named volume `data` in the `telegram-ask` compose project (holds the pairing state and `state.json`)
+- `~/.config/jaypost/compose/` with `Dockerfile`, `compose.yaml`, `.env` (bot token, port, owner, `JAYPOST_TOKEN`) and `.dockerignore`
+- a named volume `data` in the `jaypost` compose project (holds the pairing state and `state.json`)
 
 Logs:
 
 ```
-docker compose -f ~/.config/telegram-ask/compose/compose.yaml logs -f
+docker compose -f ~/.config/jaypost/compose/compose.yaml logs -f
 ```
 
 This target is untested on real Docker so far.
 
 ### systemd (npm)
 
-No container. `init` installs the package globally with npm (`npm i -g`), or into `~/.local/share/telegram-ask/npm` if the global prefix isn't writable. If you ran `init` from an already-installed copy, it uses that. Written:
+No container. `init` installs the package globally with npm (`npm i -g`), or into `~/.local/share/jaypost/npm` if the global prefix isn't writable. If you ran `init` from an already-installed copy, it uses that. Written:
 
-- `~/.config/telegram-ask/config.json` (bot token, port, owner, `apiToken`)
-- `~/.config/telegram-ask/state.json` (pending requests and notification expiries, written by the service)
-- `~/.config/systemd/user/telegram-ask.service` with absolute paths to `node`, the CLI and the config file (`TELEGRAM_ASK_CONFIG` is always set in the unit, and `install.json` records the same path)
+- `~/.config/jaypost/config.json` (bot token, port, owner, `apiToken`)
+- `~/.config/jaypost/state.json` (pending requests and notification expiries, written by the service)
+- `~/.config/systemd/user/jaypost.service` with absolute paths to `node`, the CLI and the config file (`JAYPOST_CONFIG` is always set in the unit, and `install.json` records the same path)
 
-Logs: `journalctl --user -u telegram-ask -f`. Linger is handled as for Quadlet.
+Logs: `journalctl --user -u jaypost -f`. Linger is handled as for Quadlet.
 
-With the [standalone binary](#standalone-binary) there's no npm package; the unit runs `~/.local/bin/telegram-ask start`, and `uninstall` with a purge deletes that copy.
+With the [standalone binary](#standalone-binary) there's no npm package; the unit runs `~/.local/bin/jaypost start`, and `uninstall` with a purge deletes that copy.
 
 ### launchd (macOS)
 
-A per-user LaunchAgent, no container. With the [standalone binary](#standalone-binary), `init` copies it to `~/.local/bin/telegram-ask` and the agent runs that; otherwise it installs the package with npm as the systemd target does and runs `node` with the CLI. Written:
+A per-user LaunchAgent, no container. With the [standalone binary](#standalone-binary), `init` copies it to `~/.local/bin/jaypost` and the agent runs that; otherwise it installs the package with npm as the systemd target does and runs `node` with the CLI. Written:
 
-- `~/.config/telegram-ask/config.json` (bot token, port, owner, `apiToken`) and `state.json`, as for systemd
-- `~/Library/LaunchAgents/io.github.cozminu.telegram-ask.plist` with absolute paths to the command and the config file (`TELEGRAM_ASK_CONFIG` is always set in the plist, and `install.json` records the same path)
+- `~/.config/jaypost/config.json` (bot token, port, owner, `apiToken`) and `state.json`, as for systemd
+- `~/Library/LaunchAgents/io.github.bithyte.jaypost.plist` with absolute paths to the command and the config file (`JAYPOST_CONFIG` is always set in the plist, and `install.json` records the same path)
 
 The agent runs only while you're logged in to the Mac, and launchd restarts it if it exits with a failure. `init` needs a desktop session, so it won't offer launchd over SSH with nobody logged in.
 
-Logs: `tail -f ~/Library/Logs/telegram-ask/telegram-ask.log`. They aren't rotated.
+Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 `init` clears the quarantine attribute on the copied binary, so Gatekeeper shouldn't stop it.
 
 ### Config
 
-Config is read from `$TELEGRAM_ASK_CONFIG`, else `$XDG_CONFIG_HOME/telegram-ask/config.json`, else `~/.config/telegram-ask/config.json`. The env vars `PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST` and `TELEGRAM_ASK_TOKEN` override the file. `apiToken` in the file (or `TELEGRAM_ASK_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `PROVIDER` picks the chat app and defaults to `telegram`, which is the only one for now. `HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
+Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `PROVIDER` picks the chat app and defaults to `telegram`, which is the only one for now. `HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
 ## Pairing
 
 The first time (and after `reset-owner`), the bot only answers whoever proves they own it. `init` prints a code like `ABCD-EFGH` and a link. Either send `/start ABCD-EFGH` to your bot, or open `https://t.me/<bot>?start=ABCDEFGH`. Case and the dash don't matter. After 5 wrong codes from one Telegram user that user is blocked until the service restarts.
 
-If you lose the code: `telegram-ask status` prints it again while unpaired.
+If you lose the code: `jaypost status` prints it again while unpaired.
 
 To move to another Telegram account:
 
 ```
-telegram-ask reset-owner
+jaypost reset-owner
 ```
 
 It asks first, clears the owner, restarts the service and waits for a new pairing.
@@ -547,7 +547,7 @@ Only the paired owner's private chat gets replies. History is kept in memory and
 
 ## Question log
 
-The service keeps a log of every question and how it ended: answered, timed out, cancelled, or still open. Notifications aren't logged. `telegram-ask log` prints it, oldest first, newest at the bottom:
+The service keeps a log of every question and how it ended: answered, timed out, cancelled, or still open. Notifications aren't logged. `jaypost log` prints it, oldest first, newest at the bottom:
 
 ```
 2026-10-19 00:41  deploy  Approve              Force-push main to origin?
@@ -561,28 +561,28 @@ The columns are the time asked (local), the project, the result and the first li
 - `--since WHEN` shows questions asked at or after WHEN: a duration (`30m`, `12h`, `7d`), a local date (`2026-10-18`, meaning local midnight) or an ISO date-time.
 - `--project NAME` matches the project name exactly.
 - `-n N` (or `--limit N`) shows the last N. Without `--since` the default is 20; with `--since` you get all of them. An explicit `-n` always wins.
-- `--json` prints one JSON object per line with the full text, the answer and both timestamps. For example, `telegram-ask log --since 7d --json | jq -r 'select(.status == "timedOut") | .text'`.
+- `--json` prints one JSON object per line with the full text, the answer and both timestamps. For example, `jaypost log --since 7d --json | jq -r 'select(.status == "timedOut") | .text'`.
 
 Statuses are `answered`, `rejected` (shown as `<answer> (rejected)`), `timedOut`, `cancelled`, `pending` (still waiting), `interrupted` (the service stopped before the question ended) and `expired` where the service recorded one. An outcome this version doesn't know is shown as is.
 
 Where the log lives:
 
-| Install                     | File                                                                      |
-| --------------------------- | ------------------------------------------------------------------------- |
-| systemd, launchd            | `audit.jsonl` next to the config file, normally `~/.config/telegram-ask/` |
-| Quadlet                     | `/data/audit.jsonl` in the `telegram-ask-data` volume                     |
-| Compose                     | `/data/audit.jsonl` in the compose project's `data` volume                |
-| no install, `start` by hand | next to `$TELEGRAM_ASK_CONFIG` or the default config path                 |
+| Install                     | File                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| systemd, launchd            | `audit.jsonl` next to the config file, normally `~/.config/jaypost/` |
+| Quadlet                     | `/data/audit.jsonl` in the `jaypost-data` volume                     |
+| Compose                     | `/data/audit.jsonl` in the compose project's `data` volume           |
+| no install, `start` by hand | next to `$JAYPOST_CONFIG` or the default config path                 |
 
 At 10 MiB the file rotates to `audit.jsonl.1`, and the old `.1` is dropped, so about two files' worth of history is kept. `log` reads both. To delete the log by hand:
 
 ```
-rm -f ~/.config/telegram-ask/audit.jsonl*
-podman exec telegram-ask rm -f /data/audit.jsonl /data/audit.jsonl.1
-docker compose -f ~/.config/telegram-ask/compose/compose.yaml exec bot rm -f /data/audit.jsonl /data/audit.jsonl.1
+rm -f ~/.config/jaypost/audit.jsonl*
+podman exec jaypost rm -f /data/audit.jsonl /data/audit.jsonl.1
+docker compose -f ~/.config/jaypost/compose/compose.yaml exec bot rm -f /data/audit.jsonl /data/audit.jsonl.1
 ```
 
-`uninstall` removes the log only when you also purge the credentials. Installs from 0.4.0 or earlier don't keep a log; run `telegram-ask init` to upgrade, then `log` works.
+`uninstall` removes the log only when you also purge the credentials. Installs from 0.4.0 or earlier don't keep a log; run `jaypost init` to upgrade, then `log` works.
 
 ## Quiet hours
 
@@ -607,19 +607,19 @@ A notification sent while quiet is deleted 8 hours after the quiet period ends, 
 ## Commands
 
 ```
-telegram-ask init [launchd|systemd|compose|quadlet] [--port N] [--provider NAME] [--token|--no-token]
-telegram-ask status
-telegram-ask log [--since WHEN] [--project NAME] [-n N | --limit N] [--json]
-telegram-ask test
-telegram-ask reset-owner
-telegram-ask uninstall
-telegram-ask update
-telegram-ask start
-telegram-ask mcp [--port N]
-telegram-ask hook [--port N] [--project NAME] [--timeout S]
-telegram-ask openapi [FILE] [--port N]
-telegram-ask send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
-telegram-ask send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
+jaypost init [launchd|systemd|compose|quadlet] [--port N] [--provider NAME] [--token|--no-token]
+jaypost status
+jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--json]
+jaypost test
+jaypost reset-owner
+jaypost uninstall
+jaypost update
+jaypost start
+jaypost mcp [--port N]
+jaypost hook [--port N] [--project NAME] [--timeout S]
+jaypost openapi [FILE] [--port N]
+jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
+jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
 ```
 
 - `init`: installs or replaces the service. See [Install options](#install-options).
@@ -627,7 +627,7 @@ telegram-ask send notify TEXT [--project NAME] [--format plain|markdown] [--atta
 - `log`: prints the questions the service asked and how they ended. See [Question log](#question-log).
 - `test`: sends "This is a test" with Approve/Decline buttons (Decline on timeout) and prints the response.
 - `reset-owner`: clears the paired owner. See [Pairing](#pairing).
-- `uninstall`: stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log. Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `init` finds them and reuses the bot token and owner without asking. For systemd and launchd, `state.json` and the question log stay. The API token file `~/.config/telegram-ask/token` is kept too, and the next `init` reuses it. Yes also removes the target's image, volume and files (for systemd and launchd that includes `state.json` and `audit.jsonl`). The launchd log file in `~/Library/Logs/telegram-ask/` is kept even then. For systemd and launchd the npm package stays; `uninstall` prints the command to remove it, `npm rm -g telegram-ask`, or `npm rm -g --prefix ~/.local/share/telegram-ask/npm telegram-ask` if `init` installed it into that prefix.
+- `uninstall`: stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log. Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `init` finds them and reuses the bot token and owner without asking. For systemd and launchd, `state.json` and the question log stay. The API token file `~/.config/jaypost/token` is kept too, and the next `init` reuses it. Yes also removes the target's image, volume and files (for systemd and launchd that includes `state.json` and `audit.jsonl`). The launchd log file in `~/Library/Logs/jaypost/` is kept even then. For systemd and launchd the npm package stays; `uninstall` prints the command to remove it, `npm rm -g jaypost`, or `npm rm -g --prefix ~/.local/share/jaypost/npm jaypost` if `init` installed it into that prefix.
 - `update`: moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
 - `start`: runs the service in the foreground. The installed services use this.
 - `mcp`: runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents (MCP)](#agents-mcp).
@@ -645,15 +645,24 @@ Earlier versions used `npm run onboard` and `deploy/install-service.sh`. `init` 
 
 Re-running `init` on an install without an API token asks whether to add one (default yes). Once it's on, curl, n8n and container callers get a 401 until they send `authorization: Bearer <token>`; the CLI, `mcp` and the Node client pick it up on their own.
 
+### Coming from telegram-ask
+
+jaypost is the new name of `telegram-ask`. It doesn't read the old config, token or install, so set it up fresh:
+
+1. Remove the old service with `telegram-ask uninstall`. Both default to port 8787, so jaypost can't start while the old one runs.
+2. Run `jaypost init`. You can give it the same Telegram bot token, then pair again.
+3. Change `telegram-ask` to `jaypost` in your Claude Code hook and MCP configs.
+4. Clients now read `JAYPOST_TOKEN` and `~/.config/jaypost/token`. Update scripts and containers that pass `TELEGRAM_ASK_TOKEN`.
+
 ## Security
 
 The API is meant for localhost only; don't expose it. The container targets publish the port on `127.0.0.1` only; keep it that way.
 
-On top of that, `init` makes an API token and the service answers 401 without it. It stops other users on the machine, a browser page or a container that can reach the port from calling the API. It doesn't stop a process running as you: it can read `~/.config/telegram-ask/token` (mode 0600) like the CLI does. `init --no-token` turns it off, which leaves any local process able to ask or notify.
+On top of that, `init` makes an API token and the service answers 401 without it. It stops other users on the machine, a browser page or a container that can reach the port from calling the API. It doesn't stop a process running as you: it can read `~/.config/jaypost/token` (mode 0600) like the CLI does. `init --no-token` turns it off, which leaves any local process able to ask or notify.
 
 To rotate it, delete the token file and re-run `init`.
 
-The [question log](#question-log) keeps question text and answers on disk (mode 0600, or inside the data volume). Agents sometimes put secrets in their questions, so treat the file like the other secrets under `~/.config/telegram-ask/`.
+The [question log](#question-log) keeps question text and answers on disk (mode 0600, or inside the data volume). Agents sometimes put secrets in their questions, so treat the file like the other secrets under `~/.config/jaypost/`.
 
 ## Releasing
 

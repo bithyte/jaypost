@@ -15,7 +15,7 @@ export const RESERVED_ENV_VARS: readonly string[] = [
   'PROVIDER',
   'PORT',
   'HOST',
-  'TELEGRAM_ASK_CONFIG',
+  'JAYPOST_CONFIG',
   TOKEN_ENV_VAR,
   'TZ',
 ]

@@ -150,7 +150,7 @@ test('readSecrets prefers OWNER_ID in .env, falls back to owner get', async () =
     settings: { botToken: 't', ownerId: 77 },
   })
   expect(calls[0]![1]).toEqual(
-    expect.arrayContaining(['run', '--rm', '--no-deps', 'bot', 'telegram-ask', 'owner', 'get']),
+    expect.arrayContaining(['run', '--rm', '--no-deps', 'bot', 'jaypost', 'owner', 'get']),
   )
   ownerOut = ''
   expect(await t.readSecrets(rec)).toEqual({ provider: 'telegram', settings: { botToken: 't' } })
@@ -171,7 +171,7 @@ test('readAuditLog runs audit dump without a tty', async () => {
         '--no-deps',
         '-T',
         'bot',
-        'telegram-ask',
+        'jaypost',
         'audit',
         'dump',
       ],
@@ -320,7 +320,7 @@ test('install writes the api token into .env and keeps it out of the Dockerfile'
   const { t, paths } = make()
   await t.install({ ...base, auth: { kind: 'token', token: TOKEN } })
   const directory = paths.composeDirectory
-  expect(readFileSync(join(directory, '.env'), 'utf8')).toContain(`TELEGRAM_ASK_TOKEN=${TOKEN}\n`)
+  expect(readFileSync(join(directory, '.env'), 'utf8')).toContain(`JAYPOST_TOKEN=${TOKEN}\n`)
   expect(readFileSync(join(directory, 'Dockerfile'), 'utf8')).not.toContain(TOKEN)
 })
 

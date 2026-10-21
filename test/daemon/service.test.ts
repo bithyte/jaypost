@@ -290,7 +290,7 @@ test('/mute is saved and a restarted service is still muted', async () => {
   expect(Math.abs(drift)).toBeLessThan(60_000)
   await running?.stop()
   running = undefined
-  const config = loadConfig({ TELEGRAM_ASK_CONFIG: configPath, PROVIDER: 'fake', FAKE_KEY: 'k' }, [
+  const config = loadConfig({ JAYPOST_CONFIG: configPath, PROVIDER: 'fake', FAKE_KEY: 'k' }, [
     provider,
   ])
   const second = await start(provider, { configPath, config })

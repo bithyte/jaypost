@@ -1,7 +1,7 @@
 /** GitHub API endpoint for the latest published release. */
-export const RELEASES_API_URL = 'https://api.github.com/repos/cozminu/telegram-ask/releases/latest'
+export const RELEASES_API_URL = 'https://api.github.com/repos/bithyte/jaypost/releases/latest'
 /** npm registry endpoint for the latest published version. */
-export const NPM_LATEST_URL = 'https://registry.npmjs.org/telegram-ask/latest'
+export const NPM_LATEST_URL = 'https://registry.npmjs.org/jaypost/latest'
 /** Release asset listing the sha256 of every other asset. */
 export const CHECKSUMS_ASSET = 'SHA256SUMS'
 /** Limit for lookups that return small JSON bodies. */

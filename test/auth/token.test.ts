@@ -26,7 +26,7 @@ let directory: string
 let file: string
 
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'telegram-ask-auth-'))
+  directory = mkdtempSync(join(tmpdir(), 'jaypost-auth-'))
   file = join(directory, 'token')
 })
 afterEach(() => {
@@ -63,15 +63,15 @@ test('parseToken rejects short, long, padded, split and non-ascii values', () =>
   }
 })
 
-test('resolveTokenFile uses the install directory and ignores TELEGRAM_ASK_CONFIG', () => {
+test('resolveTokenFile uses the install directory and ignores JAYPOST_CONFIG', () => {
   expect(
     resolveTokenFile({
       XDG_CONFIG_HOME: '/x',
       HOME: '/h',
-      TELEGRAM_ASK_CONFIG: '/c/config.json',
+      JAYPOST_CONFIG: '/c/config.json',
     }),
-  ).toBe('/x/telegram-ask/token')
-  expect(resolveTokenFile({ HOME: '/h' })).toBe('/h/.config/telegram-ask/token')
+  ).toBe('/x/jaypost/token')
+  expect(resolveTokenFile({ HOME: '/h' })).toBe('/h/.config/jaypost/token')
 })
 
 test('writeTokenFile writes 0600 with a trailing newline through a new inode', () => {
@@ -96,12 +96,12 @@ test('readTokenFile returns undefined for a missing file and removeTokenFile tol
 
 test('resolveClientToken prefers the env, then the file, then none', () => {
   writeTokenFile(file, TOKEN)
-  expect(resolveClientToken({ TELEGRAM_ASK_TOKEN: HAND_SET }, file)).toEqual({
+  expect(resolveClientToken({ JAYPOST_TOKEN: HAND_SET }, file)).toEqual({
     kind: 'token',
     token: HAND_SET,
     source: 'env',
   })
-  expect(resolveClientToken({ TELEGRAM_ASK_TOKEN: '' }, file)).toEqual({
+  expect(resolveClientToken({ JAYPOST_TOKEN: '' }, file)).toEqual({
     kind: 'token',
     token: TOKEN,
     source: 'file',
@@ -115,15 +115,15 @@ test('a token file with CRLF and spaces is read trimmed', () => {
 })
 
 test('an invalid env or file token is unusable and the message never quotes it', () => {
-  expect(resolveClientToken({ TELEGRAM_ASK_TOKEN: 'short-secret' }, file)).toEqual({
+  expect(resolveClientToken({ JAYPOST_TOKEN: 'short-secret' }, file)).toEqual({
     kind: 'unusable',
-    message: "TELEGRAM_ASK_TOKEN isn't a valid telegram-ask token",
+    message: "JAYPOST_TOKEN isn't a valid jaypost token",
   })
   writeFileSync(file, `${TOKEN}=\n`)
   const result = resolveClientToken({}, file)
   expect(result).toEqual({
     kind: 'unusable',
-    message: `token file ${JSON.stringify(file)} isn't a valid telegram-ask token`,
+    message: `token file ${JSON.stringify(file)} isn't a valid jaypost token`,
   })
   expect(JSON.stringify(result)).not.toContain(TOKEN)
 })
