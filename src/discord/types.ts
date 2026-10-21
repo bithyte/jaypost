@@ -167,3 +167,10 @@ export type DiscordClientOptions = {
   readonly apiRoot?: string
   readonly timeoutMs?: number
 }
+
+/** What `MessageReference` holds for Discord; cast back at the messenger's edge. */
+export type DiscordMessageReference = {
+  readonly channelId: string
+  readonly messageId: string
+  readonly hasButtons: boolean
+}

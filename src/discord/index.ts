@@ -19,6 +19,7 @@ export {
   WRONG_CODE_REPLY,
 } from './constants.ts'
 export { escapeDiscordMarkdown, renderContent } from './markdown.ts'
+export { createDiscordMessenger } from './messenger.ts'
 export {
   describeReplyRoute,
   formatCustomId,
@@ -37,6 +38,7 @@ export type {
   DiscordClient,
   DiscordClientOptions,
   DiscordIdentity,
+  DiscordMessageReference,
   GatewayEvents,
   IncomingInteraction,
   IncomingMessage,
