@@ -1,6 +1,6 @@
 # jaypost
 
-**Let your AI agents and scripts ask you before they act.** They send a question, it pops up on your phone in Telegram, you tap a button, and they get the answer back.
+**Let your AI agents and scripts ask you before they act.** They send a question, it pops up on your phone in Telegram or Discord, you tap a button, and they get the answer back.
 
 ![A question from an agent in Telegram, with Approve and Decline buttons](docs/screenshot.png)
 
@@ -8,13 +8,13 @@ Good for an agent that wants to force-push, a deploy script that needs a go-ahea
 
 ## Quick start
 
-You need Node 24+ and a bot token from [@BotFather](https://t.me/BotFather).
+You need Node 24+ and a bot token: from [@BotFather](https://t.me/BotFather) for Telegram, or from the [Discord developer portal](#discord-setup).
 
 ```
 npx jaypost init
 ```
 
-It asks for the token, installs the service and prints a pairing code like `ABCD-EFGH`. Send `/start ABCD-EFGH` to your bot (or open the link it prints) and you're paired.
+It asks which app you use (Telegram or Discord) and for the token, installs the service and prints a pairing code like `ABCD-EFGH`. Send `/start ABCD-EFGH` to your bot (or open the link it prints) and you're paired.
 
 Then give your agent the tools. For Claude Code:
 
@@ -518,7 +518,7 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 ### Config
 
-Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `PROVIDER` picks the chat app and defaults to `telegram`, which is the only one for now. `HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
+Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
 ## Pairing
 
@@ -533,6 +533,15 @@ jaypost reset-owner
 ```
 
 It asks first, clears the owner, restarts the service and waits for a new pairing.
+
+## Discord setup
+
+1. In the [Discord developer portal](https://discord.com/developers/applications) create an application, add a bot and copy its token. No intent toggles are needed.
+2. Run `jaypost init`, pick Discord and paste the token.
+3. Open the invite link it prints and add the bot to a server you're in. A private server you made just for this works.
+4. DM the pairing code to the bot.
+
+If questions don't arrive, allow DMs from members of that server in the server's privacy settings. The owner commands (see [Bot commands](#bot-commands)) are slash commands in the bot's DM.
 
 ## Bot commands
 
@@ -637,7 +646,7 @@ jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FI
 
 ### One instance per token
 
-Only one instance can run per bot token; two would fight over Telegram's updates. `init` replaces an existing install rather than adding a second. Stop anything you started by hand, including a `docker run` container, before running `init`.
+Only one instance can run per bot token; on Telegram two would fight over the updates. Discord doesn't stop two services sharing a token, and both get every tap, so run only one. `init` replaces an existing install rather than adding a second. Stop anything you started by hand, including a `docker run` container, before running `init`.
 
 ### Upgrading from the old setup
 
