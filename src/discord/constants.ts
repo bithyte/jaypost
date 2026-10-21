@@ -1,3 +1,4 @@
+import type { OwnerCommand } from '../approval/index.ts'
 /** Longest message `content` Discord accepts. */
 export const DISCORD_MAX_CONTENT_LENGTH = 2000
 /** Characters Discord reads as markup; each gets a backslash wherever it appears. */
@@ -14,3 +15,42 @@ export const WHITESPACE_PATTERN = /^\s$/
 export const NUMBER_PREFIX_PATTERN = /^ *\d+$/
 /** Only spaces: what precedes a `-` or `+` list marker. */
 export const SPACES_PATTERN = /^ *$/
+/** Matches `<id>:<optionIndex>`, the format `formatCustomId` writes; no `/`, so never a dismiss. */
+export const CUSTOM_ID_PATTERN = /^([^:/]+):(\d+)$/
+/** Matches `dismiss/<id>`, the format `formatDismissId` writes; no `:`, so never an approval tap. */
+export const DISMISS_ID_PATTERN = /^dismiss\/([^:]+)$/
+/** Label of the button that deletes a notification. */
+export const DISMISS_LABEL = 'Dismiss'
+/** Most buttons Discord allows in one action row. */
+export const BUTTONS_PER_ROW = 5
+/** Most options a request can show as buttons (five rows of five). */
+export const DISCORD_MAX_OPTION_COUNT = 25
+/** Hint appended to a text-enabled request that has buttons. */
+export const TEXT_HINT_WITH_BUTTONS = 'Tap a button or reply to this message to type an answer.'
+/** Hint appended to a text-enabled request without buttons. */
+export const TEXT_HINT_WITHOUT_BUTTONS = 'Reply to this message with your answer.'
+/** Bot answer to a typed reply on a question that only takes buttons. */
+export const BUTTONS_ONLY_REPLY = 'Tap one of the buttons to answer this question.'
+/** Bot answer to a reply on a message that isn't an open question (or has expired). */
+export const NOT_OPEN_REPLY = "That message isn't waiting for an answer."
+/** Bot answer to a plain message while several text questions are open. */
+export const AMBIGUOUS_REPLY = "Several questions are open; reply to the one you're answering."
+/** Bot answer to a non-text reply on an open text question. */
+export const NOT_TEXT_REPLY = 'Only text replies count as an answer.'
+/** Bot answer to a correct pairing code. */
+export const PAIRED_REPLY = 'Paired. Approval requests will appear here.'
+/** Bot answer to a wrong pairing code. */
+export const WRONG_CODE_REPLY =
+  "This bot isn't paired. Check the service logs for the pairing code."
+/** Ephemeral answer to a tap on a request that is no longer valid. */
+export const EXPIRED_REPLY = 'Expired'
+/** Answer to a slash command from anyone but the owner. */
+export const NOT_OWNER_COMMAND_REPLY = "This bot isn't paired with you."
+/** The one optional argument of each command that takes one. */
+export const COMMAND_OPTIONS: Readonly<
+  Partial<Record<OwnerCommand['name'], { readonly name: string; readonly description: string }>>
+> = {
+  history: { name: 'count', description: 'How many answers to show (1-20)' },
+  mute: { name: 'duration', description: 'How long, like 30m, 2h or 1d' },
+  quiet: { name: 'hours', description: 'Quiet hours like 22-7, or off' },
+}
