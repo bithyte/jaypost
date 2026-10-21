@@ -35,4 +35,4 @@ export type TapOutcome =
 /** The runtime callbacks the conversation drives. */
 export type ConversationHandlers = Pick<RuntimeHandlers, 'answer' | 'reply' | 'dismiss' | 'pair'>
 
-type OpenQuestion = { readonly id: string; readonly allowText: boolean }
+export type OpenQuestion = { readonly id: string; readonly allowText: boolean }

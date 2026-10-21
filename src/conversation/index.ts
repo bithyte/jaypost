@@ -10,6 +10,7 @@ export {
   TEXT_HINT_WITH_BUTTONS,
   WRONG_CODE_REPLY,
 } from './constants.ts'
+export { OwnerConversation } from './conversation.ts'
 export { formatChoicePayload, formatDismissPayload, withTextHint } from './payload.ts'
 export type {
   ConversationHandlers,
