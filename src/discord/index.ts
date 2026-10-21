@@ -6,8 +6,10 @@ export {
   BUTTONS_ONLY_REPLY,
   BUTTONS_PER_ROW,
   COMMAND_OPTIONS,
+  DISCORD_MAX_ATTACHMENT_BYTES,
   DISCORD_MAX_CONTENT_LENGTH,
   DISCORD_MAX_OPTION_COUNT,
+  DISCORD_MAX_TEXT_LENGTH,
   DISMISS_LABEL,
   EXPIRED_REPLY,
   NOT_OPEN_REPLY,
@@ -15,6 +17,7 @@ export {
   NOT_TEXT_REPLY,
   PAIRED_REPLY,
   REJECTED_TOKEN_FATAL,
+  SNOWFLAKE_PATTERN,
   TEXT_HINT_WITHOUT_BUTTONS,
   TEXT_HINT_WITH_BUTTONS,
   UNKNOWN_COMMAND_REPLY,
@@ -32,6 +35,7 @@ export {
   routeTap,
   toButtonRows,
 } from './routing.ts'
+export { discordProvider } from './provider.ts'
 export { createDiscordRuntime } from './runtime.ts'
 export { validateToken } from './setup.ts'
 export type {

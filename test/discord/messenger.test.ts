@@ -72,7 +72,7 @@ test('a text-only question has no buttons', async () => {
 
 test('the attachment rides on the same message', async () => {
   const { fake, messenger } = setup()
-  const attachment = { name: 'diff.txt', content: 'hello' }
+  const attachment = { name: 'diff.txt', content: new TextEncoder().encode('hello') }
   await messenger.sendRequest('r1', plain('Run it?'), ['a'], false, attachment)
   expect(fake.created).toHaveLength(1)
   expect(fake.created[0]?.message.file).toBe(attachment)

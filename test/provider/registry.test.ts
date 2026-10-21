@@ -7,12 +7,21 @@ import {
   RESERVED_ENV_VARS,
 } from '../../src/provider/index.ts'
 
-test('no two providers share a config key or env var', () => {
-  const settings = PROVIDERS.flatMap((provider) => provider.settings)
-  const configKeys = settings.map((setting) => setting.configKey)
-  const envVars = settings.map((setting) => setting.envVar)
-  expect(new Set(configKeys).size).toBe(configKeys.length)
-  expect(new Set(envVars).size).toBe(envVars.length)
+test('settings are unique within a provider', () => {
+  for (const provider of PROVIDERS) {
+    const configKeys = provider.settings.map((setting) => setting.configKey)
+    const envVars = provider.settings.map((setting) => setting.envVar)
+    expect(new Set(configKeys).size).toBe(configKeys.length)
+    expect(new Set(envVars).size).toBe(envVars.length)
+  }
+})
+
+test('a shared config key always uses the same env var', () => {
+  const envVarByConfigKey = new Map<string, string>()
+  for (const setting of PROVIDERS.flatMap((provider) => provider.settings)) {
+    expect(envVarByConfigKey.get(setting.configKey) ?? setting.envVar).toBe(setting.envVar)
+    envVarByConfigKey.set(setting.configKey, setting.envVar)
+  }
 })
 
 test('no provider uses a reserved key or env var', () => {
@@ -34,7 +43,9 @@ test('each provider has at most one owner setting, and an owner setting iff rese
   }
 })
 
-test('telegram is registered and is the default', () => {
+test('discord is registered; telegram stays the default', () => {
+  expect(findProvider(PROVIDERS, 'discord')?.label).toBe('Discord')
+  expect(DEFAULT_PROVIDER).toBe('telegram')
   expect(findProvider(PROVIDERS, DEFAULT_PROVIDER)?.name).toBe('telegram')
 })
 

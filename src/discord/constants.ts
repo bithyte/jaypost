@@ -70,3 +70,9 @@ export const MESSAGE_FLAG_SUPPRESS_NOTIFICATIONS = 4096
 export const MESSAGE_FLAG_EPHEMERAL = 64
 /** Fatal message for a token Discord refuses; never includes the token. */
 export const REJECTED_TOKEN_FATAL = 'Discord rejected the bot token; check it with `jaypost init`'
+/** Most characters of request text; leaves room for the hint and escaping under Discord's limit. */
+export const DISCORD_MAX_TEXT_LENGTH = 1800
+/** Largest attachment Discord accepts on a default-tier message. */
+export const DISCORD_MAX_ATTACHMENT_BYTES = 10_485_760
+/** A Discord user id: a snowflake of 17 to 20 digits. */
+export const SNOWFLAKE_PATTERN = /^\d{17,20}$/
