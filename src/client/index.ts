@@ -1,4 +1,5 @@
 export { prepareAttachment } from './attachment.ts'
+export { Caller } from './caller.ts'
 export { Client, JaypostError } from './client.ts'
 export {
   ATTACHMENT_GRACE_MS,
@@ -37,7 +38,16 @@ export type {
   AttachmentInput,
   AttachmentResult,
   AttachmentSource,
+  CallerOptions,
+  CallOptions,
   ClientOptions,
+  Done,
+  Failure,
+  FailureReason,
+  Message,
   Notification,
+  Pending,
+  Question,
+  QuestionState,
   StateBody,
 } from './types.ts'

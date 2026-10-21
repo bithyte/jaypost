@@ -1,3 +1,4 @@
+import type { ClientToken } from '../auth/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 
 /** Where `Client` finds the service, and the project name its messages carry by default. */
@@ -40,7 +41,7 @@ export type AttachmentBody =
 /** Outcome of `prepareAttachment`; `message` is ready to show the caller. */
 export type AttachmentResult =
   | { readonly kind: 'ok'; readonly attachment: AttachmentBody }
-  | { readonly kind: 'failed'; readonly message: string }
+  | Failure
 
 /**
  * A question answered by buttons and/or a typed reply; `timeout` in seconds, default 300, max 86400 (24 h); longer values are
@@ -85,9 +86,7 @@ export type ApiMethod = 'GET' | 'POST' | 'DELETE'
 export type ApiPath = '/request' | '/notify' | '/request/async' | '/status' | `/request/${string}`
 
 /** Outcome of a call to the local service; `message` is ready to show the caller. */
-export type ApiResult =
-  | { readonly kind: 'ok'; readonly body: unknown }
-  | { readonly kind: 'failed'; readonly message: string }
+export type ApiResult = { readonly kind: 'ok'; readonly body: unknown } | Failure
 
 export type ApiOptions = {
   /** Aborting it makes the call fail with "cancelled". */
@@ -117,9 +116,7 @@ export type AskOptions = Omit<ApiOptions, 'timeoutMs'> & {
 }
 
 /** Outcome of `requestApi`; `message` is ready to show the caller. */
-export type AskResult =
-  | { readonly kind: 'ok'; readonly outcome: Answer }
-  | { readonly kind: 'failed'; readonly message: string }
+export type AskResult = { readonly kind: 'ok'; readonly outcome: Answer } | Failure
 
 /** The body of GET /request/<id>. */
 export type StateBody =
@@ -135,3 +132,59 @@ export type StateBody =
       readonly timedOut: boolean
     }
   | { readonly id: string; readonly state: 'cancelled' }
+
+export type CallerOptions = {
+  readonly port: number
+  /** Default `127.0.0.1`. */
+  readonly host?: string
+  /** Called once per operation, before any I/O; `unusable` fails that operation only. */
+  readonly readToken: () => ClientToken
+  /** Milliseconds; default `performance.now`. Drives the wait deadline and the too-old check. */
+  readonly now?: () => number
+}
+
+/** Aborting `signal` ends the operation with reason `cancelled`. */
+export type CallOptions = { readonly signal: AbortSignal }
+
+/** `AskRequest` without the per-call bits; the attachment is read and checked before sending. */
+export type Question = Omit<AskRequest, 'attachment' | 'signal'> & {
+  readonly attachment?: AttachmentSource
+}
+
+export type Message = Omit<Notification, 'attachment' | 'signal'> & {
+  readonly attachment?: AttachmentSource
+}
+
+/** `rejected` is a 400 with the daemon's own text; `attachment` is a local read or size failure. */
+export type FailureReason =
+  | 'unusableToken'
+  | 'unreachable'
+  | 'cancelled'
+  | 'httpTimeout'
+  | 'unauthorized'
+  | 'rejected'
+  | 'tooOld'
+  | 'notSupported'
+  | 'notPaired'
+  | 'sendFailed'
+  | 'unknownRequest'
+  | 'unreadable'
+  | 'attachment'
+  | 'unexpected'
+
+/** `message` is the copy shown today, ready for an agent or a terminal. */
+export type Failure = {
+  readonly kind: 'failed'
+  readonly reason: FailureReason
+  readonly message: string
+}
+
+export type Pending = { readonly kind: 'pending'; readonly id: string; readonly expiresAt: string }
+
+export type Done = { readonly kind: 'done'; readonly answer: string; readonly timedOut: boolean }
+
+export type QuestionState =
+  | Pending
+  | (Done & { readonly id: string })
+  | { readonly kind: 'cancelled'; readonly id: string }
+  | Failure
