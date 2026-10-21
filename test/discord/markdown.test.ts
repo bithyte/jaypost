@@ -57,12 +57,12 @@ test('inline code with a backtick is wrapped in double backticks', () => {
 })
 
 test('inline code breaks consecutive backticks', () => {
-  expect(render('a``b', [{ kind: 'code', offset: 0, length: 4 }]).content).toBe('`` a`​`b ``')
+  expect(render('a``b', [{ kind: 'code', offset: 0, length: 4 }]).content).toBe('`` a`\u200b`b ``')
 })
 
 test('pre keeps the language and breaks triple backticks', () => {
   expect(render('x```y', [{ kind: 'pre', offset: 0, length: 5, language: 'sh' }]).content).toBe(
-    '```sh\nx`​`​`y\n```',
+    '```sh\nx`\u200b`\u200b`y\n```',
   )
 })
 
