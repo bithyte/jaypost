@@ -1,6 +1,6 @@
 {
   "name": "jaypost",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local HTTP API that asks you a question on Telegram or Discord with buttons and returns your answer",
   "keywords": [
     "approval",
