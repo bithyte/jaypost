@@ -1,0 +1,10 @@
+export type SnippetId =
+  | 'npxInit'
+  | 'binaryLinux'
+  | 'binaryMacos'
+  | 'pair'
+  | 'mcpAdd'
+  | 'shellSend'
+  | 'curlRequest'
+  | 'nodeClient'
+  | 'hookSettings'
