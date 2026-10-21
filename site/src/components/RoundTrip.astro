@@ -48,6 +48,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* terminal and phone stay dark in both themes, like the real things usually are */
+  .rt-terminal,
+  .rt-phone {
+    color-scheme: dark;
+    color: var(--text);
+  }
+
   .rt-terminal {
     min-width: 0;
     border: 1px solid var(--border);
