@@ -1,13 +1,5 @@
-import type { ClientToken } from '../auth/index.ts'
-import type { StateBody } from '../client/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { OpenQuestions } from './questions.ts'
-
-/** Where the service listens and how to find the token; `readToken` runs once per tool call. */
-export type ServiceAddress = {
-  readonly port: number
-  readonly readToken: () => ClientToken
-}
 
 /** Tuning for `createMcpServer`; every field is optional. */
 export type McpServerOptions = {
@@ -32,8 +24,3 @@ export type AskArguments = {
   readonly timeout_seconds?: number | undefined
   readonly attachment?: AttachmentArgument | undefined
 }
-
-/** Outcome of polling a background question; `message` is ready to show the agent. */
-export type PollResult =
-  | { readonly kind: 'ok'; readonly state: StateBody }
-  | { readonly kind: 'failed'; readonly message: string }
