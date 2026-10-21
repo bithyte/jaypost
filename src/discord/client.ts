@@ -42,13 +42,32 @@ import type {
 
 const NO_MENTIONS = { parse: [] }
 
+/** The slice of `WebSocketManager` the client uses; tests swap in a fake. */
+type GatewayLike = {
+  readonly on: {
+    (
+      event: WebSocketShardEvents.Dispatch,
+      listener: (payload: GatewayDispatchPayload) => void,
+    ): unknown
+    (event: WebSocketShardEvents.Closed, listener: (code: number) => void): unknown
+    (event: WebSocketShardEvents.Error, listener: (error: Error) => void): unknown
+  }
+  readonly connect: () => Promise<void>
+  readonly destroy: () => PromiseLike<void> | void
+}
+
+/** Internal: `createGateway` replaces the real websocket in tests; not exported from index.ts. */
+type GatewayOptions = {
+  readonly createGateway?: (rest: REST) => GatewayLike
+}
+
 /**
  * A `DiscordClient` over one REST instance; the gateway opens only in `connect`. The token is never
  * put in a fatal message.
  */
 export function createDiscordClient(
   token: string,
-  options: DiscordClientOptions = {},
+  options: DiscordClientOptions & GatewayOptions = {},
 ): DiscordClient {
   const rest = new REST({
     version: '10',
@@ -56,9 +75,16 @@ export function createDiscordClient(
     ...(options.timeoutMs === undefined ? {} : { timeout: options.timeoutMs }),
   }).setToken(token)
   const api = new API(rest)
-  let gateway: WebSocketManager | undefined
+  const createGateway: (client: REST) => GatewayLike =
+    options.createGateway ??
+    ((client: REST) =>
+      new WebSocketManager({ token, intents: GatewayIntentBits.DirectMessages, rest: client }))
+  let gateway: GatewayLike | undefined
+  let hasConnected = false
+  let isDestroyed = false
   let onResponse: ((...args: RestEvents[RESTEvents.Response]) => void) | undefined
-  const redact = (text: string): string => text.replaceAll(token, '<token>')
+  // An empty token would make replaceAll insert the marker between every character
+  const redact = (text: string): string => (token === '' ? text : text.replaceAll(token, '<token>'))
   return {
     async getIdentity(): Promise<DiscordIdentity> {
       try {
@@ -118,7 +144,7 @@ export function createDiscordClient(
           await api.interactions.reply(interaction.id, interaction.token, {
             content: response.content,
             allowed_mentions: NO_MENTIONS,
-            ...(response.ephemeral ? { flags: MESSAGE_FLAG_EPHEMERAL } : {}),
+            flags: MESSAGE_FLAG_SUPPRESS_EMBEDS | (response.ephemeral ? MESSAGE_FLAG_EPHEMERAL : 0),
           })
           return
       }
@@ -130,9 +156,13 @@ export function createDiscordClient(
       )
     },
     connect(events) {
+      if (hasConnected) {
+        throw new RangeError('discord client connect called twice')
+      }
+      hasConnected = true
       let isFatal = false
       const fatal = (message: string): void => {
-        if (isFatal) {
+        if (isFatal || isDestroyed) {
           return
         }
         isFatal = true
@@ -145,13 +175,13 @@ export function createDiscordClient(
         }
       }
       rest.on(RESTEvents.Response, onResponse)
-      const manager = new WebSocketManager({
-        token,
-        intents: GatewayIntentBits.DirectMessages,
-        rest,
-      })
+      const manager = createGateway(rest)
       gateway = manager
-      manager.on(WebSocketShardEvents.Dispatch, (payload) => dispatch(payload, events))
+      manager.on(WebSocketShardEvents.Dispatch, (payload) => {
+        if (!isDestroyed) {
+          dispatch(payload, events)
+        }
+      })
       manager.on(WebSocketShardEvents.Closed, (code) => {
         if (FATAL_CLOSE_CODES.includes(code)) {
           fatal(code === 4004 ? REJECTED_TOKEN_FATAL : `discord gateway closed (${code})`)
@@ -160,17 +190,26 @@ export function createDiscordClient(
       // The shard emits 'error' next to fatal closes, which `Closed` already reports; without a
       // listener the emitter would throw
       manager.on(WebSocketShardEvents.Error, () => {})
-      manager.connect().catch((error: unknown) => {
-        if (error instanceof DiscordAPIError && error.status === 401) {
-          fatal(REJECTED_TOKEN_FATAL)
-          return
-        }
-        fatal(
-          `could not connect to Discord: ${error instanceof Error ? error.message : String(error)}`,
-        )
-      })
+      manager
+        .connect()
+        .then(async () => {
+          // destroy() during the connect only reached the shards that existed then
+          if (isDestroyed) {
+            await manager.destroy()
+          }
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DiscordAPIError && error.status === 401) {
+            fatal(REJECTED_TOKEN_FATAL)
+            return
+          }
+          fatal(
+            `could not connect to Discord: ${error instanceof Error ? error.message : String(error)}`,
+          )
+        })
     },
     async destroy() {
+      isDestroyed = true
       if (onResponse !== undefined) {
         rest.off(RESTEvents.Response, onResponse)
         onResponse = undefined

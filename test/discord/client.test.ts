@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events'
 import http from 'node:http'
 import net from 'node:net'
 import type { AddressInfo } from 'node:net'
@@ -268,11 +269,11 @@ test('respond sends an ephemeral message without mentions', async () => {
       )
       expect(readJson(requests[0] as Recorded)).toEqual({
         type: 4,
-        data: { content: 'Expired', allowed_mentions: { parse: [] }, flags: 64 },
+        data: { content: 'Expired', allowed_mentions: { parse: [] }, flags: 4 | 64 },
       })
       expect(readJson(requests[1] as Recorded)).toEqual({
         type: 4,
-        data: { content: 'Muted', allowed_mentions: { parse: [] } },
+        data: { content: 'Muted', allowed_mentions: { parse: [] }, flags: 4 },
       })
     },
   )
@@ -475,4 +476,149 @@ test('toIncomingInteraction gives a command without options an empty argument', 
 test('toIncomingInteraction maps anything else to other', () => {
   const ping = { id: '7', token: 'ptoken', type: 1 } as Parameters<typeof toIncomingInteraction>[0]
   expect(toIncomingInteraction(ping)).toEqual({ kind: 'other', id: '7', token: 'ptoken' })
+})
+
+class FakeGateway extends EventEmitter {
+  public destroyCount = 0
+  public settle: { resolve: () => void; reject: (error: Error) => void } = {
+    resolve: () => {},
+    reject: () => {},
+  }
+
+  public connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.settle = { resolve, reject }
+    })
+  }
+
+  public destroy(): void {
+    this.destroyCount += 1
+  }
+}
+
+function connectFake(token = TOKEN): {
+  client: DiscordClient
+  gateway: FakeGateway
+  events: GatewayEvents
+} {
+  const gateway = new FakeGateway()
+  const client = createDiscordClient(token, {
+    apiRoot: 'http://127.0.0.1:9/api',
+    createGateway: () => gateway,
+  })
+  const events = { ready: vi.fn(), message: vi.fn(), interaction: vi.fn(), fatal: vi.fn() }
+  client.connect(events)
+  return { client, gateway, events }
+}
+
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setImmediate(resolve))
+}
+
+const GATEWAY_TAP = {
+  id: '5',
+  token: 'itoken',
+  type: 3,
+  user: { id: '555', username: 'owner' },
+  channel: { id: '9', type: 1 },
+  channel_id: '9',
+  message: { id: '77' },
+  data: { component_type: 2, custom_id: 'r:0' },
+}
+
+test('the gateway maps ready, message and interaction dispatches', () => {
+  const { gateway, events } = connectFake()
+  gateway.emit('dispatch', { t: 'READY', d: { user: { id: '111', username: 'mybot' } } })
+  gateway.emit('dispatch', { t: 'MESSAGE_CREATE', d: DM_REPLY })
+  gateway.emit('dispatch', { t: 'INTERACTION_CREATE', d: GATEWAY_TAP })
+  gateway.emit('dispatch', { t: 'TYPING_START', d: {} })
+  expect(events.ready).toHaveBeenCalledWith('mybot')
+  expect(events.message).toHaveBeenCalledWith(toIncomingMessage(DM_REPLY))
+  expect(events.interaction).toHaveBeenCalledWith({
+    kind: 'button',
+    id: '5',
+    token: 'itoken',
+    userId: '555',
+    isDirect: true,
+    customId: 'r:0',
+    channelId: '9',
+    messageId: '77',
+  })
+  expect(events.fatal).not.toHaveBeenCalled()
+})
+
+test('close code 4004 is a rejected token', () => {
+  const { gateway, events } = connectFake()
+  gateway.emit('closed', 4004)
+  expect(events.fatal).toHaveBeenCalledWith(REJECTED_TOKEN_FATAL)
+})
+
+test('other fatal close codes name the code', () => {
+  const { gateway, events } = connectFake()
+  gateway.emit('closed', 4014)
+  expect(events.fatal).toHaveBeenCalledWith('discord gateway closed (4014)')
+})
+
+test('a normal close is not fatal', () => {
+  const { gateway, events } = connectFake()
+  gateway.emit('closed', 1000)
+  gateway.emit('closed', 4000)
+  expect(events.fatal).not.toHaveBeenCalled()
+})
+
+test('fatal fires at most once', async () => {
+  const { gateway, events } = connectFake()
+  gateway.emit('closed', 4004)
+  gateway.emit('closed', 4014)
+  gateway.settle.reject(new Error('boom'))
+  await flush()
+  expect(events.fatal).toHaveBeenCalledOnce()
+})
+
+test('an empty token leaves fatal messages readable', () => {
+  const { gateway, events } = connectFake('')
+  gateway.emit('closed', 4014)
+  expect(events.fatal).toHaveBeenCalledWith('discord gateway closed (4014)')
+})
+
+test('nothing reaches the events after destroy', async () => {
+  const { client, gateway, events } = connectFake()
+  gateway.settle.resolve()
+  await flush()
+  await client.destroy()
+  expect(gateway.destroyCount).toBe(1)
+  gateway.emit('dispatch', { t: 'READY', d: { user: { id: '111', username: 'mybot' } } })
+  gateway.emit('dispatch', { t: 'MESSAGE_CREATE', d: DM_REPLY })
+  gateway.emit('dispatch', { t: 'INTERACTION_CREATE', d: GATEWAY_TAP })
+  gateway.emit('closed', 4004)
+  expect(events.ready).not.toHaveBeenCalled()
+  expect(events.message).not.toHaveBeenCalled()
+  expect(events.interaction).not.toHaveBeenCalled()
+  expect(events.fatal).not.toHaveBeenCalled()
+})
+
+test('destroy during connect destroys the gateway again once it connects', async () => {
+  const { client, gateway, events } = connectFake()
+  await client.destroy()
+  expect(gateway.destroyCount).toBe(1)
+  gateway.settle.resolve()
+  await flush()
+  expect(gateway.destroyCount).toBe(2)
+  gateway.emit('dispatch', { t: 'MESSAGE_CREATE', d: DM_REPLY })
+  gateway.emit('closed', 4004)
+  expect(events.message).not.toHaveBeenCalled()
+  expect(events.fatal).not.toHaveBeenCalled()
+})
+
+test('a connect failure after destroy is not fatal', async () => {
+  const { client, gateway, events } = connectFake()
+  await client.destroy()
+  gateway.settle.reject(new Error('socket hang up'))
+  await flush()
+  expect(events.fatal).not.toHaveBeenCalled()
+})
+
+test('a second connect is a RangeError', () => {
+  const { client, events } = connectFake()
+  expect(() => client.connect(events)).toThrow(RangeError)
 })
