@@ -1,5 +1,13 @@
 import type { FormattedText, Span } from '../format/index.ts'
-import { MARKUP_CHARACTERS, ZERO_WIDTH_SPACE } from './constants.ts'
+import {
+  DOUBLE_BACKTICK_PATTERN,
+  MARKUP_CHARACTERS,
+  NUMBER_PREFIX_PATTERN,
+  SPACES_PATTERN,
+  URL_PATTERN,
+  WHITESPACE_PATTERN,
+  ZERO_WIDTH_SPACE,
+} from './constants.ts'
 import type { RenderedContent } from './types.ts'
 
 /**
@@ -15,7 +23,8 @@ export function escapeDiscordMarkdown(text: string): string {
  * Renders spans as Discord markdown with the text between them escaped. When the result is longer
  * than `maxLength`, falls back to the escaped text without spans, then to `message.text` as is.
  * Code and pre are never escaped, a blockquote holding code is dropped, and a blockquote not at a
- * line start keeps its text without `> `. Never throws.
+ * line start keeps its text without `> `. Assumes parser-shaped input (spans sorted and nested,
+ * italic not touching whitespace). Never throws.
  */
 export function renderContent(message: FormattedText, maxLength: number): RenderedContent {
   const rendered = renderRange(message.text, 0, message.text.length, message.spans)
@@ -88,13 +97,21 @@ function renderCode(content: string): string {
 }
 
 function breakBackticks(content: string): string {
-  return content.replaceAll(/`(?=`)/g, `\`${ZERO_WIDTH_SPACE}`)
+  return content.replaceAll(DOUBLE_BACKTICK_PATTERN, `\`${ZERO_WIDTH_SPACE}`)
 }
 
 function escapeRange(text: string, start: number, end: number): string {
+  const links = [...text.matchAll(URL_PATTERN)]
   let output = ''
   for (let index = start; index < end; index += 1) {
     const character = text.charAt(index)
+    const isInLink = links.some(
+      (link) => index >= link.index && index < link.index + link[0].length,
+    )
+    if (isInLink) {
+      output += character
+      continue
+    }
     output += MARKUP_CHARACTERS.includes(character) || isListMarker(text, index) ? '\\' : ''
     output += character
   }
@@ -106,10 +123,10 @@ function isListMarker(text: string, index: number): boolean {
   if (character !== '-' && character !== '+' && character !== '.') {
     return false
   }
-  if (!/^\s$/.test(text.charAt(index + 1))) {
+  if (!WHITESPACE_PATTERN.test(text.charAt(index + 1))) {
     return false
   }
   const lineStart = index === 0 ? 0 : text.lastIndexOf('\n', index - 1) + 1
   const before = text.slice(lineStart, index)
-  return character === '.' ? /^ *\d+$/.test(before) : /^ *$/.test(before)
+  return character === '.' ? NUMBER_PREFIX_PATTERN.test(before) : SPACES_PATTERN.test(before)
 }
