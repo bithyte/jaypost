@@ -78,10 +78,7 @@ const KEEPALIVE_MS = 60_000
  * HTTP timeout for a /request call: the capped approval timeout plus a grace period, and more
  * when the call uploads an attachment.
  */
-export function toFetchTimeoutMs(
-  timeoutSeconds: number | undefined,
-  hasAttachment = false,
-): number {
+function toFetchTimeoutMs(timeoutSeconds: number | undefined, hasAttachment = false): number {
   return (
     Math.min(timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS) * 1000 +
     toSendTimeoutMs(hasAttachment)
@@ -236,12 +233,12 @@ export function isStateBody(body: unknown): body is StateBody {
 }
 
 /** The copy for a 404 on a request id. */
-export function describeUnknownRequest(id: string): string {
+function describeUnknownRequest(id: string): string {
   return `jaypost doesn't know request ${id} (the service restarted, or the answer expired after 24 h)`
 }
 
 /** True for a /request answer body: `{ answer, timedOut }`. */
-export function isOutcome(body: unknown): body is { answer: string; timedOut: boolean } {
+function isOutcome(body: unknown): body is { answer: string; timedOut: boolean } {
   return (
     typeof body === 'object' &&
     body !== null &&

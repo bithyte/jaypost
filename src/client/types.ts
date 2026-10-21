@@ -38,7 +38,7 @@ export type AttachmentBody =
   | { readonly name: string; readonly text: string }
   | { readonly name: string; readonly data: string }
 
-/** Outcome of `prepareAttachment`; `message` is ready to show the caller. */
+/** Outcome of `checkAttachmentLimit`; `message` is ready to show the caller. */
 export type AttachmentResult =
   | { readonly kind: 'ok'; readonly attachment: AttachmentBody }
   | Failure

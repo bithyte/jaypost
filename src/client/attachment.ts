@@ -2,19 +2,8 @@ import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { MAX_ATTACHMENT_BYTES } from '../approval/constants.ts'
-import {
-  ATTACHMENT_NOT_SUPPORTED_MESSAGE,
-  ATTACHMENT_TOO_OLD_MESSAGE,
-  FETCH_GRACE_MS,
-} from './constants.ts'
-import { callApi } from './http.ts'
-import type {
-  ApiOptions,
-  AttachmentBody,
-  AttachmentResult,
-  AttachmentSource,
-  Failure,
-} from './types.ts'
+import { ATTACHMENT_NOT_SUPPORTED_MESSAGE, ATTACHMENT_TOO_OLD_MESSAGE } from './constants.ts'
+import type { AttachmentBody, AttachmentResult, AttachmentSource, Failure } from './types.ts'
 
 type Read =
   | {
@@ -69,29 +58,6 @@ export function checkAttachmentLimit(
   return { kind: 'ok', attachment: read.body }
 }
 
-/**
- * Reads the attachment locally, then asks the service for its size limit, so a bad file or an
- * old or unsupporting service fails before any upload. Never throws; doesn't log names or content.
- */
-export async function prepareAttachment(
-  port: number,
-  source: AttachmentSource,
-  options: Omit<ApiOptions, 'timeoutMs'>,
-): Promise<AttachmentResult> {
-  const read = await readAttachment(source, options.signal)
-  if (read.kind === 'failed') {
-    return read
-  }
-  const status = await callApi(port, 'GET', '/status', undefined, {
-    ...options,
-    timeoutMs: FETCH_GRACE_MS,
-  })
-  if (status.kind === 'failed') {
-    return status
-  }
-  return checkAttachmentLimit(read, readLimit(status.body))
-}
-
 function describeSource(source: AttachmentSource): string {
   if ('stream' in source) {
     return 'attachment from stdin'
@@ -108,13 +74,6 @@ function describeOver(label: string, limit: number): string {
 
 function describeReadFailure(label: string, error: unknown): string {
   return `couldn't read ${label}: ${error instanceof Error ? error.message : String(error)}`
-}
-
-function readLimit(body: unknown): number | undefined {
-  if (typeof body === 'object' && body !== null && 'maxAttachmentBytes' in body) {
-    return typeof body.maxAttachmentBytes === 'number' ? body.maxAttachmentBytes : undefined
-  }
-  return undefined
 }
 
 function readSource(source: AttachmentSource, label: string, signal: AbortSignal): Promise<Read> {
