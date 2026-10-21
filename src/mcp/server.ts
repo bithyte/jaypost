@@ -130,7 +130,7 @@ function attachmentNameSchema() {
     .max(255)
     .optional()
     .describe(
-      `File name shown in Telegram; use a real extension (.diff, .log) since Telegram uses it. Default the path's basename, or ${DEFAULT_ATTACHMENT_NAME}`,
+      `File name shown in the chat app; use a real extension (.diff, .log) since the app uses it. Default the path's basename, or ${DEFAULT_ATTACHMENT_NAME}`,
     )
 }
 

@@ -498,7 +498,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .option('--attach <file>', 'attach a file; "-" reads stdin')
     .option(
       '--attach-name <name>',
-      'file name shown in Telegram (default: the file\'s basename, "attachment.txt" for stdin)',
+      'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
     .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
     .action(
@@ -561,7 +561,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .option('--attach <file>', 'attach a file; "-" reads stdin')
     .option(
       '--attach-name <name>',
-      'file name shown in Telegram (default: the file\'s basename, "attachment.txt" for stdin)',
+      'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
     .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
     .action(

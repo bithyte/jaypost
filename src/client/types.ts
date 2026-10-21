@@ -60,7 +60,7 @@ export type AskRequest = {
   readonly format?: MessageFormat
   /** One file sent with the question. Needs a service that supports attachments. */
   readonly attachment?: AttachmentInput
-  /** Aborting it cancels the question; the Telegram message is edited to a "cancelled" line. */
+  /** Aborting it cancels the question; the chat message is edited to a "cancelled" line. */
   readonly signal?: AbortSignal
 }
 

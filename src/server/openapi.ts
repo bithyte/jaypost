@@ -47,7 +47,7 @@ const BODY_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
 const ATTACHMENT_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
   name: {
     description:
-      'File name shown in Telegram. Its extension decides how Telegram opens it. Not trimmed; no `/`, `\\` or control characters, not `.` or `..`.',
+      'File name shown in the chat app. Its extension decides how the app opens it. Not trimmed; no `/`, `\\` or control characters, not `.` or `..`.',
   },
   text: { description: 'File contents as UTF-8 text. Exactly one of `text` and `data`.' },
   data: {
