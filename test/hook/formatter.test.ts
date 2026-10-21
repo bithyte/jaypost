@@ -267,6 +267,20 @@ test('a primary that fits without the suggestion line drops only always allow', 
   })
 })
 
+test('a smaller maxLength cuts the question to it', () => {
+  const question = formatPermissionQuestion(
+    createPermissionEvent({ toolInput: { command: 'x'.repeat(5000) } }),
+    400,
+  )
+  expect(question.text.length).toBeLessThanOrEqual(400)
+  expect(question.options).toEqual([DENY_OPTION, ASK_IN_TERMINAL_OPTION])
+})
+
+test('a smaller maxLength cuts the notification to it', () => {
+  const text = formatNotificationText(createNotificationEvent({ message: 'm'.repeat(5000) }), 400)
+  expect(text.length).toBe(400)
+})
+
 test('a cut command offers only deny and ask in terminal', () => {
   const question = formatPermissionQuestion(
     createPermissionEvent({

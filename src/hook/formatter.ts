@@ -33,10 +33,13 @@ type ToolBody = { readonly primary: string; readonly secondaries: readonly strin
 type McpName = { readonly server: string; readonly tool: string }
 
 /**
- * Builds the Telegram question for a permission request, within MAX_HOOK_TEXT_LENGTH. When the
- * primary field has to be cut, only Deny and Ask in terminal are offered. Never throws.
+ * Builds the chat question for a permission request, within `maxLength`. When the primary field
+ * has to be cut, only Deny and Ask in terminal are offered. Never throws.
  */
-export function formatPermissionQuestion(event: PermissionRequestEvent): HookQuestion {
+export function formatPermissionQuestion(
+  event: PermissionRequestEvent,
+  maxLength: number = MAX_HOOK_TEXT_LENGTH,
+): HookQuestion {
   const header = cut(
     `${describeActor(event.agentType)} ${describeAction(event)}:`,
     MAX_HEADER_LENGTH,
@@ -44,40 +47,46 @@ export function formatPermissionQuestion(event: PermissionRequestEvent): HookQue
   const body = describeBody(event)
   const suggestionLine = describeSuggestions(event.permissionSuggestions)
   if (suggestionLine !== undefined) {
-    const withSuggestion = fitLayout(header, body, `\n\n${suggestionLine}`, [
-      ALLOW_OPTION,
-      ALWAYS_ALLOW_OPTION,
-      DENY_OPTION,
-      ASK_IN_TERMINAL_OPTION,
-    ])
+    const withSuggestion = fitLayout(
+      header,
+      body,
+      `\n\n${suggestionLine}`,
+      [ALLOW_OPTION, ALWAYS_ALLOW_OPTION, DENY_OPTION, ASK_IN_TERMINAL_OPTION],
+      maxLength,
+    )
     if (withSuggestion !== undefined) {
       return withSuggestion
     }
   }
   // Without the line the owner can't see what Always allow grants, so it goes too; Allow stays.
-  const withoutSuggestion = fitLayout(header, body, '', [
-    ALLOW_OPTION,
-    DENY_OPTION,
-    ASK_IN_TERMINAL_OPTION,
-  ])
+  const withoutSuggestion = fitLayout(
+    header,
+    body,
+    '',
+    [ALLOW_OPTION, DENY_OPTION, ASK_IN_TERMINAL_OPTION],
+    maxLength,
+  )
   if (withoutSuggestion !== undefined) {
     return withoutSuggestion
   }
   const tooLongPart = `\n\n${TOO_LONG_LINE}`
-  const primary = cut(body.primary, MAX_HOOK_TEXT_LENGTH - header.length - 1 - tooLongPart.length)
+  const primary = cut(body.primary, maxLength - header.length - 1 - tooLongPart.length)
   return {
     text: `${header}\n${primary}${tooLongPart}`,
     options: [DENY_OPTION, ASK_IN_TERMINAL_OPTION],
   }
 }
 
-/** Builds the Telegram text for a notification, within MAX_HOOK_TEXT_LENGTH. Never throws. */
-export function formatNotificationText(event: NotificationEvent): string {
+/** Builds the chat text for a notification, within `maxLength`. Never throws. */
+export function formatNotificationText(
+  event: NotificationEvent,
+  maxLength: number = MAX_HOOK_TEXT_LENGTH,
+): string {
   const hasDistinctTitle =
     event.title !== undefined && event.title !== '' && event.title !== event.message
   const body = hasDistinctTitle ? `${event.title}\n\n${event.message}` : event.message
   const text = hasAgent(event.agentType) ? `${describeActor(event.agentType)}:\n${body}` : body
-  return cut(text, MAX_HOOK_TEXT_LENGTH)
+  return cut(text, maxLength)
 }
 
 /** Never throws. `offered` is the options sent; an answer outside them is `unknownAnswer`. */
@@ -120,7 +129,7 @@ function cut(text: string, max: number): string {
   }
   const head = text.slice(0, max - 1)
   const last = head.charCodeAt(head.length - 1)
-  // A lone high surrogate makes the text invalid UTF-16, which Telegram rejects.
+  // A lone high surrogate makes the text invalid UTF-16, which chat apps reject.
   const isHighSurrogate = last >= 0xd800 && last <= 0xdbff
   return `${isHighSurrogate ? head.slice(0, -1) : head}${ELLIPSIS}`
 }
@@ -131,12 +140,13 @@ function fitLayout(
   body: ToolBody,
   suggestionPart: string,
   options: readonly string[],
+  maxLength: number,
 ): HookQuestion | undefined {
   const full = `${[header, body.primary, ...body.secondaries].join('\n')}${suggestionPart}`
-  if (full.length <= MAX_HOOK_TEXT_LENGTH) {
+  if (full.length <= maxLength) {
     return { text: full, options }
   }
-  const room = MAX_HOOK_TEXT_LENGTH - header.length - 1 - suggestionPart.length
+  const room = maxLength - header.length - 1 - suggestionPart.length
   if (body.primary.length > room) {
     return undefined
   }

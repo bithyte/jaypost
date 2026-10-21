@@ -1,7 +1,11 @@
 import { DEFAULT_TIMEOUT_SECONDS } from '../approval/index.ts'
 import type { ClientToken } from '../auth/index.ts'
-import { FETCH_GRACE_MS, postApi, requestApi } from '../client/index.ts'
-import { ASK_IN_TERMINAL_OPTION, ASK_USER_QUESTION_TOOL } from './constants.ts'
+import { FETCH_GRACE_MS, callApi, postApi, requestApi } from '../client/index.ts'
+import {
+  ASK_IN_TERMINAL_OPTION,
+  ASK_USER_QUESTION_TOOL,
+  MAX_HOOK_TEXT_LENGTH,
+} from './constants.ts'
 import { decidePermission, formatNotificationText, formatPermissionQuestion } from './formatter.ts'
 import { parseHookEvent } from './parser.ts'
 import { resolveHookProject } from './project.ts'
@@ -30,19 +34,51 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   }
   const event = parsed.event
   const project = resolveHookProject(args.project, deps.env, event.cwd)
+  // A plain allow doesn't answer AskUserQuestion, so the terminal keeps it (spec non-goal).
+  if (event.kind === 'PermissionRequest' && event.toolName === ASK_USER_QUESTION_TOOL) {
+    return 0
+  }
+  const maxLength = await resolveMaxLength(project, deps)
   switch (event.kind) {
     case 'Notification':
-      return notify(event, project, deps)
+      return notify(event, project, maxLength, deps)
     case 'PermissionRequest':
-      return askPermission(event, project, args, deps)
+      return askPermission(event, project, maxLength, args, deps)
   }
 }
 
-async function notify(event: NotificationEvent, project: string, deps: HookDeps): Promise<number> {
+/**
+ * The text cap: the service's limit less the `[project]` line it adds, at most
+ * MAX_HOOK_TEXT_LENGTH. A failed /status call isn't reported; the request that follows is.
+ */
+async function resolveMaxLength(project: string, deps: HookDeps): Promise<number> {
+  const result = await callApi(deps.port, 'GET', '/status', undefined, {
+    signal: deps.signal,
+    timeoutMs: FETCH_GRACE_MS,
+    ...toTokenOption(deps.token),
+  })
+  if (
+    result.kind === 'ok' &&
+    typeof result.body === 'object' &&
+    result.body !== null &&
+    'maxTextLength' in result.body &&
+    typeof result.body.maxTextLength === 'number'
+  ) {
+    return Math.min(MAX_HOOK_TEXT_LENGTH, result.body.maxTextLength - (project.length + 4))
+  }
+  return MAX_HOOK_TEXT_LENGTH
+}
+
+async function notify(
+  event: NotificationEvent,
+  project: string,
+  maxLength: number,
+  deps: HookDeps,
+): Promise<number> {
   const result = await postApi(
     deps.port,
     '/notify',
-    { project, text: formatNotificationText(event) },
+    { project, text: formatNotificationText(event, maxLength) },
     { signal: deps.signal, timeoutMs: FETCH_GRACE_MS, ...toTokenOption(deps.token) },
   )
   if (result.kind === 'failed') {
@@ -54,14 +90,11 @@ async function notify(event: NotificationEvent, project: string, deps: HookDeps)
 async function askPermission(
   event: PermissionRequestEvent,
   project: string,
+  maxLength: number,
   args: HookArgs,
   deps: HookDeps,
 ): Promise<number> {
-  // A plain allow doesn't answer it, so the terminal keeps it (spec non-goal).
-  if (event.toolName === ASK_USER_QUESTION_TOOL) {
-    return 0
-  }
-  const question = formatPermissionQuestion(event)
+  const question = formatPermissionQuestion(event, maxLength)
   const result = await requestApi(
     deps.port,
     {

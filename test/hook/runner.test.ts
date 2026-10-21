@@ -61,12 +61,14 @@ afterEach(async () => {
   )
 })
 
-async function startApi(options: { readonly auth?: ApiAuth } = {}) {
+async function startApi(
+  options: { readonly auth?: ApiAuth; readonly maxTextLength?: number } = {},
+) {
   const messenger = new RecordingMessenger()
   const notifier = new RecordingNotifier()
   const service = new ApprovalService(messenger)
   const server = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
+    maxTextLength: options.maxTextLength ?? 3900,
     providerName: 'test',
     auth: options.auth ?? NO_AUTH,
     notifications: new NotificationService(notifier),
@@ -261,8 +263,12 @@ test('without --timeout the hook asks for 300 s', async () => {
     request.setEncoding('utf8')
     request.on('data', (chunk: string) => (raw += chunk))
     request.on('end', () => {
-      posted = JSON.parse(raw)
       response.writeHead(200, { 'content-type': 'application/json' })
+      if (request.method === 'GET') {
+        response.end(JSON.stringify({ paired: true }))
+        return
+      }
+      posted = JSON.parse(raw)
       response.end(JSON.stringify({ ok: true, answer: 'Deny', kind: 'answered' }))
     })
   })
@@ -322,6 +328,69 @@ test('notification goes to /notify', async () => {
   expect(messenger.sent).toEqual([])
   expect(out).toEqual([])
   expect(errors).toEqual([])
+})
+
+test('caps the question to the service text limit minus the project line', async () => {
+  const { port, service, messenger } = await startApi({ maxTextLength: 400 })
+  const input = JSON.stringify({
+    hook_event_name: 'PermissionRequest',
+    cwd: '/work/api',
+    tool_name: 'Bash',
+    tool_input: { command: 'x'.repeat(5000) },
+  })
+  const { deps } = createDeps(port, input)
+  const pending = runHook({ project: 'proj' }, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const sent = messenger.sent[0]
+  expect(sent?.text.startsWith('[proj]\n\n')).toBe(true)
+  expect(sent?.text.length).toBe(400)
+  expect(sent?.options).toEqual(['Deny', 'Ask in terminal'])
+  service.tap(sent?.id ?? '', 1)
+  expect(await pending).toBe(0)
+})
+
+test('notification text follows the service text limit', async () => {
+  const { port, notifier } = await startApi({ maxTextLength: 400 })
+  const input = JSON.stringify({
+    hook_event_name: 'Notification',
+    cwd: '/work/api',
+    message: 'm'.repeat(5000),
+  })
+  const { deps, errors } = createDeps(port, input)
+  expect(await runHook({ project: 'proj' }, deps)).toBe(0)
+  expect(notifier.sent).toHaveLength(1)
+  expect(notifier.sent[0]?.length).toBe(400)
+  expect(errors).toEqual([])
+})
+
+test('keeps 3000 when /status has no maxTextLength', async () => {
+  let posted: { text?: string } = {}
+  const stub = createServer((request, response) => {
+    let raw = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => (raw += chunk))
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      if (request.method === 'GET') {
+        response.end(JSON.stringify({ paired: true }))
+        return
+      }
+      posted = JSON.parse(raw)
+      response.end(JSON.stringify({ answer: 'Ask in terminal', timedOut: false }))
+    })
+  })
+  stubs.push(stub)
+  await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve))
+  const { port } = stub.address() as AddressInfo
+  const input = JSON.stringify({
+    hook_event_name: 'PermissionRequest',
+    cwd: '/work/api',
+    tool_name: 'Bash',
+    tool_input: { command: 'x'.repeat(5000) },
+  })
+  const { deps } = createDeps(port, input)
+  expect(await runHook({}, deps)).toBe(0)
+  expect(posted.text?.length).toBe(3000)
 })
 
 test('service down exits 1 with the reachability message', async () => {
