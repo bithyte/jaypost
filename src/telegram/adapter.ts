@@ -2,37 +2,18 @@ import { GrammyError, InputFile } from 'grammy'
 import type { Bot } from 'grammy'
 import type { MessageEntity } from 'grammy/types'
 import type { Attachment, MessageReference, Messenger, OwnerCommand } from '../approval/index.ts'
-import { appendText } from '../format/index.ts'
+import {
+  DISMISS_LABEL,
+  formatChoicePayload,
+  formatDismissPayload,
+  withTextHint,
+} from '../conversation/index.ts'
+import type { ConversationHandlers, OwnerConversation } from '../conversation/index.ts'
 import type { FormattedText, Span } from '../format/index.ts'
 import type { Notifier } from '../notify/index.ts'
 import { formatCode } from '../pairing/index.ts'
-import type { PairResult } from '../pairing/index.ts'
-import {
-  AMBIGUOUS_REPLY,
-  BUTTONS_ONLY_REPLY,
-  CALLBACK_DATA_PATTERN,
-  DISMISS_DATA_PATTERN,
-  DISMISS_LABEL,
-  NOT_OPEN_REPLY,
-  NOT_TEXT_REPLY,
-  START_COMMAND_PATTERN,
-  TEXT_HINT_WITHOUT_BUTTONS,
-  TEXT_HINT_WITH_BUTTONS,
-} from './constants.ts'
-import type {
-  CommandMessage,
-  Dismiss,
-  IncomingMessage,
-  OpenQuestion,
-  OpenQuestions,
-  Owner,
-  PairingMessage,
-  Reply,
-  ReplyRoute,
-  Tap,
-  TapRoute,
-  TelegramMessageReference,
-} from './types.ts'
+import type { RuntimeHandlers } from '../provider/index.ts'
+import type { TelegramMessageReference } from './types.ts'
 
 /** How to pair: `code` is raw (no dash), `bot` the username without `@`. */
 export function formatPairingInstructions(code: string, bot: string): string {
@@ -44,43 +25,9 @@ export function formatLegacyInstructions(displayCode: string, bot: string): stri
   return formatPairingInstructions(displayCode.replaceAll('-', ''), bot)
 }
 
-/** Key of an open question in `OpenQuestions`: `<chatId>:<messageId>`. */
-export function formatMessageKey(chatId: number, messageId: number): string {
+// Key of an open question in the conversation: `<chatId>:<messageId>`.
+function formatMessageKey(chatId: number, messageId: number): string {
   return `${chatId}:${messageId}`
-}
-
-/** Button payload `<id>:<optionIndex>`; `routeTap` parses it. */
-export function formatCallbackData(id: string, optionIndex: number): string {
-  return `${id}:${optionIndex}`
-}
-
-/** Dismiss button payload `dismiss/<id>`; `parseDismissData` reads it back. */
-export function formatDismissData(id: string): string {
-  return `dismiss/${id}`
-}
-
-/** The notification id in a dismiss payload, or undefined for anything else. */
-export function parseDismissData(data: string | undefined): string | undefined {
-  return data === undefined ? undefined : DISMISS_DATA_PATTERN.exec(data)?.[1]
-}
-
-/**
- * 'ignored' for anyone but the owner, 'expired' for malformed data, else whatever `tap` returns.
- */
-export function routeTap(
-  fromId: number,
-  data: string | undefined,
-  ownerId: number | undefined,
-  tap: Tap,
-): TapRoute {
-  if (ownerId === undefined || fromId !== ownerId) {
-    return 'ignored'
-  }
-  const [, id, rawIndex] = (data === undefined ? null : CALLBACK_DATA_PATTERN.exec(data)) ?? []
-  if (id === undefined || rawIndex === undefined) {
-    return 'expired'
-  }
-  return tap(id, Number(rawIndex))
 }
 
 function toEntity(span: Span, offset: number, length: number): MessageEntity {
@@ -162,63 +109,29 @@ async function sendFormatted<Result>(
   return send({})
 }
 
-/**
- * Decides what an incoming message means: a reply to an open text question settles it, a non-reply
- * settles the only open text question, anything else is ignored or reported. Never throws; calls
- * `reply` at most once. The answer is trimmed; the `/` check on non-replies uses the raw text.
- */
-export function routeReply(
-  message: IncomingMessage,
-  ownerId: number | undefined,
-  botId: number,
-  openQuestions: ReadonlyMap<string, OpenQuestion>,
-  reply: Reply,
-): ReplyRoute {
-  if (!isOwnerCommand(message, ownerId)) {
-    return 'ignored'
-  }
-  const { replyTo, text } = message
-  if (replyTo !== undefined) {
-    const question = openQuestions.get(formatMessageKey(message.chatId, replyTo.messageId))
-    if (question !== undefined) {
-      if (text === undefined) {
-        return question.allowText ? 'notText' : 'ignored'
-      }
-      return question.allowText ? reply(question.id, text.trim()) : 'buttonsOnly'
-    }
-    if (replyTo.fromId === botId) {
-      return text === undefined ? 'ignored' : 'notOpen'
-    }
-  }
-  if (text === undefined || text.startsWith('/')) {
-    return 'ignored'
-  }
-  const textQuestions = [...openQuestions.values()].filter((question) => question.allowText)
-  const [only, second] = textQuestions
-  if (only === undefined) {
-    return 'ignored'
-  }
-  if (second !== undefined) {
-    return 'ambiguous'
-  }
-  return reply(only.id, text.trim()) === 'accepted' ? 'accepted' : 'ignored'
-}
-
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+// The conversation keeps ids as strings; grammY wants the numeric chat id.
+function requireOwnerChatId(conversation: OwnerConversation): number {
+  const ownerId = conversation.ownerId
+  if (ownerId === undefined) {
+    throw new Error('bot is not paired yet')
+  }
+  return Number(ownerId)
 }
 
 /**
  * Sends requests as inline-keyboard messages to the owner; the final edit removes the buttons.
  * A request without options has no keyboard, and `allowText` appends a hint on how to reply.
- * Each sent request is added to `openQuestions` and removed again by `finalize`, even when the
- * final edit fails. Notifications get a single Dismiss button. Sending throws when nobody is
- * paired.
+ * A sent request is tracked by the conversation only after Telegram accepted it, and forgotten
+ * again by `finalize`, even when the final edit fails. Notifications get a single Dismiss button.
+ * Sending throws when nobody is paired.
  */
 export function createTelegramMessenger(
   bot: Bot,
-  owner: Owner,
-  openQuestions: OpenQuestions = new Map(),
+  conversation: OwnerConversation,
   log: (line: string) => void = console.error,
 ): Required<Messenger> & Required<Notifier> {
   // The document is always silent; the message that follows decides whether the phone pings.
@@ -251,13 +164,9 @@ export function createTelegramMessenger(
   }
   return {
     async sendRequest(id, message, options, allowText, attachment): Promise<MessageReference> {
-      const ownerId = owner.id
-      if (ownerId === undefined) {
-        throw new Error('bot is not paired yet')
-      }
+      const ownerId = requireOwnerChatId(conversation)
       const hasButtons = options.length > 0
-      const hint = hasButtons ? TEXT_HINT_WITH_BUTTONS : TEXT_HINT_WITHOUT_BUTTONS
-      const shown = allowText ? appendText(message, `\n\n${hint}`) : message
+      const shown = withTextHint(message, hasButtons, allowText)
       const documentMessageId =
         attachment === undefined ? undefined : await sendDocument(ownerId, attachment)
       const sent = await sendAfterDocument(ownerId, documentMessageId, () =>
@@ -267,7 +176,7 @@ export function createTelegramMessenger(
             ...(hasButtons && {
               reply_markup: {
                 inline_keyboard: options.map((label, index) => [
-                  { text: label, callback_data: formatCallbackData(id, index) },
+                  { text: label, callback_data: formatChoicePayload(id, index) },
                 ]),
               },
             }),
@@ -277,10 +186,7 @@ export function createTelegramMessenger(
           }),
         ),
       )
-      openQuestions.set(formatMessageKey(sent.chat.id, sent.message_id), {
-        id,
-        allowText,
-      })
+      conversation.track(formatMessageKey(sent.chat.id, sent.message_id), id, allowText)
       return {
         chatId: sent.chat.id,
         messageId: sent.message_id,
@@ -290,7 +196,7 @@ export function createTelegramMessenger(
     },
     async finalize(reference, message) {
       const { chatId, messageId, hasButtons } = reference as TelegramMessageReference
-      openQuestions.delete(formatMessageKey(chatId, messageId))
+      conversation.forget(formatMessageKey(chatId, messageId))
       await sendFormatted(message, log, (extra) =>
         bot.api.editMessageText(chatId, messageId, message.text, {
           ...extra,
@@ -301,10 +207,7 @@ export function createTelegramMessenger(
       )
     },
     async sendNotification(id, message, options, attachment): Promise<MessageReference> {
-      const ownerId = owner.id
-      if (ownerId === undefined) {
-        throw new Error('bot is not paired yet')
-      }
+      const ownerId = requireOwnerChatId(conversation)
       const documentMessageId =
         attachment === undefined ? undefined : await sendDocument(ownerId, attachment)
       const sent = await sendAfterDocument(ownerId, documentMessageId, () =>
@@ -313,7 +216,7 @@ export function createTelegramMessenger(
             ...extra,
             disable_notification: options.silent,
             reply_markup: {
-              inline_keyboard: [[{ text: DISMISS_LABEL, callback_data: formatDismissData(id) }]],
+              inline_keyboard: [[{ text: DISMISS_LABEL, callback_data: formatDismissPayload(id) }]],
             },
             ...(documentMessageId !== undefined && {
               reply_parameters: { message_id: documentMessageId },
@@ -339,191 +242,138 @@ export function createTelegramMessenger(
 }
 
 /**
- * Routes approval taps to `tap`. An owner's Dismiss tap deletes the tapped message (so it works
- * without in-memory state, e.g. after a restart) and the bot's document it replies to, and calls
- * `dismiss`; a failed delete is logged.
- * Always answers the callback so the button stops spinning.
+ * Lets the conversation decide what a button tap means; only the owner's taps in a private chat
+ * count. A Dismiss tap deletes the tapped message (so it works without in-memory state, e.g. after
+ * a restart) and the bot's document it replies to; a failed delete is logged. Always answers the
+ * callback, once, so the button stops spinning.
  */
 export function registerTapHandler(
   bot: Bot,
-  owner: Owner,
-  tap: Tap,
-  dismiss: Dismiss,
+  conversation: OwnerConversation,
+  handlers: ConversationHandlers,
   log: (line: string) => void = console.error,
 ): void {
   bot.on('callback_query:data', async (context) => {
-    const dismissId = parseDismissData(context.callbackQuery.data)
-    if (dismissId !== undefined) {
-      if (owner.id !== undefined && context.from.id === owner.id) {
-        dismiss(dismissId)
-        const message = context.callbackQuery.message
+    // The chat comes from the tapped message, which is absent when Telegram drops it.
+    const message = context.callbackQuery.message
+    const outcome = conversation.tap(
+      {
+        senderId: String(context.from.id),
+        isDirect: message?.chat.type === 'private',
+        payload: context.callbackQuery.data,
+      },
+      handlers,
+    )
+    switch (outcome.kind) {
+      case 'ignored':
+      case 'answered':
+        await context.answerCallbackQuery()
+        return
+      case 'expired':
+        await context.answerCallbackQuery({ text: outcome.text })
+        return
+      case 'dismissed': {
         const document =
           message !== undefined && 'reply_to_message' in message
             ? message.reply_to_message
             : undefined
-        const chatId = message?.chat.id
         try {
           await context.deleteMessage()
         } catch (error) {
           log(`failed to delete notification: ${describeError(error)}`)
         }
         if (
-          chatId !== undefined &&
+          message !== undefined &&
           document?.from?.id === bot.botInfo.id &&
           'document' in document
         ) {
           try {
-            await context.api.deleteMessage(chatId, document.message_id)
+            await context.api.deleteMessage(message.chat.id, document.message_id)
           } catch (error) {
             log(`failed to delete notification: ${describeError(error)}`)
           }
         }
+        await context.answerCallbackQuery()
+        return
       }
-      await context.answerCallbackQuery()
-      return
-    }
-    const route = routeTap(context.from.id, context.callbackQuery.data, owner.id, tap)
-    if (route === 'expired') {
-      await context.answerCallbackQuery({ text: 'Expired' })
-    } else {
-      await context.answerCallbackQuery()
     }
   })
 }
 
-function describeReplyRoute(route: ReplyRoute): string | undefined {
-  switch (route) {
-    case 'ignored':
-    case 'accepted':
-      return undefined
-    case 'buttonsOnly':
-      return BUTTONS_ONLY_REPLY
-    case 'notOpen':
-    case 'expired':
-      return NOT_OPEN_REPLY
-    case 'ambiguous':
-      return AMBIGUOUS_REPLY
-    case 'notText':
-      return NOT_TEXT_REPLY
-  }
-}
-
 /**
- * Routes the owner's messages to `reply` via `routeReply`: an accepted answer is silent, a
- * refused one gets a short bot reply (logged if sending fails), and everything ignored goes on to
- * the next handler. Register after `registerCommandHandler` (registered commands never become
- * answers) and before `registerPairingHandler` (it passes on everything it ignores).
+ * Lets the conversation decide what a message means and sends its answer: refusals as a reply to
+ * the owner's message, pairing results as a plain message. Pairing also shows the command menu to
+ * the new owner. A failed reply is logged, never thrown. Register after `registerCommandHandler`
+ * so registered commands never become answers.
  */
-export function registerReplyHandler(
+export function registerMessageHandler(
   bot: Bot,
-  owner: Owner,
-  openQuestions: OpenQuestions,
-  reply: Reply,
+  conversation: OwnerConversation,
+  handlers: RuntimeHandlers,
   log: (line: string) => void = console.error,
 ): void {
-  bot.on('message', async (context, next) => {
+  async function sendReply(send: () => Promise<unknown>): Promise<void> {
+    try {
+      await send()
+    } catch (error) {
+      log(`failed to reply: ${describeError(error)}`)
+    }
+  }
+  bot.on('message', async (context) => {
     const replyTo = context.message.reply_to_message
-    const route = routeReply(
+    const outcome = conversation.receive(
       {
-        fromId: context.from?.id,
-        chatType: context.chat.type,
-        chatId: context.chat.id,
+        senderId: context.from === undefined ? undefined : String(context.from.id),
+        fromBot: context.from?.is_bot === true,
+        isDirect: context.chat.type === 'private',
         text: context.message.text,
         replyTo:
           replyTo === undefined
             ? undefined
-            : { messageId: replyTo.message_id, fromId: replyTo.from?.id },
+            : {
+                key: formatMessageKey(context.chat.id, replyTo.message_id),
+                fromSelf: replyTo.from?.id === bot.botInfo.id,
+              },
       },
-      owner.id,
-      bot.botInfo.id,
-      openQuestions,
-      reply,
+      handlers,
     )
-    if (route === 'ignored') {
-      await next()
-      return
-    }
-    const copy = describeReplyRoute(route)
-    if (copy === undefined) {
-      return
-    }
-    try {
-      await context.reply(copy, {
-        reply_parameters: { message_id: context.message.message_id },
-      })
-    } catch (error) {
-      log(`failed to reply: ${error instanceof Error ? error.message : String(error)}`)
+    switch (outcome.kind) {
+      case 'ignored':
+      case 'answered':
+        return
+      case 'refused':
+        await sendReply(() =>
+          context.reply(outcome.text, {
+            reply_parameters: { message_id: context.message.message_id },
+          }),
+        )
+        return
+      case 'paired':
+        setCommandMenu(bot, Number(outcome.ownerId), handlers.commands, log)
+        await sendReply(() => context.reply(outcome.text))
+        return
+      case 'wrongCode':
+        await sendReply(() => context.reply(outcome.text))
+        return
     }
   })
-}
-
-/**
- * Reply text for a pairing attempt, or undefined to stay silent (not a private chat, blocked, or
- * already paired). Calls `onPaired` on success.
- */
-export function handlePairingMessage(
-  message: PairingMessage,
-  pair: (senderId: string, text: string) => PairResult,
-  onPaired: (id: number) => void,
-): string | undefined {
-  if (message.chatType !== 'private') {
-    return undefined
-  }
-  const result = pair(
-    String(message.fromId),
-    message.text.trim().replace(START_COMMAND_PATTERN, ''),
-  )
-  if (result === 'paired') {
-    onPaired(message.fromId)
-    return 'Paired. Approval requests will appear here.'
-  }
-  if (result === 'wrong') {
-    return "This bot isn't paired. Check the service logs for the pairing code."
-  }
-  return undefined
-}
-
-/** Feeds text messages to `handlePairingMessage` and sends any reply. */
-export function registerPairingHandler(
-  bot: Bot,
-  pair: (senderId: string, text: string) => PairResult,
-  onPaired: (id: number) => void,
-): void {
-  bot.on('message:text', async (context) => {
-    const reply = handlePairingMessage(
-      {
-        fromId: context.from.id,
-        chatType: context.chat.type,
-        text: context.message.text,
-      },
-      pair,
-      onPaired,
-    )
-    if (reply !== undefined) {
-      await context.reply(reply)
-    }
-  })
-}
-
-/** True only for the paired owner writing in a private chat; channel posts have no sender. */
-export function isOwnerCommand(message: CommandMessage, ownerId: number | undefined): boolean {
-  return message.chatType === 'private' && ownerId !== undefined && message.fromId === ownerId
 }
 
 /**
  * Registers one handler per command. Replies with `command`'s text when it returns one; anyone but
  * the owner in a private chat is ignored, and the update goes no further (so a stranger's command
- * never reaches the pairing handler).
+ * never reaches the message handler).
  */
 export function registerCommandHandler(
   bot: Bot,
-  owner: Owner,
+  conversation: OwnerConversation,
   commands: readonly OwnerCommand[],
   command: (name: string, argument: string) => string | undefined,
 ): void {
   for (const { name } of commands) {
     bot.command(name, async (context) => {
-      if (!isOwnerCommand({ fromId: context.from?.id, chatType: context.chat.type }, owner.id)) {
+      const senderId = context.from === undefined ? undefined : String(context.from.id)
+      if (!conversation.isOwner(senderId, context.chat.type === 'private')) {
         return
       }
       const reply = command(name, context.match)

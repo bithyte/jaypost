@@ -101,7 +101,7 @@ test('pairingInstructions text is unchanged', async () => {
   expect(runtime.statusFields?.()).toEqual({ bot: 'mybot' })
 })
 
-test('start logs polling and registers taps, then commands, then replies, then pairing', () => {
+test('start registers taps, then commands, then messages', () => {
   const { bot, registrations } = fakeBot()
   const log = vi.fn()
   const runtime = createTelegramRuntime({ botToken: TOKEN }, log, () => bot)
@@ -113,7 +113,6 @@ test('start logs polling and registers taps, then commands, then replies, then p
     'command:cancel',
     'command:history',
     'on:message',
-    'on:message:text',
   ])
 })
 
@@ -165,13 +164,6 @@ test('stop never rejects', async () => {
   await expect(runtime.stop()).resolves.toBeUndefined()
 })
 
-test('pairing handler is not registered without pair', () => {
-  const { bot, registrations } = fakeBot()
-  const runtime = createTelegramRuntime({ botToken: TOKEN }, vi.fn(), () => bot)
-  runtime.start(handlers())
-  expect(registrations).not.toContain('on:message:text')
-})
-
 test('pairing sets the owner so requests go to them', async () => {
   const { bot, on } = fakeBot()
   const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 9 } }))
@@ -181,13 +173,13 @@ test('pairing sets the owner so requests go to them', async () => {
   await expect(
     runtime.sendRequest('id1', { text: 'Q', spans: [] }, ['Yes'], false, undefined),
   ).rejects.toThrow()
-  const pairingHandler = on.mock.calls.find((call) => call[0] === 'message:text')?.[1] as (
+  const pairingHandler = on.mock.calls.find((call) => call[0] === 'message')?.[1] as (
     context: unknown,
   ) => Promise<void>
   await pairingHandler({
-    from: { id: 9 },
-    chat: { type: 'private' },
-    message: { text: 'K7QM4XPD' },
+    from: { id: 9, is_bot: false },
+    chat: { id: 9, type: 'private' },
+    message: { message_id: 60, text: 'K7QM4XPD' },
     reply: vi.fn(async () => {}),
   })
   expect(
@@ -219,14 +211,14 @@ async function runPairing(setMyCommands: ReturnType<typeof vi.fn>, log = vi.fn()
   ;(bot as unknown as { api: object }).api = { setMyCommands }
   const runtime = createTelegramRuntime({ botToken: TOKEN }, log, () => bot)
   runtime.start({ ...handlers(), pair: () => 'paired' })
-  const pairingHandler = on.mock.calls.find((call) => call[0] === 'message:text')?.[1] as (
+  const pairingHandler = on.mock.calls.find((call) => call[0] === 'message')?.[1] as (
     context: unknown,
   ) => Promise<void>
   const reply = vi.fn(async () => {})
   await pairingHandler({
-    from: { id: 9 },
-    chat: { type: 'private' },
-    message: { text: 'K7QM4XPD' },
+    from: { id: 9, is_bot: false },
+    chat: { id: 9, type: 'private' },
+    message: { message_id: 60, text: 'K7QM4XPD' },
     reply,
   })
   return { reply, log }

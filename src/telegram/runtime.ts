@@ -5,16 +5,15 @@ import type {
   RuntimeHandlers,
   SettingValues,
 } from '../provider/index.ts'
+import { OwnerConversation } from '../conversation/index.ts'
 import {
   createTelegramMessenger,
   formatPairingInstructions,
   registerCommandHandler,
-  registerPairingHandler,
-  registerReplyHandler,
+  registerMessageHandler,
   registerTapHandler,
   setCommandMenu,
 } from './adapter.ts'
-import type { OpenQuestions, Owner } from './types.ts'
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -30,9 +29,10 @@ export function createTelegramRuntime(
   createBot: (token: string) => Bot = (token) => new Bot(token),
 ): ProviderRuntime {
   const bot = createBot(String(settings.botToken))
-  const owner: Owner = { id: typeof settings.ownerId === 'number' ? settings.ownerId : undefined }
-  const openQuestions: OpenQuestions = new Map()
-  const messenger = createTelegramMessenger(bot, owner, openQuestions, log)
+  const conversation = new OwnerConversation(
+    typeof settings.ownerId === 'number' ? String(settings.ownerId) : undefined,
+  )
+  const messenger = createTelegramMessenger(bot, conversation, log)
   let stopped = false
   return {
     async checkCredentials(): Promise<CredentialCheck> {
@@ -58,17 +58,11 @@ export function createTelegramRuntime(
       bot.catch((error) => {
         log(`bot error: ${describeError(error.error)}`)
       })
-      registerTapHandler(bot, owner, handlers.answer, handlers.dismiss, log)
-      registerCommandHandler(bot, owner, handlers.commands, handlers.command)
-      registerReplyHandler(bot, owner, openQuestions, handlers.reply, log)
-      if (handlers.pair !== undefined) {
-        registerPairingHandler(bot, handlers.pair, (id) => {
-          owner.id = id
-          setCommandMenu(bot, id, handlers.commands, log)
-        })
-      }
-      if (owner.id !== undefined) {
-        setCommandMenu(bot, owner.id, handlers.commands, log)
+      registerTapHandler(bot, conversation, handlers, log)
+      registerCommandHandler(bot, conversation, handlers.commands, handlers.command)
+      registerMessageHandler(bot, conversation, handlers, log)
+      if (conversation.ownerId !== undefined) {
+        setCommandMenu(bot, Number(conversation.ownerId), handlers.commands, log)
       }
       bot
         .start({ onStart: (botUser) => log(`bot @${botUser.username} polling`) })
