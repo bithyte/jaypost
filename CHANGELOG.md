@@ -1,5 +1,15 @@
 # jaypost
 
+## 0.7.0
+
+### Minor Changes
+
+- 333dedb: One-line install for the standalone binary: `curl -fsSL https://unpkg.com/jaypost/install.sh | sh` picks the binary for your OS and CPU, checks it against `SHA256SUMS`, puts it in `~/.local/bin` and runs `jaypost init`. The website serves the same script at `https://bithyte.github.io/jaypost/install.sh`.
+
+### Patch Changes
+
+- b299efa: Fixed the standalone binary failing every Telegram call, so `jaypost init` rejected any bot token. Also silenced the `url.parse()` deprecation warning (DEP0169) it printed on the first Telegram request.
+
 ## 0.6.0
 
 ### Minor Changes
