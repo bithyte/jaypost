@@ -6,6 +6,8 @@
 
 Good for an agent that wants to force-push, a deploy script that needs a go-ahead, or an n8n flow that just wants to tell you something. Runs on your machine, talks only to you.
 
+Website: https://bithyte.github.io/jaypost/
+
 ## Quick start
 
 You need Node 24+ and a bot token: from [@BotFather](https://t.me/BotFather) for Telegram, or from the [Discord developer portal](#discord-setup).
