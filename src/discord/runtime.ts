@@ -4,12 +4,13 @@ import type {
   RuntimeHandlers,
   SettingValues,
 } from '../provider/index.ts'
+import { OwnerConversation } from '../conversation/index.ts'
 import { formatCode } from '../pairing/index.ts'
 import { createDiscordClient } from './client.ts'
 import { toCommandDefinitions } from './commands.ts'
 import { handleInteraction, handleMessage } from './events.ts'
 import { createDiscordMessenger } from './messenger.ts'
-import type { DiscordClient, DiscordIdentity, EventContext, OpenQuestions, Owner } from './types.ts'
+import type { DiscordClient, DiscordIdentity, EventContext } from './types.ts'
 
 type KnownIdentity = Extract<DiscordIdentity, { readonly kind: 'ok' }>
 
@@ -24,11 +25,10 @@ export function createDiscordRuntime(
   createClient: (token: string) => DiscordClient = createDiscordClient,
 ): ProviderRuntime {
   const client = createClient(String(settings.botToken))
-  const owner: Owner = {
-    id: typeof settings.ownerId === 'string' ? settings.ownerId : undefined,
-  }
-  const openQuestions: OpenQuestions = new Map()
-  const messenger = createDiscordMessenger(client, owner, openQuestions, log)
+  const conversation = new OwnerConversation(
+    typeof settings.ownerId === 'string' ? settings.ownerId : undefined,
+  )
+  const messenger = createDiscordMessenger(client, conversation, log)
   let identity: KnownIdentity | undefined
   let stopped = false
   function requireIdentity(): KnownIdentity {
@@ -65,13 +65,9 @@ export function createDiscordRuntime(
       const { userId, applicationId } = requireIdentity()
       const context: EventContext = {
         client,
-        owner,
+        conversation,
         botId: userId,
-        openQuestions,
         handlers,
-        onPaired: (id) => {
-          owner.id = id
-        },
         log,
       }
       // Never the error text: it could carry request details

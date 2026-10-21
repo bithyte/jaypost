@@ -1,17 +1,9 @@
 import {
   DISCORD_MAX_CONTENT_LENGTH,
-  EXPIRED_REPLY,
   NOT_OWNER_COMMAND_REPLY,
   UNKNOWN_COMMAND_REPLY,
 } from './constants.ts'
 import { renderContent } from './markdown.ts'
-import {
-  describeReplyRoute,
-  handlePairingMessage,
-  parseDismissId,
-  routeReply,
-  routeTap,
-} from './routing.ts'
 import type {
   EventContext,
   IncomingInteraction,
@@ -27,10 +19,6 @@ const ACKNOWLEDGE: InteractionResponse = { kind: 'acknowledge' }
 
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-function isOwner(userId: string | undefined, context: EventContext): boolean {
-  return context.owner.id !== undefined && userId === context.owner.id
 }
 
 async function respond(
@@ -64,48 +52,52 @@ async function sendReply(
   }
 }
 
+async function deleteDismissed(
+  interaction: ButtonInteraction,
+  context: EventContext,
+): Promise<void> {
+  try {
+    await context.client.deleteMessage(interaction.channelId, interaction.messageId)
+  } catch (error) {
+    context.log(`failed to delete notification: ${describeError(error)}`)
+  }
+}
+
 // Server taps are only acknowledged: the bot is in a server just so its DMs are allowed
 async function handleTap(interaction: ButtonInteraction, context: EventContext): Promise<void> {
-  if (!interaction.isDirect) {
-    await respond(interaction, ACKNOWLEDGE, context)
-    return
-  }
-  const dismissId = parseDismissId(interaction.customId)
-  if (dismissId !== undefined) {
-    if (!isOwner(interaction.userId, context)) {
+  const outcome = context.conversation.tap(
+    {
+      senderId: interaction.userId,
+      isDirect: interaction.isDirect,
+      payload: interaction.customId,
+    },
+    context.handlers,
+  )
+  switch (outcome.kind) {
+    case 'ignored':
+    case 'answered':
       await respond(interaction, ACKNOWLEDGE, context)
       return
-    }
-    context.handlers.dismiss(dismissId)
-    // Acknowledge first: Discord gives an interaction three seconds
-    await respond(interaction, ACKNOWLEDGE, context)
-    try {
-      await context.client.deleteMessage(interaction.channelId, interaction.messageId)
-    } catch (error) {
-      context.log(`failed to delete notification: ${describeError(error)}`)
-    }
-    return
+    case 'expired':
+      await respond(
+        interaction,
+        { kind: 'message', content: outcome.text, ephemeral: true },
+        context,
+      )
+      return
+    case 'dismissed':
+      // Acknowledge first: Discord gives an interaction three seconds
+      await respond(interaction, ACKNOWLEDGE, context)
+      await deleteDismissed(interaction, context)
+      return
   }
-  const route = routeTap(
-    interaction.userId,
-    interaction.customId,
-    context.owner.id,
-    context.handlers.answer,
-  )
-  await respond(
-    interaction,
-    route === 'expired'
-      ? { kind: 'message', content: EXPIRED_REPLY, ephemeral: true }
-      : ACKNOWLEDGE,
-    context,
-  )
 }
 
 async function handleCommand(
   interaction: CommandInteraction,
   context: EventContext,
 ): Promise<void> {
-  if (!interaction.isDirect || !isOwner(interaction.userId, context)) {
+  if (!context.conversation.isOwner(interaction.userId, interaction.isDirect)) {
     await respond(
       interaction,
       { kind: 'message', content: NOT_OWNER_COMMAND_REPLY, ephemeral: true },
@@ -149,34 +141,35 @@ export async function handleInteraction(
 }
 
 /**
- * Routes a DM to `handlers.reply`, answering refused replies, and passes what it ignores to
- * pairing. The bot's own messages and server messages are dropped first, so they never reach
- * pairing. Never throws; client failures are logged.
+ * Lets the conversation decide what a DM means and sends its answer: refusals as a reply, pairing
+ * results as a plain message. The bot's own messages and server messages are ignored. Never
+ * throws; client failures are logged.
  */
 export async function handleMessage(
   message: IncomingMessage,
   context: EventContext,
 ): Promise<void> {
-  if (message.fromBot || !message.isDirect) {
-    return
-  }
-  const route = routeReply(
-    message,
-    context.owner.id,
-    context.botId,
-    context.openQuestions,
-    context.handlers.reply,
+  const { replyTo } = message
+  const outcome = context.conversation.receive(
+    {
+      senderId: message.fromId,
+      fromBot: message.fromBot,
+      isDirect: message.isDirect,
+      text: message.text,
+      replyTo: replyTo && { key: replyTo.messageId, fromSelf: replyTo.fromId === context.botId },
+    },
+    context.handlers,
   )
-  const copy = describeReplyRoute(route)
-  if (copy !== undefined) {
-    await sendReply(message, copy, true, context)
-    return
-  }
-  if (route !== 'ignored' || context.handlers.pair === undefined) {
-    return
-  }
-  const pairingReply = handlePairingMessage(message, context.handlers.pair, context.onPaired)
-  if (pairingReply !== undefined) {
-    await sendReply(message, pairingReply, false, context)
+  switch (outcome.kind) {
+    case 'ignored':
+    case 'answered':
+      return
+    case 'refused':
+      await sendReply(message, outcome.text, true, context)
+      return
+    case 'paired':
+    case 'wrongCode':
+      await sendReply(message, outcome.text, false, context)
+      return
   }
 }
