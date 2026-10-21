@@ -35,4 +35,5 @@ export type TapOutcome =
 /** The runtime callbacks the conversation drives. */
 export type ConversationHandlers = Pick<RuntimeHandlers, 'answer' | 'reply' | 'dismiss' | 'pair'>
 
+/** A tracked bot question awaiting an owner answer; allowText lets a plain reply answer it. */
 export type OpenQuestion = { readonly id: string; readonly allowText: boolean }

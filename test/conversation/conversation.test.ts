@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vite-plus/test'
+import type { Mock } from 'vite-plus/test'
 import {
   AMBIGUOUS_REPLY,
   BUTTONS_ONLY_REPLY,
@@ -21,7 +22,7 @@ import { pairOwner, receiveReplyTo } from './helpers.ts'
 
 const OWNER = '9'
 const QUESTION = { key: '5', fromSelf: true }
-const OTHER_BOT_MESSAGE = { key: '7', fromSelf: true }
+const UNTRACKED_BOT_MESSAGE = { key: '7', fromSelf: true }
 const messageOf = (overrides: Partial<ConversationMessage> = {}): ConversationMessage => ({
   senderId: OWNER,
   fromBot: false,
@@ -46,7 +47,15 @@ function conversationWith(...entries: [string, boolean][]): OwnerConversation {
   }
   return conversation
 }
-function handlersOf(overrides: Partial<ConversationHandlers> = {}) {
+type SpiedHandlers = {
+  answer: Mock<ConversationHandlers['answer']>
+  reply: Mock<ConversationHandlers['reply']>
+  dismiss: Mock<ConversationHandlers['dismiss']>
+} & Omit<ConversationHandlers, 'answer' | 'reply' | 'dismiss'>
+function handlersOf(
+  overrides: Partial<Omit<ConversationHandlers, 'answer' | 'reply' | 'dismiss'>> &
+    Partial<Pick<SpiedHandlers, 'answer' | 'reply' | 'dismiss'>> = {},
+): SpiedHandlers {
   return {
     answer: vi.fn(() => 'accepted' as const),
     reply: vi.fn(() => 'accepted' as const),
@@ -138,7 +147,7 @@ const ROWS: Row[] = [
   {
     name: 'receive says not open for a reply to another bot message',
     entries: [['5', true]],
-    message: { replyTo: OTHER_BOT_MESSAGE },
+    message: { replyTo: UNTRACKED_BOT_MESSAGE },
     outcome: refused(NOT_OPEN_REPLY),
     calls: [],
   },
@@ -204,7 +213,7 @@ const ROWS: Row[] = [
   {
     name: 'receive ignores a non-text reply to another bot message',
     entries: [['5', false]],
-    message: { text: undefined, replyTo: OTHER_BOT_MESSAGE },
+    message: { text: undefined, replyTo: UNTRACKED_BOT_MESSAGE },
     outcome: IGNORED,
     calls: [],
   },
