@@ -33,7 +33,9 @@ await build({
   minify: true,
   clean: true,
   // bundle everything, including grammy's transitive deps, so the binary needs no node_modules
-  deps: { alwaysBundle: [/.*/], onlyBundle: false },
+  // zlib-sync stays external: @discordjs/ws imports it lazily and only for zlib-sync
+  // compression, which we don't enable
+  deps: { alwaysBundle: [/.*/], neverBundle: ['zlib-sync'], onlyBundle: false },
   // tr46 (via grammy, node-fetch, whatwg-url) requires the built-in punycode, which warns
   // DEP0040; the trailing slash resolves the userland package instead
   alias: { punycode: 'punycode/' },

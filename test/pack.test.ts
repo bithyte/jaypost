@@ -21,7 +21,7 @@ test('cjs build exposes the client to require()', () => {
   expect(result.status, result.stderr).toBe(0)
   expect(existsSync(join(directory, 'index.d.cts'))).toBe(true)
   expect(readFileSync(join(directory, 'index.cjs'), 'utf8')).not.toMatch(
-    /grammy|@clack|commander|fastify/,
+    /grammy|@clack|commander|fastify|@discordjs|discord-api-types/,
   )
   const library = createRequire(import.meta.url)(join(directory, 'index.cjs'))
   expect(Object.keys(library).toSorted()).toEqual([
