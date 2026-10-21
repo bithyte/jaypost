@@ -10,6 +10,10 @@
   --text-faint: light-dark(#8a8a95, #6b6b76);
   --accent: light-dark(#15803d, #7ee0a1);
   --accent-dim: light-dark(rgb(21 128 61 / 12%), rgb(126 224 161 / 14%));
+  --telegram: light-dark(#1a82c4, #2aabee);
+  --discord: light-dark(#4752c4, #5865f2);
+  --bloom-telegram: light-dark(rgb(42 171 238 / 22%), rgb(42 171 238 / 20%));
+  --bloom-discord: light-dark(rgb(88 101 242 / 18%), rgb(88 101 242 / 20%));
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   --font-mono:
@@ -100,6 +104,51 @@ pre {
 .section {
   padding: 72px 0;
   border-top: 1px solid var(--border);
+}
+
+/* bloom lights: one glow per edge, sides swap every section */
+.hero,
+.section {
+  position: relative;
+  isolation: isolate;
+  overflow: clip;
+}
+
+.hero::before,
+.hero::after,
+.section::before,
+.section::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.hero::before,
+.section::before {
+  top: -180px;
+  left: -240px;
+  background: radial-gradient(closest-side, var(--bloom-telegram), transparent);
+}
+
+.hero::after,
+.section::after {
+  right: -240px;
+  bottom: -240px;
+  background: radial-gradient(closest-side, var(--bloom-discord), transparent);
+}
+
+main > :nth-child(even)::before {
+  right: -240px;
+  left: auto;
+}
+
+main > :nth-child(even)::after {
+  right: auto;
+  left: -240px;
 }
 
 .section-head {
