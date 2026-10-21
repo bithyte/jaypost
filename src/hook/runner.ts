@@ -1,6 +1,5 @@
 import { DEFAULT_TIMEOUT_SECONDS } from '../approval/index.ts'
-import type { ClientToken } from '../auth/index.ts'
-import { FETCH_GRACE_MS, callApi, postApi, requestApi } from '../client/index.ts'
+import { Caller } from '../client/index.ts'
 import {
   ASK_IN_TERMINAL_OPTION,
   ASK_USER_QUESTION_TOOL,
@@ -38,12 +37,13 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   if (event.kind === 'PermissionRequest' && event.toolName === ASK_USER_QUESTION_TOOL) {
     return 0
   }
-  const maxLength = await resolveMaxLength(project, deps)
+  const caller = new Caller({ port: deps.port, readToken: () => deps.token })
+  const maxLength = await resolveMaxLength(project, caller, deps)
   switch (event.kind) {
     case 'Notification':
-      return notify(event, project, maxLength, deps)
+      return notify(event, project, maxLength, caller, deps)
     case 'PermissionRequest':
-      return askPermission(event, project, maxLength, args, deps)
+      return askPermission(event, project, maxLength, args, caller, deps)
   }
 }
 
@@ -51,20 +51,10 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
  * The text cap: the service's limit less the `[project]` line it adds, at most
  * MAX_HOOK_TEXT_LENGTH. A failed /status call isn't reported; the request that follows is.
  */
-async function resolveMaxLength(project: string, deps: HookDeps): Promise<number> {
-  const result = await callApi(deps.port, 'GET', '/status', undefined, {
-    signal: deps.signal,
-    timeoutMs: FETCH_GRACE_MS,
-    ...toTokenOption(deps.token),
-  })
-  if (
-    result.kind === 'ok' &&
-    typeof result.body === 'object' &&
-    result.body !== null &&
-    'maxTextLength' in result.body &&
-    typeof result.body.maxTextLength === 'number'
-  ) {
-    return Math.min(MAX_HOOK_TEXT_LENGTH, result.body.maxTextLength - (project.length + 4))
+async function resolveMaxLength(project: string, caller: Caller, deps: HookDeps): Promise<number> {
+  const result = await caller.status({ signal: deps.signal })
+  if (result.kind === 'status' && typeof result.status.maxTextLength === 'number') {
+    return Math.min(MAX_HOOK_TEXT_LENGTH, result.status.maxTextLength - (project.length + 4))
   }
   return MAX_HOOK_TEXT_LENGTH
 }
@@ -73,13 +63,12 @@ async function notify(
   event: NotificationEvent,
   project: string,
   maxLength: number,
+  caller: Caller,
   deps: HookDeps,
 ): Promise<number> {
-  const result = await postApi(
-    deps.port,
-    '/notify',
+  const result = await caller.notify(
     { project, text: formatNotificationText(event, maxLength) },
-    { signal: deps.signal, timeoutMs: FETCH_GRACE_MS, ...toTokenOption(deps.token) },
+    { signal: deps.signal },
   )
   if (result.kind === 'failed') {
     return reportFailure(result.message, deps)
@@ -92,11 +81,11 @@ async function askPermission(
   project: string,
   maxLength: number,
   args: HookArgs,
+  caller: Caller,
   deps: HookDeps,
 ): Promise<number> {
   const question = formatPermissionQuestion(event, maxLength)
-  const result = await requestApi(
-    deps.port,
+  const result = await caller.ask(
     {
       project,
       text: question.text,
@@ -104,12 +93,15 @@ async function askPermission(
       timeoutOption: ASK_IN_TERMINAL_OPTION,
       timeout: args.timeout ?? DEFAULT_TIMEOUT_SECONDS,
     },
-    { signal: deps.signal, ...toTokenOption(deps.token) },
+    { signal: deps.signal },
   )
   if (result.kind === 'failed') {
     return reportFailure(result.message, deps)
   }
-  const decision = decidePermission(event, question.options, result.outcome)
+  const decision = decidePermission(event, question.options, {
+    answer: result.answer,
+    timedOut: result.timedOut,
+  })
   switch (decision.kind) {
     case 'decided':
       deps.print(JSON.stringify(decision.output))
@@ -128,8 +120,4 @@ function reportFailure(message: string, deps: HookDeps): number {
     deps.printError(`jaypost: ${message}`)
   }
   return 1
-}
-
-function toTokenOption(token: ClientToken): { readonly token?: string } {
-  return token.kind === 'token' ? { token: token.token } : {}
 }
