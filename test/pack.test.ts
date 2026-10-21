@@ -34,13 +34,18 @@ test('cjs build exposes the client to require()', () => {
   expect(new library.JaypostError('boom')).toBeInstanceOf(Error)
 }, 30_000)
 
-test('npm pack names the tarball and the command jaypost', () => {
+test('npm pack names the tarball and the command jaypost and ships install.sh', () => {
   const result = spawnSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
     encoding: 'utf8',
   })
   expect(result.status, result.stderr).toBe(0)
-  const [packed] = JSON.parse(result.stdout) as { version: string; filename: string }[]
+  const [packed] = JSON.parse(result.stdout) as {
+    version: string
+    filename: string
+    files: { path: string }[]
+  }[]
   expect(packed?.filename).toBe(`jaypost-${packed?.version}.tgz`)
+  expect(packed?.files.map((file) => file.path)).toContain('install.sh')
   const manifest = JSON.parse(readFileSync('package.json', 'utf8')) as { bin: unknown }
   expect(manifest.bin).toEqual({ jaypost: 'dist/cli.js' })
 }, 30_000)

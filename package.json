@@ -20,7 +20,8 @@
   },
   "files": [
     "dist",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "install.sh"
   ],
   "type": "module",
   "exports": {

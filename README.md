@@ -446,21 +446,29 @@ Node 24+ is needed for `npx` and the systemd and launchd targets unless you use 
 
 ### Standalone binary
 
-Each GitHub Release has a single-file binary for Linux and macOS, so you can skip Node:
+Each GitHub Release has a single-file binary for Linux and macOS (x64 and arm64), so you can skip Node:
 
 ```
-curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-linux-x64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init systemd
+curl -fsSL https://unpkg.com/jaypost/install.sh | sh
 ```
 
-On macOS (Apple silicon):
+The same script is on the website too:
 
 ```
-curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-darwin-arm64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init launchd
+curl -fsSL https://bithyte.github.io/jaypost/install.sh | sh
+```
+
+It picks the binary for your OS and CPU, checks it against the release's `SHA256SUMS`, puts it in `~/.local/bin/jaypost` and runs `jaypost init`. Right after a release the binaries can take a few minutes to upload; the script says so if it gets there first.
+
+To do it by hand, download `jaypost-<linux|darwin>-<x64|arm64>.gz` from the [latest release](https://github.com/bithyte/jaypost/releases/latest), then:
+
+```
+gunzip jaypost-linux-x64.gz && mv jaypost-linux-x64 jaypost && chmod +x jaypost && ./jaypost init
 ```
 
 If you downloaded the binary with a browser instead of curl, macOS may block it; run `xattr -d com.apple.quarantine jaypost` first.
 
-`init` copies the binary to `~/.local/bin/jaypost` and runs the service from there. `SHA256SUMS` on the release lists the checksums.
+`init` copies the binary to `~/.local/bin/jaypost` and runs the service from there.
 
 The API token file `~/.config/jaypost/token` is written for every target; the service's own copy goes in the target's `.env` or in `config.json` as listed below. All targets keep their files under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `install.json` there records which target is installed, its port and version. It's what `status`, `reset-owner` and `uninstall` read.
 

@@ -1,7 +1,7 @@
 export type SnippetId =
   | 'npxInit'
-  | 'binaryLinux'
-  | 'binaryMacos'
+  | 'installScript'
+  | 'installScriptPages'
   | 'pair'
   | 'mcpAdd'
   | 'shellSend'

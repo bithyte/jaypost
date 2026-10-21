@@ -3,10 +3,8 @@ import type { SnippetId } from './types.ts'
 /** Code shown on the page; each one must appear in the root README (see SnippetChecker). */
 export const SNIPPETS: Readonly<Record<SnippetId, string>> = {
   npxInit: 'npx jaypost init',
-  binaryLinux:
-    'curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-linux-x64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init systemd',
-  binaryMacos:
-    'curl -L https://github.com/bithyte/jaypost/releases/latest/download/jaypost-darwin-arm64.gz | gunzip > jaypost && chmod +x jaypost && ./jaypost init launchd',
+  installScript: 'curl -fsSL https://unpkg.com/jaypost/install.sh | sh',
+  installScriptPages: 'curl -fsSL https://bithyte.github.io/jaypost/install.sh | sh',
   pair: '/start ABCD-EFGH',
   mcpAdd: 'claude mcp add jaypost -- jaypost mcp',
   shellSend: "answer=$(jaypost send request 'Deploy?' -o Approve -d Decline --timeout 60)",

@@ -6,6 +6,7 @@ import type { DistPage } from '../src/dist-check/index.ts'
 
 const DIST_DIRECTORY = fileURLToPath(new URL('../dist', import.meta.url))
 const BASE = '/jaypost'
+const INSTALL_SCRIPT = fileURLToPath(new URL('../../install.sh', import.meta.url))
 
 /** Usage: node scripts/check-dist.ts */
 class CheckDistCli {
@@ -23,7 +24,13 @@ class CheckDistCli {
           html: await readFile(join(DIST_DIRECTORY, file), 'utf8'),
         })
       }
-      const problems = DistChecker.findProblems(pages, BASE)
+      const servedScript = await readFile(join(DIST_DIRECTORY, 'install.sh'), 'utf8')
+      const problems = [
+        ...DistChecker.findProblems(pages, BASE),
+        ...(servedScript === (await readFile(INSTALL_SCRIPT, 'utf8'))
+          ? []
+          : [{ path: 'install.sh', problem: 'differs from the root install.sh' }]),
+      ]
       for (const { path, problem } of problems) {
         process.stderr.write(`check-dist: ${path}: ${problem}\n`)
       }
