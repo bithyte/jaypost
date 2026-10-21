@@ -1,0 +1,42 @@
+---
+const options = [
+  {
+    title: 'npx',
+    text: 'Needs Node 24+. The quickest way in.',
+    href: 'https://github.com/bithyte/jaypost#quick-start',
+  },
+  {
+    title: 'Standalone binary',
+    text: 'Linux and macOS, no Node needed.',
+    href: 'https://github.com/bithyte/jaypost#standalone-binary',
+  },
+  {
+    title: 'Podman Quadlet / Docker Compose',
+    text: 'Run it as a container.',
+    href: 'https://github.com/bithyte/jaypost#podman-quadlet',
+  },
+  {
+    title: 'systemd / launchd',
+    text: 'A service that starts with your machine.',
+    href: 'https://github.com/bithyte/jaypost#systemd-npm',
+  },
+]
+---
+
+<section class="section" id="install-options">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Install options</h2>
+    </div>
+    <div class="options">
+      {
+        options.map((option) => (
+          <a class="card" href={option.href}>
+            <h3>{option.title}</h3>
+            <p>{option.text}</p>
+          </a>
+        ))
+      }
+    </div>
+  </div>
+</section>

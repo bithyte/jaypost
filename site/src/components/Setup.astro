@@ -1,0 +1,33 @@
+---
+import CodeBlock from './CodeBlock.astro'
+import { SNIPPETS } from '../snippets/index.ts'
+---
+
+<section class="section" id="setup">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Set up in three steps</h2>
+      <p>You need Node 24+ and a bot token from @BotFather.</p>
+    </div>
+    <ol class="steps">
+      <li class="card">
+        <span class="step-number">1</span>
+        <h3>Install</h3>
+        <p>Paste the BotFather token when it asks. It installs the service and prints a pairing code.</p>
+        <CodeBlock code={SNIPPETS.npxInit} prompt />
+      </li>
+      <li class="card">
+        <span class="step-number">2</span>
+        <h3>Pair</h3>
+        <p>Send the code to your bot. Only whoever proves they own it gets answers.</p>
+        <CodeBlock code={SNIPPETS.pair} />
+      </li>
+      <li class="card">
+        <span class="step-number">3</span>
+        <h3>Connect your agent</h3>
+        <p>For Claude Code, add the MCP server.</p>
+        <CodeBlock code={SNIPPETS.mcpAdd} prompt />
+      </li>
+    </ol>
+  </div>
+</section>
