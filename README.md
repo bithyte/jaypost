@@ -14,7 +14,7 @@ You need Node 24+ and a bot token: from [@BotFather](https://t.me/BotFather) for
 npx jaypost init
 ```
 
-It asks which app you use (Telegram or Discord) and for the token, installs the service and prints a pairing code like `ABCD-EFGH`. Send `/start ABCD-EFGH` to your bot (or open the link it prints) and you're paired.
+It asks which app you use (Telegram or Discord) and for the token, installs the service and prints a pairing code like `ABCD-EFGH`. On Telegram, send `/start ABCD-EFGH` to your bot (or open the link it prints). On Discord, open the invite link it prints to add the bot to a server you're in, then DM the bare code (no `/start`). Either way you're paired.
 
 Then give your agent the tools. For Claude Code:
 
@@ -45,7 +45,7 @@ flowchart LR
 
 A small service runs in the background on localhost. Callers POST a question with button options; the bot sends it to you and the HTTP request stays open until you tap a button or (with `allowText`) reply with text, or the timeout fires, then returns your answer. Agents reach the same API through `jaypost mcp`, a stdio MCP server. Notifications work the same way but don't wait for an answer.
 
-It's single owner: one Telegram user, proven by a pairing code. The service can run as a Podman Quadlet, a Docker Compose project, a plain systemd user service or, on macOS, a launchd agent.
+It's single owner: one Telegram or Discord user, proven by a pairing code. The service can run as a Podman Quadlet, a Docker Compose project, a plain systemd user service or, on macOS, a launchd agent.
 
 ## Agents (MCP)
 
@@ -269,16 +269,16 @@ Reply to the question's message in Telegram; if it's the only open text question
 
 `POST /request` body:
 
-| Field           | Type     | Required           | Notes                                                                                                                   |
-| --------------- | -------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `text`          | string   | yes                | Question shown in Telegram. Non-empty, max 3900 chars (with `markdown`, counted after the markup is removed).           |
-| `allowText`     | boolean  | no                 | Default `false`. When true, a text reply from the owner answers the question.                                           |
-| `options`       | string[] | unless `allowText` | Button labels. Non-empty, unique, non-empty strings. With `allowText`, may be omitted or `[]` for a text-only question. |
-| `timeoutOption` | string   | yes                | Answer returned on timeout. Must be one of `options`; with `allowText`, any non-empty string up to 64 chars.            |
-| `timeout`       | number   | no                 | Seconds. Default 300, max 86400 (24 h); longer values are capped. Must be positive.                                     |
-| `project`       | string   | no                 | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward the 3900.                                 |
-| `format`        | string   | no                 | `plain` (default) or `markdown`. See [Formatting](#formatting).                                                         |
-| `attachment`    | object   | no                 | One file sent with the question. See [Attachments](#attachments).                                                       |
+| Field           | Type     | Required           | Notes                                                                                                                        |
+| --------------- | -------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `text`          | string   | yes                | Question shown in the chat app. Non-empty, max `maxTextLength` chars (with `markdown`, counted after the markup is removed). |
+| `allowText`     | boolean  | no                 | Default `false`. When true, a text reply from the owner answers the question.                                                |
+| `options`       | string[] | unless `allowText` | Button labels. Non-empty, unique, non-empty strings. With `allowText`, may be omitted or `[]` for a text-only question.      |
+| `timeoutOption` | string   | yes                | Answer returned on timeout. Must be one of `options`; with `allowText`, any non-empty string up to 64 chars.                 |
+| `timeout`       | number   | no                 | Seconds. Default 300, max 86400 (24 h); longer values are capped. Must be positive.                                          |
+| `project`       | string   | no                 | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                               |
+| `format`        | string   | no                 | `plain` (default) or `markdown`. See [Formatting](#formatting).                                                              |
+| `attachment`    | object   | no                 | One file sent with the question. See [Attachments](#attachments).                                                            |
 
 The cap used to be 300, so a `timeout: 900` was clamped to 300 before and now waits the full 900 s.
 
@@ -286,16 +286,16 @@ Callers on Node's global `fetch` (undici, 300 s headers timeout) should keep `ti
 
 Errors are JSON `{ "error": "..." }`:
 
-| Status | Meaning                                                                                            |
-| ------ | -------------------------------------------------------------------------------------------------- |
-| 400    | Body isn't valid JSON or fails validation. Nothing is sent to Telegram.                            |
-| 401    | Missing or wrong token.                                                                            |
-| 413    | Body over 14 MiB.                                                                                  |
-| 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).      |
-| 502    | Message couldn't be sent.                                                                          |
-| 500    | Internal error, or the request was cancelled.                                                      |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status` or `/openapi.yaml`. |
-| 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                 |
+| Status | Meaning                                                                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | Body isn't valid JSON or fails validation (on Discord, more than 25 `options` is `options must have at most 25 entries`). Nothing is sent to the chat app. |
+| 401    | Missing or wrong token.                                                                                                                                    |
+| 413    | Body over 14 MiB.                                                                                                                                          |
+| 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).                                                              |
+| 502    | Message couldn't be sent.                                                                                                                                  |
+| 500    | Internal error, or the request was cancelled.                                                                                                              |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status` or `/openapi.yaml`.                                                         |
+| 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
 
@@ -335,12 +335,12 @@ It returns `200 { "ok": true }` as soon as Telegram accepts the message. The mes
 
 `POST /notify` body:
 
-| Field        | Type   | Required | Notes                                                                                                |
-| ------------ | ------ | -------- | ---------------------------------------------------------------------------------------------------- |
-| `text`       | string | yes      | Shown in Telegram. Non-empty, max 3900 chars (with `markdown`, counted after the markup is removed). |
-| `project`    | string | no       | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward the 3900.              |
-| `format`     | string | no       | `plain` (default) or `markdown`. See [Formatting](#formatting).                                      |
-| `attachment` | object | no       | One file sent with the message. See [Attachments](#attachments).                                     |
+| Field        | Type   | Required | Notes                                                                                                               |
+| ------------ | ------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `text`       | string | yes      | Shown in the chat app. Non-empty, max `maxTextLength` chars (with `markdown`, counted after the markup is removed). |
+| `project`    | string | no       | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                      |
+| `format`     | string | no       | `plain` (default) or `markdown`. See [Formatting](#formatting).                                                     |
+| `attachment` | object | no       | One file sent with the message. See [Attachments](#attachments).                                                    |
 
 Errors are JSON `{ "error": "..." }`:
 
@@ -383,9 +383,9 @@ and the owner sees the branch name in monospace and the diff as a monospace bloc
 
 Anything that isn't in the table stays as typed: lists, tables, links, images, HTML and `_underscores`. A marker that doesn't pair up, or sits inside a word (`2*3*4`, `snake_case`, `src/**/*.ts`), stays literal too, so a malformed message still arrives. Put a `\` before a marker to show it as is. Text inside code is never changed. To show a block that itself contains a fence, open it with a longer one (four backticks around three). Line breaks are kept as written.
 
-The 3900 limit counts the text after the markup is removed, so the source may be longer. A message that renders to nothing but whitespace is a 400. Put commands in code: a glob like `ls *foo* bar` looks exactly like emphasis, and in markdown mode it would show as `ls foo bar` in italics.
+The text limit counts the text after the markup is removed, so the source may be longer. A message that renders to nothing but whitespace is a 400. Put commands in code: a glob like `ls *foo* bar` looks exactly like emphasis, and in markdown mode it would show as `ls foo bar` in italics.
 
-If Telegram refuses the formatting, the service sends the message again as plain text (the rendered text, without the markers) and logs one line, so the question still gets through.
+On Telegram, if it refuses the formatting, the service sends the message again as plain text (the rendered text, without the markers) and logs one line, so the question still gets through.
 
 `format` needs a service at least as new as this release; an older one shows the markdown as typed. Re-run `init` to upgrade.
 
@@ -423,7 +423,7 @@ Attachments need a service at least as new as this release; an older one ignores
 
 ### Status
 
-`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
+`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
 
 ### OpenAPI spec
 
@@ -433,8 +433,8 @@ The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (p
 
 Create a bot with @BotFather first and have the token ready. `init`:
 
-1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; only `telegram` exists for now, and it's the default.
-2. Asks for the bot token (input hidden) and checks it with Telegram. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
+1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; `telegram` (the default) or `discord`.
+2. Asks for the bot token (input hidden) and checks it with the chat app. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
 3. Makes an API token and saves it to `~/.config/jaypost/token` (mode 0600). It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses a valid saved token.
 4. Installs and starts the service, then waits for pairing.
 
@@ -522,11 +522,11 @@ Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.jso
 
 ## Pairing
 
-The first time (and after `reset-owner`), the bot only answers whoever proves they own it. `init` prints a code like `ABCD-EFGH` and a link. Either send `/start ABCD-EFGH` to your bot, or open `https://t.me/<bot>?start=ABCDEFGH`. Case and the dash don't matter. After 5 wrong codes from one Telegram user that user is blocked until the service restarts.
+The first time (and after `reset-owner`), the bot only answers whoever proves they own it. `init` prints a code like `ABCD-EFGH` and a link. On Discord, see [Discord setup](#discord-setup): DM the bare code to the bot. On Telegram, either send `/start ABCD-EFGH` to your bot, or open `https://t.me/<bot>?start=ABCDEFGH`. Case and the dash don't matter. After 5 wrong codes from one user (Telegram or Discord) that user is blocked until the service restarts.
 
 If you lose the code: `jaypost status` prints it again while unpaired.
 
-To move to another Telegram account:
+To move to another account:
 
 ```
 jaypost reset-owner
@@ -545,7 +545,7 @@ If questions don't arrive, allow DMs from members of that server in the server's
 
 ## Bot commands
 
-Send these to the bot in your private chat:
+Send these to the bot in your private chat (on Discord, its DM):
 
 - `/pending` lists the open requests, with the time left and the answer each gets on timeout. A text question shows `or a typed reply` after its buttons, or `Typed reply` alone if it has none.
 - `/cancel` rejects every open request with its `timeoutOption`.
@@ -640,7 +640,7 @@ jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FI
 - `update`: moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
 - `start`: runs the service in the foreground. The installed services use this.
 - `mcp`: runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents (MCP)](#agents-mcp).
-- `hook`: a Claude Code hook that sends permission prompts to Telegram. See [Claude Code hook](#claude-code-hook).
+- `hook`: a Claude Code hook that sends permission prompts to your chat app. See [Claude Code hook](#claude-code-hook).
 - `openapi`: prints the API's OpenAPI spec, or writes it to `FILE`. See [OpenAPI spec](#openapi-spec).
 - `send request` / `send notify`: the HTTP API from a shell. See [From the shell](#from-the-shell).
 
