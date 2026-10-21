@@ -1,0 +1,103 @@
+---
+import CodeBlock from './CodeBlock.astro'
+
+type Props = {
+  tabs: readonly { label: string; code: string }[]
+  id: string
+  prompt?: boolean
+  copy?: boolean
+}
+
+const { tabs, id, prompt = false, copy = true } = Astro.props
+---
+
+<div class="tabs">
+  <div class="tab-list" role="tablist">
+    {
+      tabs.map((tab, index) => (
+        <button
+          class="tab"
+          type="button"
+          role="tab"
+          id={`${id}-tab-${index}`}
+          aria-controls={`${id}-panel-${index}`}
+          aria-selected={index === 0 ? 'true' : 'false'}
+          tabindex={index === 0 ? 0 : -1}
+        >
+          {tab.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    tabs.map((tab, index) => (
+      <div
+        role="tabpanel"
+        id={`${id}-panel-${index}`}
+        aria-labelledby={`${id}-tab-${index}`}
+        data-label={tab.label}
+        hidden={index !== 0}
+      >
+        <CodeBlock code={tab.code} prompt={prompt} copy={copy} />
+      </div>
+    ))
+  }
+  <noscript>
+    <style>
+      .tab-list {
+        display: none;
+      }
+      .tabs [role='tabpanel'][hidden] {
+        display: block;
+      }
+      .tabs [role='tabpanel']::before {
+        content: attr(data-label);
+        display: block;
+        margin: 16px 0 6px;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+      .copy {
+        display: none;
+      }
+    </style>
+  </noscript>
+</div>
+
+<script>
+  function activate(tabs: HTMLElement[], index: number): void {
+    tabs.forEach((tab, position) => {
+      const selected = position === index
+      tab.setAttribute('aria-selected', String(selected))
+      tab.tabIndex = selected ? 0 : -1
+      const panel = document.getElementById(tab.getAttribute('aria-controls') ?? '')
+      if (panel) {
+        panel.hidden = !selected
+      }
+    })
+    tabs[index]?.focus()
+  }
+
+  document.querySelectorAll<HTMLElement>('.tab-list').forEach((list) => {
+    const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')]
+    tabs.forEach((tab, index) => tab.addEventListener('click', () => activate(tabs, index)))
+    list.addEventListener('keydown', (event) => {
+      const current = tabs.findIndex((tab) => tab === document.activeElement)
+      if (current < 0) {
+        return
+      }
+      const targets: Record<string, number> = {
+        ArrowRight: (current + 1) % tabs.length,
+        ArrowLeft: (current - 1 + tabs.length) % tabs.length,
+        Home: 0,
+        End: tabs.length - 1,
+      }
+      const target = targets[event.key]
+      if (target === undefined) {
+        return
+      }
+      event.preventDefault()
+      activate(tabs, target)
+    })
+  })
+</script>

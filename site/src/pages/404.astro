@@ -1,13 +1,14 @@
 ---
+import Base from '../layouts/Base.astro'
+
 const home = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Not found | jaypost</title>
-  </head>
-  <body>
-    <p>Page not found. <a href={home}>Back to jaypost</a></p>
-  </body>
-</html>
+<Base title="Not found | jaypost" description="Page not found.">
+  <section class="section">
+    <div class="wrap">
+      <h2>Page not found</h2>
+      <p><a href={home}>Back to jaypost</a></p>
+    </div>
+  </section>
+</Base>
