@@ -195,3 +195,12 @@ jobs:
           sha256sum jaypost-*.gz > SHA256SUMS
           cat SHA256SUMS
           gh release upload "v$version" jaypost-*.gz SHA256SUMS --clobber
+
+  # Deploys the website after the binaries its install tabs link to exist
+  site:
+    needs: release-assets
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/site.yml
