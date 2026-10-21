@@ -142,6 +142,14 @@ test('openapi writes the spec with the given port to a file', async () => {
   }
 })
 
+test('openapi for the discord provider carries its option limit', async () => {
+  vi.stubEnv('PROVIDER', 'discord')
+  vi.stubEnv('BOT_TOKEN', 'x')
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['openapi', '--port', '9999'])).toBe(0)
+  expect(String(write.mock.calls[0]?.[0])).toContain('25')
+})
+
 test('openapi prints the spec without a file', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['openapi', '--port', '9999'])).toBe(0)

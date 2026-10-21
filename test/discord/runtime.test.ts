@@ -266,6 +266,28 @@ test('gateway messages and interactions reach the handlers', async () => {
   expect(fake.responses.map((entry) => entry.response)).toEqual([{ kind: 'acknowledge' }])
 })
 
+test('a throwing event handler is logged without its message', async () => {
+  const { fake, log, runtime } = setup(createFakeDiscord(), { ownerId: '5' })
+  const runtimeHandlers = handlers()
+  runtimeHandlers.reply.mockImplementation(() => {
+    throw new Error(`boom ${TOKEN}`)
+  })
+  await runtime.checkCredentials()
+  runtime.start(runtimeHandlers)
+  await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined)
+  fake.events()?.message({
+    id: 'u1',
+    channelId: 'dm1',
+    fromId: '5',
+    fromBot: false,
+    isDirect: true,
+    text: 'bob',
+    replyTo: { messageId: 'm1', fromId: 'bot1' },
+  })
+  await flush()
+  expect(log.mock.calls).toEqual([['discord event handler failed: Error']])
+})
+
 test('pairing makes later requests go to the new owner', async () => {
   const { fake, runtime } = setup()
   const pair = vi.fn(() => 'paired' as const)

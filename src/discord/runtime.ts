@@ -50,7 +50,10 @@ export function createDiscordRuntime(
             reason: `Discord rejected the bot token (${result.status}); check it with \`jaypost init\``,
           }
         case 'unreachable':
-          return { ok: false, reason: 'could not reach Discord to verify the bot token' }
+          return {
+            ok: false,
+            reason: 'could not reach Discord to verify the bot token',
+          }
       }
     },
     ...messenger,
@@ -72,16 +75,21 @@ export function createDiscordRuntime(
         log,
       }
       // Never the error text: it could carry request details
+      const logHandlerFailure = (error: unknown): void => {
+        log(
+          `discord event handler failed: ${error instanceof Error ? error.name : 'unknown error'}`,
+        )
+      }
       client.setCommands(applicationId, toCommandDefinitions(handlers.commands)).catch(() => {
         log('failed to set discord commands')
       })
       client.connect({
         ready: (username) => log(`bot @${username} connected`),
         message: (message) => {
-          void handleMessage(message, context)
+          handleMessage(message, context).catch(logHandlerFailure)
         },
         interaction: (interaction) => {
-          void handleInteraction(interaction, context)
+          handleInteraction(interaction, context).catch(logHandlerFailure)
         },
         fatal: (message) => {
           if (!stopped) {

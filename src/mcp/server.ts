@@ -51,7 +51,7 @@ import type {
 } from './types.ts'
 
 const ATTACH_SENTENCE =
-  'Optionally attach a file (path) or long text (over 3900 characters, such as a diff or log) to show the user as a document above the message.'
+  'Optionally attach a file (path) or long text (over the text limit, see GET /status maxTextLength; such as a diff or log) to show the user as a document with the message.'
 
 const ASK_DESCRIPTION = [
   'Ask the user a question on their phone and wait for their answer.',

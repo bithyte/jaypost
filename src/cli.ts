@@ -173,6 +173,7 @@ function runOpenApiCommand(file: string | undefined, flagPort: number | undefine
     port: resolveMcpPort(flagPort, process.env, resolveInstallPaths().installFile),
     maxTextLength: provider.maxTextLength,
     maxAttachmentBytes: resolveMaxAttachmentBytes(provider),
+    ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
   })
   if (file === undefined) {
     process.stdout.write(yaml)
