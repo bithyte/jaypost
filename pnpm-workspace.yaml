@@ -1,0 +1,6 @@
+packages:
+  - site
+
+# Vite+ manages the Node and pnpm versions; keep pnpm from switching them itself
+runtimeOnFail: ignore
+pmOnFail: ignore

@@ -7,7 +7,7 @@ export default defineConfig({
     },
   },
   fmt: {
-    ignorePatterns: ['docs/**', 'package-lock.json'],
+    ignorePatterns: ['docs/**', 'pnpm-lock.yaml'],
     semi: false,
     singleQuote: true,
     printWidth: 100,

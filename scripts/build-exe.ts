@@ -1,6 +1,6 @@
 // Builds standalone binaries (Node SEA) for every release platform into dist-exe/.
-// Needs Node 26: `vp env exec --node 26 npm run build:exe` (the local `vp` shadows the global one
-// inside npm scripts, so the Node switch can't live in the script itself).
+// Needs Node 26: `vp env exec --node 26 vp run build:exe` (the local `vp` shadows the global one
+// inside package scripts, so the Node switch can't live in the script itself).
 import { build } from 'vite-plus/pack'
 
 const NODE_VERSION = '26.12.0'

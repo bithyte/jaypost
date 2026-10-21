@@ -10,7 +10,7 @@ import {
 } from '../../src/provider/index.ts'
 import { createOpenApiDocument, formatOpenApiYaml } from '../../src/server/index.ts'
 
-test('docs/openapi.yaml is up to date (npm run openapi)', () => {
+test('docs/openapi.yaml is up to date (vp run openapi)', () => {
   const provider = requireProvider(PROVIDERS, DEFAULT_PROVIDER)
   const maxTextLength = provider.maxTextLength
   const maxAttachmentBytes = resolveMaxAttachmentBytes(provider)
