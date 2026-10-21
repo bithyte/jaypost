@@ -45,7 +45,10 @@
     "openapi": "node scripts/openapi.ts",
     "changeset": "changeset",
     "version-packages": "changeset version && npm install --package-lock-only && npm run openapi",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "web:dev": "npm --prefix site run dev",
+    "web:build": "npm --prefix site run build",
+    "web:preview": "npm --prefix site run preview"
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",

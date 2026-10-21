@@ -6,3 +6,4 @@ dist/
 *.tgz
 .mcp.json
 dist-exe/
+site/.astro/
