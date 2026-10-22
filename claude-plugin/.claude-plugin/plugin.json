@@ -1,6 +1,6 @@
 {
   "name": "jaypost",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Local HTTP API that asks you a question on Telegram or Discord with buttons and returns your answer",
   "author": { "name": "Cozmin" },
   "repository": "https://github.com/bithyte/jaypost",
