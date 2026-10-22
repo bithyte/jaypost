@@ -22,6 +22,7 @@ import {
   runResetOwner,
   runSendNotify,
   runSendRequest,
+  runSetupCi,
   runStatus,
   runTest,
   runUninstall,
@@ -29,7 +30,7 @@ import {
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
-import type { DirectSendDeps, InitArgs, LogArgs, SendDeps } from './commands/index.ts'
+import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
 import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
 import { runService } from './daemon/index.ts'
 import { resolveSendMode } from './direct/index.ts'
@@ -242,6 +243,17 @@ function runInitCommand(args: InitArgs): Promise<number> {
   )
 }
 
+function runSetupCiCommand(args: SetupCiArgs): Promise<number> {
+  return runWithSignals((controller) =>
+    runSetupCi(args, {
+      prompt: createClackPrompts(controller.signal),
+      providers: PROVIDERS,
+      print: (text) => console.log(text),
+      signal: controller.signal,
+    }),
+  )
+}
+
 function createRealTargets(paths: InstallPaths): Readonly<Record<TargetName, Target>> {
   const userInfo = os.userInfo()
   return createTargets(
@@ -407,6 +419,19 @@ export async function main(argv: readonly string[]): Promise<number> {
         })
       },
     )
+  program
+    .command('setup-ci')
+    .description('pair an owner for CI and print the env vars for direct mode')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      code = await runSetupCiCommand(
+        options.provider === undefined ? {} : { provider: options.provider },
+      )
+    })
   program
     .command('start')
     .description('run the service in the foreground')

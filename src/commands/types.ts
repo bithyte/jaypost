@@ -209,3 +209,28 @@ export type DirectSendDeps = {
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
 }
+
+/** Parsed `setup-ci` flags; absent fields mean the user didn't pass them. */
+export type SetupCiArgs = {
+  readonly provider?: string
+}
+
+/** Everything `runSetupCi` touches outside itself; no paths or targets, so it writes no files. */
+export type SetupCiDeps = {
+  readonly prompt: Prompts
+  /** Registered providers; setup-ci asks which one to use when there are several. */
+  readonly providers: readonly Provider[]
+  readonly print: (text: string) => void
+  readonly signal?: AbortSignal
+  /** The runtime's log; defaults to stderr. */
+  readonly log?: (line: string) => void
+  /** Defaults to a random pairing code. */
+  readonly generateCode?: () => string
+}
+
+/** How `setup-ci`'s wait for the owner ended. */
+export type OwnerPairing =
+  | { readonly kind: 'paired'; readonly senderId: string }
+  | { readonly kind: 'blocked' }
+  | { readonly kind: 'fatal'; readonly message: string }
+  | { readonly kind: 'interrupted' }

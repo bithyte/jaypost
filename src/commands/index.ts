@@ -7,6 +7,7 @@ export { createClackPrompts, PromptAborted } from './prompts.ts'
 export { runResetOwner } from './reset-owner.ts'
 export { runDirectSendNotify, runDirectSendRequest } from './send-direct.ts'
 export { runSendNotify, runSendRequest } from './send.ts'
+export { runSetupCi } from './setup-ci.ts'
 export { writeAll } from './stdout.ts'
 export { runStatus } from './status.ts'
 export { runTest } from './test.ts'
@@ -25,6 +26,8 @@ export type {
   SendDeps,
   SendNotifyArgs,
   SendRequestArgs,
+  SetupCiArgs,
+  SetupCiDeps,
   StatusDeps,
   StatusFetch,
   UninstallDeps,

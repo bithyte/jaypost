@@ -54,6 +54,17 @@ test('init --help lists --token and --no-token', async () => {
   expect(help).toContain('--no-token')
 })
 
+test('setup-ci --help lists --provider', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--help'])).toBe(0)
+  expect(write.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider <name>')
+})
+
+test('setup-ci --provider nope exits 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--provider', 'nope'])).toBe(2)
+})
+
 test('mcp rejects a bad port with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   expect(await main(['mcp', '--port', 'abc'])).toBe(2)
