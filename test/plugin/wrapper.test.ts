@@ -9,8 +9,11 @@ import { resolveInstallPaths, writeInstall } from '../../src/install/index.ts'
 
 const ROOT = new URL('../..', import.meta.url).pathname
 const WRAPPER = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
+const MANIFEST = join(ROOT, 'claude-plugin', '.claude-plugin', 'plugin.json')
 const INSTALL_MESSAGE =
-  "jaypost isn't installed, so permission prompts stay in the terminal. Install it with `npm install -g jaypost` or see https://github.com/bithyte/jaypost#quick-start"
+  "jaypost isn't installed or isn't on PATH, so permission prompts stay in the terminal. Install it with `npm install -g jaypost` or see https://github.com/bithyte/jaypost#quick-start"
+const CHECK_FAILED_MESSAGE =
+  "jaypost's setup check failed, so permission prompts may stay in the terminal. Run `jaypost status` to see why."
 const TOO_OLD_MESSAGE = 'jaypost is too old for this plugin. Run `jaypost update`.'
 const PERMISSION_EVENT = '{"hook_event_name":"PermissionRequest"}'
 const DECISION = '{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}'
@@ -29,6 +32,10 @@ const TRAPPING_SCRIPT = `#!/bin/sh
 trap 'echo terminated >> "$FAKE_LOG"; exit 0' TERM
 echo started >> "$FAKE_LOG"
 while :; do sleep 0.1; done
+`
+const SLEEPING_SCRIPT = `#!/bin/sh
+echo started >> "$FAKE_LOG"
+sleep 1
 `
 
 type Sandbox = {
@@ -73,6 +80,21 @@ function run(mode: string, sandbox: Sandbox, extra: Record<string, string> = {},
 
 async function readLog(sandbox: Sandbox): Promise<string> {
   return readFile(sandbox.log, 'utf8')
+}
+
+async function waitForStarted(sandbox: Sandbox): Promise<boolean> {
+  const deadline = Date.now() + 10_000
+  while (Date.now() < deadline) {
+    const started = await readLog(sandbox).then(
+      (text) => text.includes('started'),
+      () => false,
+    )
+    if (started) {
+      return true
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return false
 }
 
 async function freePort(): Promise<number> {
@@ -139,18 +161,27 @@ test('hook forwards sigterm to jaypost', async () => {
     stdio: ['pipe', 'pipe', 'pipe'],
   })
   const exited = new Promise<number | null>((resolve) => child.on('close', resolve))
-  const deadline = Date.now() + 10_000
-  let started = false
-  while (!started && Date.now() < deadline) {
-    started = await readLog(sandbox).then(
-      (text) => text.includes('started'),
-      () => false,
-    )
-    if (!started) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
+  expect(await waitForStarted(sandbox)).toBe(true)
+  child.kill('SIGTERM')
+  expect(await exited).toBe(0)
+  expect(await readLog(sandbox)).toContain('terminated')
+})
+
+test('the manifest hook command execs the wrapper so sigterm reaches it', async () => {
+  const sandbox = await createSandbox(TRAPPING_SCRIPT)
+  const pluginRoot = join(sandbox.root, 'plugin')
+  await mkdir(join(pluginRoot, 'bin'), { recursive: true })
+  await writeFile(join(pluginRoot, 'bin', 'jaypost-plugin'), TRAPPING_SCRIPT, { mode: 0o755 })
+  const manifest = JSON.parse(await readFile(MANIFEST, 'utf8')) as {
+    hooks: { PermissionRequest: { hooks: { command: string }[] }[] }
   }
-  expect(started).toBe(true)
+  const command = manifest.hooks.PermissionRequest[0]?.hooks[0]?.command ?? ''
+  const child = spawn('sh', ['-c', command], {
+    env: environment(sandbox, { CLAUDE_PLUGIN_ROOT: pluginRoot }),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const exited = new Promise<number | null>((resolve) => child.on('close', resolve))
+  expect(await waitForStarted(sandbox)).toBe(true)
   child.kill('SIGTERM')
   expect(await exited).toBe(0)
   expect(await readLog(sandbox)).toContain('terminated')
@@ -180,11 +211,26 @@ test("session start passes jaypost's message through", async () => {
   expect(result.stdout).toBe('{"systemMessage":"x"}\n')
 })
 
-test('session start prints nothing for other failures', async () => {
+test('session start reports other failures', async () => {
   const sandbox = await createSandbox()
   const result = run('session-start', sandbox, { FAKE_EXIT: '1', FAKE_STDERR: 'boom' })
   expect(result.status).toBe(0)
-  expect(result.stdout).toBe('')
+  expect(JSON.parse(result.stdout)).toEqual({ systemMessage: CHECK_FAILED_MESSAGE })
+  expect(result.stderr).toBe('')
+})
+
+test('session start killed by sigterm exits 0 and removes its temp file', async () => {
+  const sandbox = await createSandbox(SLEEPING_SCRIPT)
+  const temporary = await createDirectory()
+  const child = spawn(WRAPPER, ['session-start'], {
+    env: environment(sandbox, { TMPDIR: temporary }),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const exited = new Promise<number | null>((resolve) => child.on('close', resolve))
+  expect(await waitForStarted(sandbox)).toBe(true)
+  child.kill('SIGTERM')
+  expect(await exited).toBe(0)
+  expect(await readdir(temporary)).toEqual([])
 })
 
 test('session start leaves no temp files behind', async () => {

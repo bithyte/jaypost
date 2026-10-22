@@ -17,7 +17,7 @@ const PACKAGE_PATH = join(ROOT, 'package.json')
 const MANIFEST_PATH = join(ROOT, 'claude-plugin', '.claude-plugin', 'plugin.json')
 const WRAPPER_PATH = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
 const SYNC_SCRIPT_PATH = join(ROOT, 'scripts', 'sync-plugin-version.ts')
-const WRAPPER_COMMAND = '"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin"'
+const WRAPPER_COMMAND = 'exec "${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin"'
 const EXPECTED_HOOKS = {
   SessionStart: [
     {

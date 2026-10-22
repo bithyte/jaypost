@@ -1,5 +1,6 @@
 #!/bin/sh
-INSTALL_MESSAGE="jaypost isn't installed, so permission prompts stay in the terminal. Install it with \`npm install -g jaypost\` or see https://github.com/bithyte/jaypost#quick-start"
+INSTALL_MESSAGE="jaypost isn't installed or isn't on PATH, so permission prompts stay in the terminal. Install it with \`npm install -g jaypost\` or see https://github.com/bithyte/jaypost#quick-start"
+CHECK_FAILED_MESSAGE="jaypost's setup check failed, so permission prompts may stay in the terminal. Run \`jaypost status\` to see why."
 TOO_OLD_MESSAGE="jaypost is too old for this plugin. Run \`jaypost update\`."
 
 bin=$(command -v jaypost)
@@ -28,12 +29,15 @@ case "$1" in
     fi
     errors=$(mktemp) || exit 0
     trap 'rm -f "$errors"' EXIT
+    trap 'exit 0' TERM INT HUP # dash skips the EXIT trap when a signal kills it
     if output=$(env -u PORT "$bin" hook 2>"$errors"); then
       if [ -n "$output" ]; then
         printf '%s\n' "$output"
       fi
     elif grep -q 'unsupported hook event' "$errors"; then
       printf '{"systemMessage":"%s"}\n' "$TOO_OLD_MESSAGE"
+    else
+      printf '{"systemMessage":"%s"}\n' "$CHECK_FAILED_MESSAGE"
     fi
     exit 0
     ;;
