@@ -47,7 +47,7 @@
     "build:exe": "node scripts/build-exe.ts",
     "openapi": "node scripts/openapi.ts",
     "changeset": "changeset",
-    "version-packages": "changeset version && vp install --lockfile-only && vp run openapi",
+    "version-packages": "changeset version && node scripts/sync-plugin-version.ts && vp install --lockfile-only && vp run openapi",
     "prepack": "vp run build",
     "web:dev": "vp run --filter jaypost-site dev",
     "web:build": "vp run --filter jaypost-site build",

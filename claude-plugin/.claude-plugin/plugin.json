@@ -1,0 +1,47 @@
+{
+  "name": "jaypost",
+  "version": "0.7.0",
+  "description": "Local HTTP API that asks you a question on Telegram or Discord with buttons and returns your answer",
+  "author": { "name": "Cozmin" },
+  "repository": "https://github.com/bithyte/jaypost",
+  "license": "Apache-2.0",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" hook",
+            "timeout": 360
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "idle_prompt|elicitation_dialog|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" hook"
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "jaypost": { "command": "${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin", "args": ["mcp"] }
+  }
+}
