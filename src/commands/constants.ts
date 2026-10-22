@@ -33,4 +33,4 @@ export const BLOCKED_PAIRING = { kind: 'blocked' } as const satisfies OwnerPairi
 export const INTERRUPTED_PAIRING = { kind: 'interrupted' } as const satisfies OwnerPairing
 /** Printed above the env lines `setup-ci` ends with. */
 export const SETUP_CI_SECRETS_HINT =
-  "Add these as GitHub secrets and pass them to jaypost with the step's env: (never on the command line):"
+  "Add these as GitHub secrets and pass them to jaypost through the step's `env:`, never on the command line:"

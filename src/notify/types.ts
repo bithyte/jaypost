@@ -28,7 +28,10 @@ export type SendNotificationOptions = {
  * no expiry.
  */
 export type Notifier = {
-  /** Send `message` to the owner with a dismiss control carrying `id`, if the messenger can delete. */
+  /**
+   * Send `message` to the owner; with `options.dismissible` it carries a dismiss control for `id`,
+   * if the messenger can delete.
+   */
   readonly sendNotification: (
     id: string,
     message: FormattedText,

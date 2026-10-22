@@ -467,6 +467,8 @@ In direct mode `send request` exits with:
 - 2: bad arguments
 - 3: the answer was the `-d` value, or the timeout fired
 
+With `--allow-text`, a typed reply counts as the `-d` answer only when it equals the `-d` value exactly, case included.
+
 So `-d No` works as a gate: the step fails unless someone approves. In service mode `send request` still exits 0 for any answer, including the default.
 
 Other differences from service mode:
@@ -474,7 +476,7 @@ Other differences from service mode:
 - Notifications have no Dismiss button and aren't deleted automatically.
 - The config file isn't read, and `--port` is ignored.
 - SIGINT and SIGTERM (a cancelled run) cancel a pending question, edit the message to the cancelled line and exit 1.
-- On Telegram, pairing in `setup-ci` and running a direct session both set the owner's command menu to empty. If the same bot backs a running jaypost service, its menu is gone until that service restarts. Use a separate bot for CI.
+- Pairing in `setup-ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI.
 
 ## Install options
 
