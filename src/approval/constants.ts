@@ -4,6 +4,7 @@ import type {
   RequestResult,
   RequestState,
   Settlement,
+  VoteRule,
 } from './types.ts'
 
 /** Timeout when the client sends none, in seconds. */
@@ -54,3 +55,5 @@ export const OWNER_COMMANDS: readonly OwnerCommand[] = [
   { name: 'cancel', description: 'Reject all open requests with their timeout answers' },
   { name: 'history', description: 'Show recent answers' },
 ]
+/** The vote rules the CLI accepts for `--require`. */
+export const VOTE_RULES: readonly VoteRule[] = ['all', 'majority']

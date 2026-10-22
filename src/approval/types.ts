@@ -179,3 +179,15 @@ export type OwnerCommandOptions = {
   readonly now: () => Date
   readonly maxTextLength: number
 }
+
+/** How a vote is decided: `all` voters must approve, or `majority` of all listed voters. */
+export type VoteRule = 'all' | 'majority'
+
+/** Tally of a vote; voters who haven't answered are in neither count. */
+export type VoteCounts = {
+  readonly voterCount: number
+  readonly approveCount: number
+  readonly rejectCount: number
+}
+
+export type VoteDecision = 'approved' | 'rejected' | 'undecided'

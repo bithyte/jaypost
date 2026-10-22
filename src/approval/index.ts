@@ -9,6 +9,7 @@ export {
   MAX_WAIT_SECONDS,
   OWNER_COMMANDS,
   RESULT_TTL_MS,
+  VOTE_RULES,
 } from './constants.ts'
 export {
   formatFinalText,
@@ -32,6 +33,7 @@ export {
 } from './parser.ts'
 export { PendingRequests } from './pending.ts'
 export { ApprovalService, SendError } from './service.ts'
+export { decideVote } from './vote.ts'
 export type {
   ApprovalRequest,
   ApprovalServiceOptions,
@@ -52,5 +54,8 @@ export type {
   SentRequest,
   Settlement,
   StartedRequest,
+  VoteCounts,
+  VoteDecision,
+  VoteRule,
   WaitParseResult,
 } from './types.ts'
