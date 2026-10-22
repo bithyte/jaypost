@@ -8,8 +8,14 @@ import {
 import { decidePermission, formatNotificationText, formatPermissionQuestion } from './formatter.ts'
 import { parseHookEvent } from './parser.ts'
 import { resolveHookProject } from './project.ts'
-import { checkService } from './setup.ts'
-import type { HookArgs, HookDeps, NotificationEvent, PermissionRequestEvent } from './types.ts'
+import { checkService, findManualSetup } from './setup.ts'
+import type {
+  HookArgs,
+  HookDeps,
+  NotificationEvent,
+  PermissionRequestEvent,
+  SessionStartEvent,
+} from './types.ts'
 
 /** Handles one hook event from stdin. Returns 0 when handled, 1 on any failure (stderr says why). */
 export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
@@ -30,7 +36,7 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   }
   const event = parsed.event
   if (event.kind === 'SessionStart') {
-    return checkSetup(deps)
+    return checkSetup(event, deps)
   }
   if (deps.token.kind === 'unusable') {
     deps.printError(`jaypost: ${deps.token.message}`)
@@ -52,9 +58,15 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
 }
 
 /** SessionStart: prints one systemMessage listing what's wrong, nothing when all is well. Exits 0. */
-async function checkSetup(deps: HookDeps): Promise<number> {
+async function checkSetup(event: SessionStartEvent, deps: HookDeps): Promise<number> {
   const caller = new Caller({ port: deps.port, readToken: () => deps.token })
   const lines = [await checkService(caller, deps)].filter((line) => line !== undefined)
+  const manualPaths = findManualSetup(deps.env.HOME, deps.env.CLAUDE_PROJECT_DIR ?? event.cwd)
+  if (manualPaths.length > 0) {
+    lines.push(
+      `jaypost is also set up by hand in ${manualPaths.join(', ')}. The plugin already adds its hooks and MCP server, so remove the jaypost entries there or prompts reach your phone twice.`,
+    )
+  }
   if (lines.length > 0 && !deps.signal.aborted) {
     deps.print(JSON.stringify({ systemMessage: lines.join('\n') }))
   }

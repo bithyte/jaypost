@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FormattedText } from '../../src/format/index.ts'
@@ -712,6 +712,136 @@ test('session start aborted prints nothing', async () => {
   expect(await runHook({}, deps)).toBe(0)
   expect(out).toEqual([])
   expect(errors).toEqual([])
+})
+
+const README_HOOKS = {
+  hooks: {
+    PermissionRequest: [{ hooks: [{ type: 'command', command: 'jaypost hook', timeout: 360 }] }],
+    Notification: [
+      {
+        matcher: 'idle_prompt|elicitation_dialog|agent_needs_input',
+        hooks: [{ type: 'command', command: 'jaypost hook' }],
+      },
+    ],
+  },
+}
+
+function manualSetupLine(paths: readonly string[]): string {
+  return `jaypost is also set up by hand in ${paths.join(', ')}. The plugin already adds its hooks and MCP server, so remove the jaypost entries there or prompts reach your phone twice.`
+}
+
+async function writeConfig(path: string, contents: unknown): Promise<void> {
+  await mkdir(join(path, '..'), { recursive: true })
+  await writeFile(path, typeof contents === 'string' ? contents : JSON.stringify(contents))
+}
+
+async function createProjectDir(): Promise<string> {
+  return mkdtemp(join(tmpdir(), 'jaypost-hook-project-'))
+}
+
+test('session start warns about jaypost hooks in user settings', async () => {
+  const { port } = await startApi()
+  const env = await createEmptyHome()
+  const projectDir = await createProjectDir()
+  await writeConfig(join(env.HOME ?? '', '.claude', 'settings.json'), README_HOOKS)
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: { ...env, CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({ systemMessage: manualSetupLine(['~/.claude/settings.json']) }),
+  ])
+  expect(errors).toEqual([])
+})
+
+test('session start warns about every file with jaypost config', async () => {
+  const { port } = await startApi()
+  const env = await createEmptyHome()
+  const home = env.HOME ?? ''
+  const projectDir = await createProjectDir()
+  await writeConfig(join(projectDir, '.claude', 'settings.local.json'), README_HOOKS)
+  await writeConfig(join(projectDir, '.mcp.json'), {
+    mcpServers: { jaypost: { command: 'npx', args: ['-y', 'jaypost', 'mcp'] } },
+  })
+  await writeConfig(join(home, '.claude.json'), {
+    projects: { [projectDir]: { mcpServers: { jaypost: { command: 'jaypost', args: ['mcp'] } } } },
+  })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, {
+    env: { ...env, CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage: manualSetupLine([
+        join(projectDir, '.claude', 'settings.local.json'),
+        '~/.claude.json',
+        join(projectDir, '.mcp.json'),
+      ]),
+    }),
+  ])
+})
+
+test('session start combines the service problem and the manual setup warning', async () => {
+  const port = await freePort()
+  const env = await createEmptyHome()
+  const projectDir = await createProjectDir()
+  await writeConfig(join(env.HOME ?? '', '.claude', 'settings.json'), README_HOOKS)
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, {
+    env: { ...env, CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage: `${unreachableLine(port)}\n${manualSetupLine(['~/.claude/settings.json'])}`,
+    }),
+  ])
+})
+
+test('session start ignores the plugin wrapper and other commands', async () => {
+  const { port } = await startApi()
+  const env = await createEmptyHome()
+  const projectDir = await createProjectDir()
+  const commands = ['"/x/claude-plugin/bin/jaypost-plugin" hook', 'jaypostx hook', 'echo jaypost']
+  await writeConfig(join(env.HOME ?? '', '.claude', 'settings.json'), {
+    hooks: {
+      PermissionRequest: [{ hooks: commands.map((command) => ({ type: 'command', command })) }],
+    },
+  })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, {
+    env: { ...env, CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([])
+})
+
+test('session start skips unparsable and oddly shaped config files', async () => {
+  const { port } = await startApi()
+  const env = await createEmptyHome()
+  const projectDir = await createProjectDir()
+  await writeConfig(join(env.HOME ?? '', '.claude', 'settings.json'), '{')
+  await writeConfig(join(projectDir, '.mcp.json'), '[]')
+  await writeConfig(join(env.HOME ?? '', '.claude.json'), { mcpServers: 3 })
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: { ...env, CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('session start without HOME checks only the project files', async () => {
+  const { port } = await startApi()
+  const projectDir = await createProjectDir()
+  await writeConfig(join(projectDir, '.mcp.json'), {
+    mcpServers: { jaypost: { command: 'jaypost', args: ['mcp'] } },
+  })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, {
+    env: { CLAUDE_PROJECT_DIR: projectDir },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({ systemMessage: manualSetupLine([join(projectDir, '.mcp.json')]) }),
+  ])
 })
 
 test('the cli prints the session start check as one json line', async () => {
