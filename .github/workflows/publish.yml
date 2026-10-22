@@ -65,6 +65,7 @@ jobs:
       contents: read
     outputs:
       pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -74,6 +75,9 @@ jobs:
         with:
           node-version: 24
           cache: true
+
+      - id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
       - run: vp check
 
@@ -85,9 +89,27 @@ jobs:
         with:
           publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
 
+  # Asks on the chat app before anything goes out. Skip or a timeout fails the job, so nothing after
+  # it runs; re-run the failed jobs to ask again. Uses the released action (@v0) because ./ would
+  # install the binary for the version being released, which doesn't exist yet.
+  approval:
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: bithyte/jaypost@v0
+        with:
+          text: Publish v${{ needs.pack.outputs.version }}?
+          options: Publish
+          default: Skip
+          timeout: 3600
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+
   # Publishes the packed tarball, pushes the vX.Y.Z tag and creates the GitHub Release
   publish:
-    needs: pack
+    needs: [pack, approval]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -232,3 +254,17 @@ jobs:
       pages: write
       id-token: write
     uses: ./.github/workflows/site.yml
+
+  # Tells the chat app once everything is out
+  notify:
+    needs: [pack, action-tag, site]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: bithyte/jaypost@v0
+        with:
+          command: notify
+          text: Released v${{ needs.pack.outputs.version }}
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
