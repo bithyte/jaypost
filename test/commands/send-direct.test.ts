@@ -393,6 +393,34 @@ test("a voter id the provider can't parse exits 1 before anything is sent", asyn
   expect(provider.runtimes).toEqual([])
 })
 
+test('voter ids are normalized to the form the provider parses them to', async () => {
+  const base = createPairingFakeProvider()
+  const { provider } = createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              // Like Telegram: a numeric id, so "0111" and " 111" are the user 111.
+              parse: (raw: unknown) =>
+                typeof raw === 'string' && /^\s*\d+\s*$/.test(raw) ? Number(raw) : undefined,
+            }
+          : setting,
+      ),
+    },
+  )
+  const { deps, printed } = createDeps(provider, undefined, { ...ENV, FAKE_OWNER: '9' })
+  const answered = answerVoter(provider, '111', 0)
+  const args = { ...REQUEST, voters: ['0111', ' 111', '111'], rule: 'all', json: true } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(recipients(provider)).toEqual(['111'])
+  expect(printed).toEqual([
+    '{"answer":"Yes","timedOut":false,"approved":true,"require":"all","votes":{"111":"Yes"},"rounds":1}',
+  ])
+})
+
 test('a failed send to one voter exits 1 naming them', async () => {
   const { provider } = createProvider({
     sendRequest: async (_id, _message, _options, _allowText, _attachment, recipient) => {

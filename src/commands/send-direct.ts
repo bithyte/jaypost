@@ -34,7 +34,9 @@ type SessionResult<T> =
 /**
  * Asks through the provider in-process, configured from env only, and prints the answer like
  * `runSendRequest`. Returns 0 for any other answer, `DECLINED_EXIT_CODE` for the `-d` answer or a
- * timeout, 1 on any failure or a cancel, with the reason on stderr.
+ * timeout, 1 on any failure or a cancel, with the reason on stderr. With voters or a rule it runs
+ * a vote instead, one message per voter, and returns 0 when approved, `DECLINED_EXIT_CODE` when
+ * rejected (running out of rounds included), 1 on failure or a cancel.
  */
 export async function runDirectSendRequest(
   args: SendRequestArgs,
@@ -85,14 +87,18 @@ async function runDirectVote(
   config: DirectConfig,
   deps: DirectSendDeps,
 ): Promise<number> {
-  const voters = args.voters === undefined ? [ownerVoter(config)] : [...new Set(args.voters)]
   const parse = findOwnerSetting(config.provider)?.parse
-  for (const voter of voters) {
-    if (parse !== undefined && parse(voter) === undefined) {
+  const normalized: string[] = []
+  for (const voter of args.voters ?? [ownerVoter(config)]) {
+    const value = parse === undefined ? voter : parse(voter)
+    if (value === undefined) {
       deps.printError(`jaypost: invalid user id ${JSON.stringify(voter)}`)
       return 1
     }
+    // The form a tap's sender id takes, so `0111` and ` 111` are the same voter as `111`.
+    normalized.push(String(value))
   }
+  const voters = [...new Set(normalized)]
   const rule = args.rule ?? 'all'
   const result = await withSession(config, deps, (session) =>
     session.vote({ request, voters, rule, retryCount: args.retryCount ?? 0 }, deps.signal),
