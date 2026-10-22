@@ -198,6 +198,32 @@ jobs:
           cat SHA256SUMS
           gh release upload "v$version" jaypost-*.gz SHA256SUMS --clobber
 
+  # Points the major tag (v0 while jaypost is 0.x) at this release so `uses: bithyte/jaypost@v0`
+  # gets it. Runs after release-assets because the action downloads those binaries.
+  action-tag:
+    needs: release-assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Move the major tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          major="v${version%%.*}"
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v$version" --jq .object.sha)
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$major" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$major" -f sha="$sha" -F force=true > /dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$major" -f sha="$sha" > /dev/null
+          fi
+          echo "$major -> v$version"
+
   # Deploys the website after the binaries its install tabs link to exist
   site:
     needs: release-assets

@@ -444,6 +444,60 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
+### GitHub Action
+
+`uses: bithyte/jaypost@v0` asks or notifies the owner from a workflow, with no Node needed on the runner. Run `jaypost setup-ci` once to get the values for the three secrets (see above).
+
+```yaml
+on: workflow_dispatch
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - id: approval
+        uses: bithyte/jaypost@v0
+        with:
+          text: Publish ${{ github.ref_name }}?
+          options: |
+            Yes
+            No
+          default: 'No'
+          timeout: 1800
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+      - run: ./publish.sh
+      - uses: bithyte/jaypost@v0
+        with:
+          command: notify
+          text: Published ${{ github.ref_name }}
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+```
+
+| Input        | Default         | Meaning                                               |
+| ------------ | --------------- | ----------------------------------------------------- |
+| `command`    | `request`       | `request` asks and waits, `notify` just sends         |
+| `text`       |                 | the question or message (required)                    |
+| `options`    |                 | answer buttons, one per line (request)                |
+| `default`    |                 | answer on timeout, added as the last button (request) |
+| `timeout`    | 300             | seconds to wait, 86400 at most (request)              |
+| `allow-text` |                 | `true` also accepts a typed answer (request)          |
+| `project`    | repository name | shown above the message                               |
+| `format`     | `plain`         | `plain` or `markdown`                                 |
+| `provider`   | `telegram`      | `telegram` or `discord`                               |
+| `bot-token`  |                 | from a secret (required)                              |
+| `owner-id`   |                 | from a secret (required)                              |
+
+The output `answer` is what the owner chose, e.g. `${{ steps.approval.outputs.answer }}`.
+
+A No (the `default`) or a timeout fails the step (exit 3), so later steps don't run. Use `if: failure()` or `continue-on-error` to react to it. The message shows the repository name as the project and ends with a link to the workflow run.
+
+Linux and macOS runners only. The action downloads the release binary for its own version, checked against `SHA256SUMS`. Pin `@v0` to follow releases or `@vX.Y.Z` to stay put. Pull requests from forks don't get secrets, so the step fails there with a message saying which input is empty.
+
+### npx
+
 Workflow example:
 
 ```yaml
@@ -754,5 +808,9 @@ When a change matters to users, run `vp run changeset` on its branch, pick patch
 After a PR with a changeset is merged into `main`, the `publish` workflow opens or updates a `chore: release` PR that bumps the version, writes `CHANGELOG.md` and regenerates `docs/openapi.yaml`. Merging that PR is the release: the workflow runs the checks and tests, publishes to npm, pushes the `vX.Y.Z` tag and creates the GitHub Release. Nothing needs to be run locally.
 
 The same workflow builds the standalone binaries: Linux on Ubuntu, macOS on a macOS runner (ad-hoc codesigned). One last job gzips them and attaches the four `.gz` files and a `SHA256SUMS` to the GitHub Release.
+
+After the binaries are uploaded, a last job moves the major tag (`v0` while jaypost is 0.x) to the new release, so `uses: bithyte/jaypost@v0` follows it.
+
+The action is listed on the GitHub Marketplace as `jaypost approval` (plain `jaypost` matches an existing user, which the Marketplace rejects). One-time manual setup: accept the Marketplace developer agreement and turn on 2FA for the owning account. Then open the release on GitHub, Edit, tick "Publish this Action to the GitHub Marketplace", pick categories and Update release. I haven't verified that later releases, which `publish.yml` creates through the API, show up as new Marketplace versions (reports differ, see [community discussion 7941](https://github.com/orgs/community/discussions/7941)). After the first release following the listing, check the Marketplace page. If the version is missing, edit that release, untick and re-tick the Marketplace box and save.
 
 The website in `site/` deploys to `https://bithyte.github.io/jaypost/` after each release, as the last job of `publish`. To deploy by hand (the first time, or for a site-only fix), run the `site` workflow from the Actions tab; it builds whichever ref you pick. For local work, `vp install` at the root installs the site too, then run `vp run web:dev`. One-time setup: Settings, Pages, Source: GitHub Actions. To run it from a release tag, add a `v*` tag rule to the `github-pages` environment, which only allows `main` by default.
