@@ -1,0 +1,159 @@
+# HTTP API
+
+## Ask a question
+
+```
+curl -s -X POST http://127.0.0.1:8787/request \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'
+```
+
+The request stays open until you tap a button (or reply, see below) or the timeout fires, then returns `200`:
+
+```json
+{ "answer": "Approve", "timedOut": false }
+```
+
+On timeout, `answer` is `timeoutOption` and `timedOut` is `true`. If the owner sends `/cancel`, every open request returns its `timeoutOption` with `timedOut: false`. Many requests can be pending at once.
+
+For a question with no sensible buttons, set `allowText` and leave out `options`; you answer by replying with text:
+
+```
+curl -s -X POST http://127.0.0.1:8787/request \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"Which branch?","allowText":true,"timeoutOption":"main","timeout":120}'
+```
+
+Reply to the question's message in Telegram; if it's the only open text question, just typing works. The first answer wins, whether it's a tap or a reply. Non-text replies don't count, and a registered command name (`/pending`, `/cancel`, `/history`) can't be typed as an answer.
+
+`allowText` needs a service at least as new as this release. An older one ignores it: with `options` you get a buttons-only question, without them a 400 `options must be a non-empty array`. Re-run `init` to upgrade.
+
+`POST /request` body:
+
+| Field           | Type     | Required           | Notes                                                                                                                        |
+| --------------- | -------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `text`          | string   | yes                | Question shown in the chat app. Non-empty, max `maxTextLength` chars (with `markdown`, counted after the markup is removed). |
+| `allowText`     | boolean  | no                 | Default `false`. When true, a text reply from the owner answers the question.                                                |
+| `options`       | string[] | unless `allowText` | Button labels. Non-empty, unique, non-empty strings. With `allowText`, may be omitted or `[]` for a text-only question.      |
+| `timeoutOption` | string   | yes                | Answer returned on timeout. Must be one of `options`; with `allowText`, any non-empty string up to 64 chars.                 |
+| `timeout`       | number   | no                 | Seconds. Default 300, max 86400 (24 h); longer values are capped. Must be positive.                                          |
+| `project`       | string   | no                 | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                               |
+| `format`        | string   | no                 | `plain` (default) or `markdown`. See [Formatting](formatting.md).                                                              |
+| `attachment`    | object   | no                 | One file sent with the question. See [Attachments](#attachments).                                                            |
+
+The cap used to be 300, so a `timeout: 900` was clamped to 300 before and now waits the full 900 s.
+
+Callers on Node's global `fetch` (undici, 300 s headers timeout) should keep `timeout` at 290 or less (an attachment eats into that headroom, since its Telegram upload happens before the timer starts), raise `headersTimeout` with a custom dispatcher, or use [`POST /request/async`](#background-questions). curl, `node:http` and this package's CLI, `Client` and MCP server aren't affected.
+
+Errors are JSON `{ "error": "..." }`:
+
+| Status | Meaning                                                                                                                                                    |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | Body isn't valid JSON or fails validation (on Discord, more than 25 `options` is `options must have at most 25 entries`). Nothing is sent to the chat app. |
+| 401    | Missing or wrong token.                                                                                                                                    |
+| 413    | Body over 14 MiB.                                                                                                                                          |
+| 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).                                                              |
+| 502    | Message couldn't be sent.                                                                                                                                  |
+| 500    | Internal error, or the request was cancelled.                                                                                                              |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status` or `/openapi.yaml`.                                                         |
+| 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
+
+If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
+
+## Background questions
+
+`POST /request/async` takes the same body and sends the same message, but answers `202` as soon as it is sent, so no connection has to stay open. It checks pairing like `/request`; the routes below only need the token.
+
+```
+curl -s -X POST http://127.0.0.1:8787/request/async \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":3600}'
+```
+
+```json
+{ "id": "6f1c...", "state": "pending", "expiresAt": "2026-10-19T12:00:00.000Z" }
+```
+
+The `Location` header is `/request/{id}`. `GET /request/{id}` returns the state: `pending` as above, `{ "id": "...", "state": "done", "answer": "Approve", "timedOut": false }` once settled, or `{ "id": "...", "state": "cancelled" }` after a cancel. Add `?wait=SECONDS` (max 120, larger values are clamped) to hold the request until the question settles or the time runs out; it returns the moment the question settles. Loop on it until `state` isn't `pending`. A `wait` that isn't a non-negative number is a `400`. Closing a long-poll doesn't cancel the question.
+
+`DELETE /request/{id}` cancels a pending question (the Telegram message becomes a "cancelled" line) and returns its state, and a following `GET` agrees. On an already settled question it just returns that state. An unknown id answers `404` with `{ "error": "unknown request" }`. Settled questions are kept for 24 h.
+
+Version skew: a service from before this release clamps `timeout` to 300 s and answers `404` to these paths, so a client that needs long timeouts should check the service version first (`info.version` in `GET /openapi.yaml`). A restart drops background questions (`404` afterwards), and their Telegram messages get the expired line on the next start.
+
+## Send a notification
+
+For messages that don't need an answer, e.g. from n8n when someone joins a game server:
+
+```
+curl -s -X POST http://127.0.0.1:8787/notify \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"alice joined the Core Keeper server"}'
+```
+
+It returns `200 { "ok": true }` as soon as Telegram accepts the message. The message has a Dismiss button that deletes it, and it's deleted automatically after 8 hours. During [quiet hours](bot.md#quiet-hours) or a mute it's sent silently (no sound or buzz) and the 8 hours start when the quiet period ends.
+
+`POST /notify` body:
+
+| Field        | Type   | Required | Notes                                                                                                               |
+| ------------ | ------ | -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `text`       | string | yes      | Shown in the chat app. Non-empty, max `maxTextLength` chars (with `markdown`, counted after the markup is removed). |
+| `project`    | string | no       | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                      |
+| `format`     | string | no       | `plain` (default) or `markdown`. See [Formatting](formatting.md).                                                     |
+| `attachment` | object | no       | One file sent with the message. See [Attachments](#attachments).                                                    |
+
+Errors are JSON `{ "error": "..." }`:
+
+| Status | Meaning                                                                                            |
+| ------ | -------------------------------------------------------------------------------------------------- |
+| 400    | Body isn't valid JSON or fails validation. Nothing is sent to Telegram.                            |
+| 401    | Missing or wrong token.                                                                            |
+| 413    | Body over 14 MiB.                                                                                  |
+| 501    | Notifications aren't supported, or the body has an `attachment` and the provider can't send files. |
+| 502    | Message couldn't be sent.                                                                          |
+| 503    | Not paired yet.                                                                                    |
+| 405    | Method isn't POST.                                                                                 |
+| 500    | Internal error.                                                                                    |
+
+## Attachments
+
+`POST /request`, `POST /request/async` and `POST /notify` take an optional `attachment`, one file shown as a document above the message. It stays after the question is answered and is deleted with the notification.
+
+On Telegram the file arrives as a document right above the message, always without a notification sound (quiet hours or not); the message replies to it. Tapping Dismiss on a notification deletes the document too.
+
+| Field             | Type   | Required       | Notes                                                                                                                                                        |
+| ----------------- | ------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `attachment.name` | string | yes            | File name shown in Telegram; its extension decides how Telegram opens it. Max 255 chars, no `/` or `\`, no control characters, not `.` or `..`. Not trimmed. |
+| `attachment.text` | string | one of the two | File contents as UTF-8 text.                                                                                                                                 |
+| `attachment.data` | string | one of the two | File contents as base64 (standard alphabet, padding optional, whitespace ignored).                                                                           |
+
+Send exactly one of `text` and `data`. The content must be at least 1 byte and at most `maxAttachmentBytes` from [`GET /status`](#status) (10 MiB for Telegram); over it is a `400 attachment must be at most N bytes`. A bad `attachment` is a `400` with an `attachment...` message, and `null` counts as bad. A provider without file support answers `501 attachments not supported` for any body with an `attachment` key.
+
+```
+curl -s -X POST http://127.0.0.1:8787/request \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"Push this diff?","options":["Push","Stop"],"timeoutOption":"Stop",
+       "attachment":{"name":"changes.diff","text":"diff --git a/x b/x\n..."}}'
+
+jq -n --arg data "$(base64 -w0 screen.png)" \
+  '{text:"Login page is blank, see screenshot",attachment:{name:"screen.png",data:$data}}' |
+  curl -s -X POST http://127.0.0.1:8787/notify \
+    -H 'content-type: application/json' \
+    -H "authorization: Bearer $(cat ~/.config/jaypost/token)" -d @-
+```
+
+The body limit is 14 MiB, which fits the base64 of a 10 MiB file. Send big files as `data`: a `text` attachment near 10 MiB with many quotes or control characters grows when JSON-escaped and can hit the `413`.
+
+Attachments need a service at least as new as this release; an older one ignores the field. Clients check `maxAttachmentBytes` first and say so if it's missing.
+
+## Status
+
+`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
+
+## OpenAPI spec
+
+The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `jaypost openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `vp run openapi`.

@@ -1,6 +1,6 @@
 import type { SnippetId } from './types.ts'
 
-/** Code shown on the page; each one must appear in the root README (see SnippetChecker). */
+/** Code shown on the page; each one must appear in the root README or `docs/*.md` (see SnippetChecker). */
 export const SNIPPETS: Readonly<Record<SnippetId, string>> = {
   npxInit: 'npx jaypost init',
   installScript: 'curl -fsSL https://unpkg.com/jaypost/install.sh | sh',

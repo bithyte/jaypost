@@ -1,15 +1,15 @@
-/** Checks that page snippets still appear in the README. Never throws. */
+/** Checks that page snippets still appear in the README or docs. Never throws. */
 export class SnippetChecker {
   private constructor() {}
 
-  /** Ids of snippets not found in the readme (whitespace-insensitive), in key order. */
+  /** Ids of snippets not found in the docs text (whitespace-insensitive), in key order. */
   public static findMissing(
-    readme: string,
+    docs: string,
     snippets: Readonly<Record<string, string>>,
   ): readonly string[] {
-    const normalizedReadme = SnippetChecker.normalize(readme)
+    const normalizedDocs = SnippetChecker.normalize(docs)
     return Object.entries(snippets)
-      .filter(([, snippet]) => !normalizedReadme.includes(SnippetChecker.normalize(snippet)))
+      .filter(([, snippet]) => !normalizedDocs.includes(SnippetChecker.normalize(snippet)))
       .map(([id]) => id)
   }
 

@@ -20,7 +20,7 @@ timeout_seconds="${INPUT_TIMEOUT:-}"
 allow_text="${INPUT_ALLOW_TEXT:-}"
 
 if [ "${RUNNER_OS:-}" = Windows ]; then
-  fail 1 "Windows runners aren't supported; see the npx example in the jaypost README"
+  fail 1 "Windows runners aren't supported; see the npx example in the jaypost CI docs"
 fi
 case "$command_name" in
   request | notify) ;;

@@ -1,5 +1,7 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { SNIPPETS, SnippetChecker } from '../src/snippets/index.ts'
+
+const ROOT_URL = new URL('../../', import.meta.url)
 
 /** Usage: node scripts/check-snippets.ts */
 class CheckSnippetsCli {
@@ -7,10 +9,12 @@ class CheckSnippetsCli {
 
   public static async run(): Promise<number> {
     try {
-      const readme = await readFile(new URL('../../README.md', import.meta.url), 'utf8')
-      const missing = SnippetChecker.findMissing(readme, SNIPPETS)
+      const docs = await CheckSnippetsCli.readDocs()
+      const missing = SnippetChecker.findMissing(docs, SNIPPETS)
       for (const id of missing) {
-        process.stderr.write(`check-snippets: snippet "${id}" not found in README.md\n`)
+        process.stderr.write(
+          `check-snippets: snippet "${id}" not found in README.md or docs/*.md\n`,
+        )
       }
       return missing.length === 0 ? 0 : 1
     } catch (error) {
@@ -19,6 +23,14 @@ class CheckSnippetsCli {
       )
       return 1
     }
+  }
+
+  private static async readDocs(): Promise<string> {
+    const docsUrl = new URL('docs/', ROOT_URL)
+    const names = (await readdir(docsUrl)).filter((name) => name.endsWith('.md')).toSorted()
+    const urls = [new URL('README.md', ROOT_URL), ...names.map((name) => new URL(name, docsUrl))]
+    const texts = await Promise.all(urls.map((url) => readFile(url, 'utf8')))
+    return texts.join('\n')
   }
 }
 

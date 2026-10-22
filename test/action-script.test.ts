@@ -415,7 +415,7 @@ test('rejects request-only inputs on notify', async () => {
 test('rejects windows runners', async () => {
   await expectInputError(
     { INPUT_TEXT: 'Hi', RUNNER_OS: 'Windows' },
-    "Windows runners aren't supported; see the npx example in the jaypost README",
+    "Windows runners aren't supported; see the npx example in the jaypost CI docs",
     1,
   )
 })
