@@ -19,6 +19,7 @@ export {
   formatRejectedReply,
   formatResultLine,
   formatSummary,
+  formatVoteProgress,
 } from './formatter.ts'
 export {
   checkProjectText,
@@ -41,6 +42,7 @@ export type {
   Attachment,
   AuditSink,
   HistoryEntry,
+  MessageButtons,
   MessageEnding,
   MessageReference,
   Messenger,

@@ -12,6 +12,11 @@ export class PendingRequests {
     return this.#entries.size
   }
 
+  /** Whether `id` is open: registered and not settled yet. */
+  has(id: string): boolean {
+    return this.#entries.has(id)
+  }
+
   /**
    * Registers `request` and resolves with how it settled. The timeout settles it with the request's
    * timeout option.

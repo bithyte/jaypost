@@ -1,4 +1,6 @@
+import { appendText } from '../format/index.ts'
 import { CANCELLED_RESULT, CANCELLED_ROUND, CANCELLED_VOTE, TIMED_OUT_ROUND } from './constants.ts'
+import { formatVoteProgress } from './formatter.ts'
 import { SendError } from './service.ts'
 import type { ApprovalService } from './service.ts'
 import { decideVote } from './vote.ts'
@@ -9,6 +11,8 @@ import type {
   Vote,
   VoteCounts,
   VoteResult,
+  VoteState,
+  VoterAnswer,
   VoterQuestion,
 } from './types.ts'
 
@@ -50,41 +54,56 @@ export async function askWithRetries(
 
 /**
  * Asks every voter in parallel, one message each, for up to `retryCount + 1` rounds; each round
- * asks only voters who haven't voted. Once decided, every open message is closed with the vote's
- * answer. Rounds running out reject, counting missing votes as rejections. Throws
- * `VoterSendError` when a send fails, after cancelling the messages that were sent. An aborted
- * `signal` cancels every open message and resolves as cancelled.
+ * asks only voters who haven't voted. Each vote that doesn't decide shows the tally under every
+ * voter's latest message. Once decided, every open message is closed with the vote's answer.
+ * Rounds running out reject, counting missing votes as rejections. Throws `VoterSendError` when a
+ * send fails, after cancelling the messages that were sent. An aborted `signal` cancels every open
+ * message and resolves as cancelled. Settles only once every update it sent has landed.
  */
 export async function runVote(
   service: ApprovalService,
   vote: Vote,
   signal: AbortSignal,
 ): Promise<VoteResult> {
-  const answers = new Map<string, string>()
+  const state: VoteState = { answers: new Map(), latest: new Map(), updates: [] }
+  try {
+    return await runRounds(service, vote, state, signal)
+  } finally {
+    // So no update is still on its way when the caller exits.
+    await Promise.all(state.updates)
+  }
+}
+
+async function runRounds(
+  service: ApprovalService,
+  vote: Vote,
+  state: VoteState,
+  signal: AbortSignal,
+): Promise<VoteResult> {
   const roundCount = vote.retryCount + 1
   for (let round = 1; round <= roundCount; round += 1) {
     if (signal.aborted) {
       return CANCELLED_VOTE
     }
-    const asked = vote.voters.filter((voter) => !answers.has(voter))
-    const end = await runRound(service, vote, asked, round === roundCount, answers, signal)
+    const asked = vote.voters.filter((voter) => !state.answers.has(voter))
+    const end = await runRound(service, vote, asked, round === roundCount, state, signal)
     if (end.kind === 'cancelled') {
       return CANCELLED_VOTE
     }
     if (end.kind === 'decided') {
-      return toVoteResult(vote, answers, end.approved, round, false)
+      return toVoteResult(vote, state.answers, end.approved, round, false)
     }
   }
-  return toVoteResult(vote, answers, false, roundCount, true)
+  return toVoteResult(vote, state.answers, false, roundCount, true)
 }
 
-/** Sends one round to `asked` and records their votes in `answers` as they arrive. */
+/** Sends one round to `asked` and records their votes in `state` as they arrive. */
 async function runRound(
   service: ApprovalService,
   vote: Vote,
   asked: readonly string[],
   isLast: boolean,
-  answers: Map<string, string>,
+  state: VoteState,
   signal: AbortSignal,
 ): Promise<RoundEnd> {
   const controllers = asked.map(() => new AbortController())
@@ -117,7 +136,10 @@ async function runRound(
       await Promise.all(questions.map((question) => question.result))
       throw failure.reason
     }
-    return await collectRound(service, vote, questions, answers)
+    for (const question of questions) {
+      state.latest.set(question.voter, question)
+    }
+    return await collectRound(service, vote, questions, state)
   } finally {
     signal.removeEventListener('abort', abortAll)
   }
@@ -131,8 +153,9 @@ async function collectRound(
   service: ApprovalService,
   vote: Vote,
   questions: readonly VoterQuestion[],
-  answers: Map<string, string>,
+  state: VoteState,
 ): Promise<RoundEnd> {
+  const { answers } = state
   const waiting = new Map(
     questions.map((question) => [
       question.voter,
@@ -164,8 +187,37 @@ async function collectRound(
       await Promise.all(waiting.values())
       return { kind: 'decided', approved }
     }
+    state.updates.push(...updateProgress(service, vote, state, waiting))
   }
   return isCancelled ? CANCELLED_ROUND : TIMED_OUT_ROUND
+}
+
+/**
+ * Shows the tally under each voter's latest message: an open one keeps its question and buttons,
+ * an answered one its final text. Messages that timed out or were cancelled are left alone.
+ */
+function updateProgress(
+  service: ApprovalService,
+  vote: Vote,
+  state: VoteState,
+  waiting: ReadonlyMap<string, unknown>,
+): Promise<void>[] {
+  const progress = `\n\n${formatVoteProgress(toVoterAnswers(vote, state.answers))}`
+  return vote.voters.flatMap((voter) => {
+    const question = state.latest.get(voter)
+    if (question === undefined) {
+      return []
+    }
+    if (waiting.has(voter)) {
+      const buttons = { id: question.id, options: vote.request.options }
+      return [service.update(question, appendText(question.message, progress), buttons)]
+    }
+    const finalText = state.answers.has(voter) ? question.finalText() : undefined
+    if (finalText === undefined) {
+      return []
+    }
+    return [service.update(question, appendText(finalText, progress), undefined)]
+  })
 }
 
 function countVotes(vote: Vote, answers: ReadonlyMap<string, string>): VoteCounts {
@@ -182,6 +234,10 @@ function toVoteAnswer(request: ApprovalRequest, approved: boolean): string {
   return approved ? request.options[0] : request.options[1]
 }
 
+function toVoterAnswers(vote: Vote, answers: ReadonlyMap<string, string>): VoterAnswer[] {
+  return vote.voters.map((voter) => ({ voter, answer: answers.get(voter) }))
+}
+
 function toVoteResult(
   vote: Vote,
   answers: ReadonlyMap<string, string>,
@@ -193,7 +249,7 @@ function toVoteResult(
     kind: 'decided',
     approved,
     answer: toVoteAnswer(vote.request, approved),
-    votes: vote.voters.map((voter) => ({ voter, answer: answers.get(voter) })),
+    votes: toVoterAnswers(vote, answers),
     roundCount,
     timedOut,
   }

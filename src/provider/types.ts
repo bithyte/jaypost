@@ -1,5 +1,6 @@
 import type {
   Attachment,
+  MessageButtons,
   MessageEnding,
   MessageReference,
   OwnerCommand,
@@ -79,6 +80,12 @@ export type ProviderRuntime = {
     reference: MessageReference,
     message: FormattedText,
     ending: MessageEnding,
+  ) => Promise<void>
+  /** Replaces a sent message's text, keeping its buttons when `buttons` is given. Optional. */
+  readonly update?: (
+    reference: MessageReference,
+    message: FormattedText,
+    buttons: MessageButtons | undefined,
   ) => Promise<void>
   /** The returned reference must be JSON-serializable (it's saved to the state file). */
   readonly sendNotification?: (

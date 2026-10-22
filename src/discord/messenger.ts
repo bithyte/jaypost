@@ -97,6 +97,11 @@ export function createDiscordMessenger(
       conversation.forget(messageId)
       await client.editMessage(channelId, messageId, render(message), hasButtons)
     },
+    async update(reference, message): Promise<void> {
+      const { channelId, messageId } = reference as DiscordMessageReference
+      // Discord keeps the components an edit doesn't mention, so the buttons stay as they are.
+      await client.editMessage(channelId, messageId, render(message), false)
+    },
     async sendNotification(id, message, options, attachment): Promise<MessageReference> {
       const channelId = await resolveChannel()
       const sent = await client.createMessage(channelId, {

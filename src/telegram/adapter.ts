@@ -1,6 +1,6 @@
 import { GrammyError, InputFile } from 'grammy'
 import type { Bot } from 'grammy'
-import type { MessageEntity } from 'grammy/types'
+import type { InlineKeyboardMarkup, MessageEntity } from 'grammy/types'
 import type { Attachment, MessageReference, Messenger, OwnerCommand } from '../approval/index.ts'
 import {
   DISMISS_LABEL,
@@ -109,6 +109,15 @@ async function sendFormatted<Result>(
   return send({})
 }
 
+// One button per row; each callback carries the request id and the option index.
+function toInlineKeyboard(id: string, options: readonly string[]): InlineKeyboardMarkup {
+  return {
+    inline_keyboard: options.map((label, index) => [
+      { text: label, callback_data: formatChoicePayload(id, index) },
+    ]),
+  }
+}
+
 function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -183,13 +192,7 @@ export function createTelegramMessenger(
         sendFormatted(shown, log, (extra) =>
           bot.api.sendMessage(ownerId, shown.text, {
             ...extra,
-            ...(hasButtons && {
-              reply_markup: {
-                inline_keyboard: options.map((label, index) => [
-                  { text: label, callback_data: formatChoicePayload(id, index) },
-                ]),
-              },
-            }),
+            ...(hasButtons && { reply_markup: toInlineKeyboard(id, options) }),
             ...(documentMessageId !== undefined && {
               reply_parameters: { message_id: documentMessageId },
             }),
@@ -212,6 +215,18 @@ export function createTelegramMessenger(
           ...extra,
           ...(hasButtons !== false && {
             reply_markup: { inline_keyboard: [] },
+          }),
+        }),
+      )
+    },
+    async update(reference, message, buttons) {
+      const { chatId, messageId } = reference as TelegramMessageReference
+      // An edit without reply_markup drops the keyboard, so an open question gets it back.
+      await sendFormatted(message, log, (extra) =>
+        bot.api.editMessageText(chatId, messageId, message.text, {
+          ...extra,
+          ...(buttons !== undefined && {
+            reply_markup: toInlineKeyboard(buttons.id, buttons.options),
           }),
         }),
       )

@@ -160,6 +160,39 @@ test.each([
   expect(editMessageText).toHaveBeenCalledWith(42, 5, 'done', extra)
 })
 
+test('update keeps the keyboard', async () => {
+  const editMessageText = vi.fn(
+    async (_chatId: number, _messageId: number, _text: string, _other: object) => true,
+  )
+  const bot = { api: { editMessageText } } as unknown as Bot
+  await createTelegramMessenger(bot, new OwnerConversation('42')).update(
+    { chatId: 42, messageId: 5, hasButtons: true },
+    plain('Deploy?\n\nVotes: 1 Yes, 2 …'),
+    { id: 'id1', options: ['Yes', 'No'] },
+  )
+  expect(editMessageText).toHaveBeenCalledWith(42, 5, 'Deploy?\n\nVotes: 1 Yes, 2 …', {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Yes', callback_data: 'id1:0' }],
+        [{ text: 'No', callback_data: 'id1:1' }],
+      ],
+    },
+  })
+})
+
+test('update without buttons sends no keyboard and leaves the question open', async () => {
+  const conversation = new OwnerConversation('42')
+  const editMessageText = vi.fn(
+    async (_chatId: number, _messageId: number, _text: string, _other: object) => true,
+  )
+  const bot = { api: { sendMessage: vi.fn(async () => sentMessage), editMessageText } }
+  const messenger = createTelegramMessenger(bot as unknown as Bot, conversation)
+  const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined, undefined)
+  await messenger.update(ref, plain('Branch?\n\nVotes: 1 …'), undefined)
+  expect(editMessageText).toHaveBeenCalledWith(42, 5, 'Branch?\n\nVotes: 1 …', {})
+  expect(receiveReplyTo(conversation, '42:5').outcome).toEqual({ kind: 'answered' })
+})
+
 test('restart expiry of a saved text-only request sends no reply_markup', async () => {
   const editMessageText = vi.fn(
     async (_chatId: number, _messageId: number, _text: string, _other: object) => true,

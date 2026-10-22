@@ -80,7 +80,12 @@ export type RequestState =
 /** What `ApprovalService.send` resolves to once the message is sent; `result` settles later. */
 export type SentQuestion = {
   readonly id: string
+  readonly reference: MessageReference
+  /** The message as sent, before any final line. */
+  readonly message: FormattedText
   readonly result: Promise<RequestResult>
+  /** The text the message was finalized with; undefined until `result` settles. */
+  readonly finalText: () => FormattedText | undefined
 }
 
 /** What `ApprovalService.start` resolves to; `expiresAt` is when the timeout fires. */
@@ -105,6 +110,12 @@ export type ParseResult =
  */
 export type MessageReference = unknown
 
+/** The buttons an edited message keeps: the request `id` they answer and its `options`. */
+export type MessageButtons = {
+  readonly id: string
+  readonly options: readonly string[]
+}
+
 /** Chat transport the service uses, so the approval logic stays independent of any provider. */
 export type Messenger = {
   /** The returned reference must be JSON-serializable (it's saved to the state file). */
@@ -124,6 +135,15 @@ export type Messenger = {
     reference: MessageReference,
     message: FormattedText,
     ending: MessageEnding,
+  ) => Promise<void>
+  /**
+   * Replaces the text of a sent message, keeping its buttons when `buttons` is given and leaving it
+   * without any otherwise. Absent means skipped; a throw is logged by the service.
+   */
+  readonly update?: (
+    reference: MessageReference,
+    message: FormattedText,
+    buttons: MessageButtons | undefined,
   ) => Promise<void>
 }
 
@@ -249,5 +269,15 @@ export type RoundEnd =
   | { readonly kind: 'timedOut' }
   | { readonly kind: 'cancelled' }
 
-/** A vote message sent to `voter` in the current round. */
+/** A vote message sent to `voter`. */
 export type VoterQuestion = SentQuestion & { readonly voter: string }
+
+/**
+ * What `runVote` keeps across rounds: each voter's answer, each voter's latest message, and the
+ * progress updates sent so far.
+ */
+export type VoteState = {
+  readonly answers: Map<string, string>
+  readonly latest: Map<string, VoterQuestion>
+  readonly updates: Promise<void>[]
+}

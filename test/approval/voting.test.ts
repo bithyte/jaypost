@@ -9,6 +9,7 @@ import {
 import type {
   ApprovalRequest,
   Attachment,
+  MessageButtons,
   MessageEnding,
   MessageReference,
   Messenger,
@@ -30,12 +31,20 @@ const VOTERS = ['1', '2', '3']
 
 const CANCELLED = { kind: 'cancelled' }
 
+const BUTTONS_OF = (id: string): MessageButtons => ({ id, options: ['Yes', 'No'] })
+
 class FakeMessenger implements Messenger {
   sent: { id: string; recipient: string | undefined }[] = []
   endings = new Map<string, MessageEnding>()
   failingRecipient: string | undefined
+  updates: { reference: string; text: string; buttons: MessageButtons | undefined }[] = []
+  /** Every edit in the order it landed, as `<update|finalize> <reference>`. */
+  edits: string[] = []
   gate: Promise<void> | undefined
   closedGate: Promise<void> | undefined
+  /** Holds updates of one message until `promise` resolves. */
+  updateGate: { reference: string; promise: Promise<void> } | undefined
+  isUpdateFailing = false
 
   async sendRequest(
     id: string,
@@ -62,6 +71,23 @@ class FakeMessenger implements Messenger {
       await this.closedGate
     }
     this.endings.set(String(reference), ending)
+    this.edits.push(`finalize ${String(reference)}`)
+  }
+
+  async update(
+    reference: MessageReference,
+    message: FormattedText,
+    buttons: MessageButtons | undefined,
+  ): Promise<void> {
+    const gate = this.updateGate
+    if (gate !== undefined && gate.reference === reference) {
+      await gate.promise
+    }
+    if (this.isUpdateFailing) {
+      throw new Error('message is not modified')
+    }
+    this.updates.push({ reference: String(reference), text: message.text, buttons })
+    this.edits.push(`update ${String(reference)}`)
   }
 }
 
@@ -371,6 +397,151 @@ test('a voter closed by the decision has no answer in the votes', async () => {
       { voter: '3', answer: undefined },
     ],
   })
+})
+
+test("each vote updates every voter's message with the tally", async () => {
+  const { service, messenger, idOf } = setup()
+  const controller = new AbortController()
+  const result = runVote(service, createVote('majority'), controller.signal)
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  expect(messenger.updates).toEqual([
+    {
+      reference: 'id1',
+      text: 'Deploy?\n\n✅ Yes, 09:05\n\nVotes: 1 Yes, 2 …, 3 …',
+      buttons: undefined,
+    },
+    { reference: 'id2', text: 'Deploy?\n\nVotes: 1 Yes, 2 …, 3 …', buttons: BUTTONS_OF('id2') },
+    { reference: 'id3', text: 'Deploy?\n\nVotes: 1 Yes, 2 …, 3 …', buttons: BUTTONS_OF('id3') },
+  ])
+  controller.abort()
+  await result
+})
+
+test('no update once the vote is decided', async () => {
+  const { service, messenger, idOf } = setup()
+  const result = runVote(service, createVote('majority'), new AbortController().signal)
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  messenger.updates = []
+  service.tap(idOf('3'), 0)
+  await result
+  expect(messenger.updates).toEqual([])
+})
+
+test('a deciding vote on the first tap sends no update', async () => {
+  const { service, messenger, idOf } = setup()
+  const result = runVote(service, createVote('all'), new AbortController().signal)
+  await flush()
+  service.tap(idOf('2'), 1)
+  await result
+  expect(messenger.updates).toEqual([])
+})
+
+test("an update in flight lands before the message's close", async () => {
+  const { service, messenger, idOf } = setup()
+  const updateGate = Promise.withResolvers<void>()
+  messenger.updateGate = { reference: 'id2', promise: updateGate.promise }
+  let isResolved = false
+  const result = runVote(service, createVote('majority'), new AbortController().signal)
+  void result.then(() => {
+    isResolved = true
+  })
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  service.tap(idOf('3'), 0)
+  await flush()
+  expect(isResolved).toBe(false)
+  expect(messenger.edits.filter((edit) => edit.endsWith('id2'))).toEqual([])
+  updateGate.resolve()
+  await result
+  expect(messenger.edits.filter((edit) => edit.endsWith('id2'))).toEqual([
+    'update id2',
+    'finalize id2',
+  ])
+})
+
+test('a decided vote resolves only once the updates in flight landed', async () => {
+  const { service, messenger, idOf } = setup()
+  const updateGate = Promise.withResolvers<void>()
+  messenger.updateGate = { reference: 'id1', promise: updateGate.promise }
+  let isResolved = false
+  const result = runVote(service, createVote('majority'), new AbortController().signal)
+  void result.then(() => {
+    isResolved = true
+  })
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  service.tap(idOf('3'), 0)
+  await flush()
+  expect(isResolved).toBe(false)
+  updateGate.resolve()
+  await result
+  expect(messenger.edits.filter((edit) => edit.endsWith('id1'))).toEqual([
+    'finalize id1',
+    'update id1',
+  ])
+})
+
+test('a queued update for a message that settled is dropped', async () => {
+  const { service, messenger, idOf, endingsOf } = setup()
+  const updateGate = Promise.withResolvers<void>()
+  messenger.updateGate = { reference: 'id3', promise: updateGate.promise }
+  const controller = new AbortController()
+  const result = runVote(service, createVote('all'), controller.signal)
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  service.tap(idOf('2'), 0)
+  await flush()
+  controller.abort()
+  await flush()
+  updateGate.resolve()
+  expect(await result).toEqual({ kind: 'cancelled' })
+  expect(messenger.edits.filter((edit) => edit.endsWith('id3'))).toEqual([
+    'update id3',
+    'finalize id3',
+  ])
+  expect(endingsOf('3')).toEqual([CANCELLED])
+})
+
+test("a re-asked voter's old message is not updated", async () => {
+  const { service, messenger, idOf } = setup()
+  const controller = new AbortController()
+  const result = runVote(service, createVote('all', 1), controller.signal)
+  await flush()
+  service.tap(idOf('1'), 0)
+  await vi.advanceTimersByTimeAsync(30_000)
+  messenger.updates = []
+  service.tap(idOf('2'), 0)
+  await flush()
+  expect(messenger.updates.map((update) => update.reference)).toEqual(['id1', 'id4', 'id5'])
+  expect(messenger.updates.at(-1)).toEqual({
+    reference: 'id5',
+    text: 'Deploy?\n\nVotes: 1 Yes, 2 Yes, 3 …',
+    buttons: BUTTONS_OF('id5'),
+  })
+  controller.abort()
+  await result
+})
+
+test('a failed update is logged and the vote goes on', async () => {
+  const { service, messenger, idOf } = setup()
+  messenger.isUpdateFailing = true
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const result = runVote(service, createVote('all'), new AbortController().signal)
+  await flush()
+  for (const voter of VOTERS) {
+    service.tap(idOf(voter), 0)
+    await flush()
+  }
+  expect(await result).toMatchObject({ kind: 'decided', approved: true })
+  expect(errorSpy).toHaveBeenCalledWith('failed to update approval message', expect.any(Error))
+  errorSpy.mockRestore()
 })
 
 test('askWithRetries re-asks until answered', async () => {

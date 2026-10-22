@@ -16,6 +16,7 @@ import type {
   AuditSink,
   BackgroundEntry,
   HistoryEntry,
+  MessageButtons,
   MessageEnding,
   MessageReference,
   Messenger,
@@ -47,6 +48,8 @@ export class ApprovalService {
   #pending = new PendingRequests()
   #history: HistoryEntry[] = []
   #background = new Map<string, BackgroundEntry>()
+  // The last queued update per message; the final edit waits for it, so it never gets overwritten.
+  #updates = new Map<string, Promise<void>>()
 
   constructor(
     messenger: Messenger,
@@ -78,10 +81,52 @@ export class ApprovalService {
   send(request: ApprovalRequest, signal?: AbortSignal): Promise<SentQuestion> {
     // Not async on purpose: V8 keeps an async function's params alive across every await, which
     // would pin the attachment bytes for the whole wait. #wait only sees the SentRequest.
-    return this.#open(request).then((opened) => ({
-      id: opened.id,
-      result: this.#wait(opened, signal),
-    }))
+    return this.#open(request).then((opened) => {
+      let finalText: FormattedText | undefined
+      const result = this.#wait(opened, signal, (text) => {
+        finalText = text
+      })
+      return {
+        id: opened.id,
+        reference: opened.reference,
+        message: opened.request.message,
+        result,
+        finalText: () => finalText,
+      }
+    })
+  }
+
+  /**
+   * Replaces the text of a sent question's message, keeping its buttons when `buttons` is given.
+   * Updates of one message go out in order, and those queued while it's open land before its final
+   * edit; one with `buttons` is dropped once the question settled. Skipped without
+   * `messenger.update`. Never rejects: a failed update is only logged.
+   */
+  update(
+    question: SentQuestion,
+    message: FormattedText,
+    buttons: MessageButtons | undefined,
+  ): Promise<void> {
+    if (this.#messenger.update === undefined) {
+      return Promise.resolve()
+    }
+    const { id, reference } = question
+    const previous = this.#updates.get(id) ?? Promise.resolve()
+    const queued = previous
+      .then(async () => {
+        if (buttons !== undefined && !this.#pending.has(id)) {
+          return
+        }
+        await this.#messenger.update?.(reference, message, buttons)
+      })
+      .catch((error: unknown) => console.error('failed to update approval message', error))
+    this.#updates.set(id, queued)
+    void queued.then(() => {
+      if (this.#updates.get(id) === queued) {
+        this.#updates.delete(id)
+      }
+    })
+    return queued
   }
 
   /**
@@ -198,7 +243,11 @@ export class ApprovalService {
       const message = { text: record.text, spans: record.spans ?? [] }
       const endedAt = this.#now()
       this.#audit?.settled(record.id, EXPIRED_ENDING, endedAt)
-      await this.#finalize(record.reference, message, EXPIRED_ENDING, endedAt)
+      await this.#finalize(
+        record.reference,
+        formatFinalText(message, EXPIRED_ENDING, endedAt),
+        EXPIRED_ENDING,
+      )
       this.#store?.removeRequest(record.id)
     }
   }
@@ -234,7 +283,11 @@ export class ApprovalService {
     return { id, request: sent, reference, openedAt, settlement }
   }
 
-  async #wait(opened: OpenedRequest, signal?: AbortSignal): Promise<RequestResult> {
+  async #wait(
+    opened: OpenedRequest,
+    signal?: AbortSignal,
+    onFinalText?: (text: FormattedText) => void,
+  ): Promise<RequestResult> {
     const { id, reference, settlement: settled } = opened
     const onAbort = () => {
       this.#pending.cancel(id)
@@ -247,7 +300,8 @@ export class ApprovalService {
     }
     const settlement = await settled
     signal?.removeEventListener('abort', onAbort)
-    await this.#finish(id, opened.request, reference, settlement)
+    const finalText = await this.#finish(id, opened.request, reference, settlement)
+    onFinalText?.(finalText)
     if (settlement.kind === 'cancelled') {
       return CANCELLED_RESULT
     }
@@ -262,7 +316,7 @@ export class ApprovalService {
     request: SentRequest,
     reference: MessageReference,
     settlement: Settlement,
-  ): Promise<void> {
+  ): Promise<FormattedText> {
     const settledAt = this.#now()
     this.#audit?.settled(id, settlement, settledAt)
     this.#history.push({ text: request.message.text, settlement, settledAt })
@@ -273,8 +327,11 @@ export class ApprovalService {
       settlement.kind === 'timedOut' && request.reaskOnTimeout === true
         ? REASKED_ENDING
         : settlement
-    await this.#finalize(reference, request.message, ending, settledAt)
+    const finalText = formatFinalText(request.message, ending, settledAt)
+    await this.#updates.get(id)
+    await this.#finalize(reference, finalText, ending)
     this.#store?.removeRequest(id)
+    return finalText
   }
 
   async #finishBackground(opened: OpenedRequest, settlement: Settlement): Promise<void> {
@@ -287,15 +344,14 @@ export class ApprovalService {
 
   async #finalize(
     reference: MessageReference,
-    message: FormattedText,
+    finalText: FormattedText,
     ending: MessageEnding,
-    endedAt: Date,
   ): Promise<void> {
     if (this.#messenger.finalize === undefined) {
       return
     }
     try {
-      await this.#messenger.finalize(reference, formatFinalText(message, ending, endedAt), ending)
+      await this.#messenger.finalize(reference, finalText, ending)
     } catch (error) {
       console.error('failed to finalize approval message', error)
     }

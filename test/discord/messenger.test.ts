@@ -178,6 +178,31 @@ test('finalize of a text-only question leaves components alone', async () => {
   expect(fake.edited[0]?.removeButtons).toBe(false)
 })
 
+test('update keeps the buttons', async () => {
+  const { fake, conversation, messenger } = setup()
+  const reference = await messenger.sendRequest(
+    'r1',
+    plain('Run it?'),
+    ['a', 'b'],
+    false,
+    undefined,
+    undefined,
+  )
+  await messenger.update(reference, plain('Run it?\n\nVotes: 1 a, 2 …'), {
+    id: 'r1',
+    options: ['a', 'b'],
+  })
+  expect(fake.edited).toEqual([
+    {
+      channelId: 'dm1',
+      messageId: 'm1',
+      content: 'Run it?\n\nVotes: 1 a, 2 …',
+      removeButtons: false,
+    },
+  ])
+  expectButtonsOnly(conversation, 'm1')
+})
+
 test('finalize forgets the question even when the edit fails', async () => {
   const fake = createFakeDiscord({
     editMessage: async () => {

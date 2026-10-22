@@ -7,6 +7,7 @@ import {
   formatRejectedReply,
   formatResultLine,
   formatSummary,
+  formatVoteProgress,
 } from '../../src/approval/index.ts'
 import type { HistoryEntry } from '../../src/approval/index.ts'
 
@@ -42,6 +43,14 @@ test('expired', () =>
 test('closed', () =>
   expect(formatResultLine({ kind: 'closed', answer: 'Yes' }, at)).toBe('🗳 Decided: Yes, 09:05'))
 test('reasked', () => expect(formatResultLine({ kind: 'reasked' }, at)).toBe('🔁 Re-asked, 09:05'))
+test('vote progress lists every voter with their answer or an ellipsis', () =>
+  expect(
+    formatVoteProgress([
+      { voter: '111', answer: 'Yes' },
+      { voter: '222', answer: undefined },
+      { voter: '333', answer: 'No' },
+    ]),
+  ).toBe('Votes: 111 Yes, 222 …, 333 No'))
 
 const OPENED_AT = new Date(2026, 9, 18, 9, 0, 0)
 const pendingOf = (

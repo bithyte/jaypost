@@ -1,7 +1,13 @@
 import { appendText, prependText } from '../format/index.ts'
 import type { FormattedText } from '../format/index.ts'
 import { MAX_REPLY_ANSWER_LENGTH, SUMMARY_MAX_LENGTH } from './constants.ts'
-import type { HistoryEntry, MessageEnding, PendingSummary, SentRequest } from './types.ts'
+import type {
+  HistoryEntry,
+  MessageEnding,
+  PendingSummary,
+  SentRequest,
+  VoterAnswer,
+} from './types.ts'
 
 function formatTime(at: Date): string {
   const hours = String(at.getHours()).padStart(2, '0')
@@ -45,6 +51,11 @@ export function formatFinalText(
   at: Date,
 ): FormattedText {
   return appendText(original, `\n\n${formatResultLine(ending, at)}`)
+}
+
+/** One line with every voter's answer so far, by voter id: `Votes: 111 Yes, 222 …`. */
+export function formatVoteProgress(votes: readonly VoterAnswer[]): string {
+  return `Votes: ${votes.map(({ voter, answer }) => `${voter} ${answer ?? '…'}`).join(', ')}`
 }
 
 /** The project name in brackets on its own first line, a blank line, then the text. */
