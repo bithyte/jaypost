@@ -1,0 +1,244 @@
+import { spawn, spawnSync } from 'node:child_process'
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, expect, test } from 'vite-plus/test'
+import { resolveInstallPaths, writeInstall } from '../../src/install/index.ts'
+
+const ROOT = new URL('../..', import.meta.url).pathname
+const WRAPPER = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
+const INSTALL_MESSAGE =
+  "jaypost isn't installed, so permission prompts stay in the terminal. Install it with `npm install -g jaypost` or see https://github.com/bithyte/jaypost#quick-start"
+const TOO_OLD_MESSAGE = 'jaypost is too old for this plugin. Run `jaypost update`.'
+const PERMISSION_EVENT = '{"hook_event_name":"PermissionRequest"}'
+const DECISION = '{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}'
+const FAKE_SCRIPT = `#!/bin/sh
+{
+  echo "args=$*"
+  echo "PORT=\${PORT-unset}"
+  echo "JAYPOST_TOKEN=\${JAYPOST_TOKEN-unset}"
+  echo "stdin=$(cat)"
+} >> "$FAKE_LOG"
+if [ -n "$FAKE_STDOUT" ]; then printf '%s\\n' "$FAKE_STDOUT"; fi
+if [ -n "$FAKE_STDERR" ]; then printf '%s\\n' "$FAKE_STDERR" >&2; fi
+exit "\${FAKE_EXIT:-0}"
+`
+const TRAPPING_SCRIPT = `#!/bin/sh
+trap 'echo terminated >> "$FAKE_LOG"; exit 0' TERM
+echo started >> "$FAKE_LOG"
+while :; do sleep 0.1; done
+`
+
+type Sandbox = {
+  readonly root: string
+  readonly bin: string
+  readonly home: string
+  readonly log: string
+  readonly path: string
+}
+
+const directories: string[] = []
+afterEach(async () => {
+  await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true })))
+})
+
+async function createDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), 'jaypost-plugin-'))
+  directories.push(directory)
+  return directory
+}
+
+async function createSandbox(script: string | null = FAKE_SCRIPT): Promise<Sandbox> {
+  const root = await createDirectory()
+  const bin = join(root, 'bin')
+  const home = join(root, 'home')
+  await mkdir(bin)
+  await mkdir(home)
+  if (script !== null) {
+    await writeFile(join(bin, 'jaypost'), script, { mode: 0o755 })
+    await chmod(join(bin, 'jaypost'), 0o755)
+  }
+  return { root, bin, home, log: join(root, 'log'), path: `${bin}:/usr/bin:/bin` }
+}
+
+function environment(sandbox: Sandbox, extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  return { PATH: sandbox.path, HOME: sandbox.home, FAKE_LOG: sandbox.log, ...extra }
+}
+
+function run(mode: string, sandbox: Sandbox, extra: Record<string, string> = {}, input = '') {
+  return spawnSync(WRAPPER, [mode], { env: environment(sandbox, extra), input, encoding: 'utf8' })
+}
+
+async function readLog(sandbox: Sandbox): Promise<string> {
+  return readFile(sandbox.log, 'utf8')
+}
+
+async function freePort(): Promise<number> {
+  const server = createServer()
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const { port } = server.address() as AddressInfo
+  await new Promise<void>((resolve) => server.close(() => resolve()))
+  return port
+}
+
+test('hook passes the event through and prints the decision', async () => {
+  const sandbox = await createSandbox()
+  const result = run('hook', sandbox, { FAKE_STDOUT: DECISION }, PERMISSION_EVENT)
+  expect(result.status).toBe(0)
+  expect(result.stdout).toBe(`${DECISION}\n`)
+  const log = await readLog(sandbox)
+  expect(log).toContain('args=hook\n')
+  expect(log).toContain(`stdin=${PERMISSION_EVENT}`)
+})
+
+test('hook drops PORT and keeps JAYPOST_TOKEN', async () => {
+  const sandbox = await createSandbox()
+  run('hook', sandbox, { PORT: '3000', JAYPOST_TOKEN: 't' }, PERMISSION_EVENT)
+  const log = await readLog(sandbox)
+  expect(log).toContain('PORT=unset\n')
+  expect(log).toContain('JAYPOST_TOKEN=t\n')
+})
+
+test('hook swallows a failing jaypost', async () => {
+  const sandbox = await createSandbox()
+  const result = run(
+    'hook',
+    sandbox,
+    { FAKE_EXIT: '1', FAKE_STDERR: 'jaypost: service not reachable' },
+    PERMISSION_EVENT,
+  )
+  expect(result.status).toBe(0)
+  expect(result.stdout).toBe('')
+  expect(result.stderr).toBe('')
+})
+
+test('hook without jaypost exits 0 silently', async () => {
+  const sandbox = await createSandbox(null)
+  const result = run('hook', sandbox, {}, PERMISSION_EVENT)
+  expect(result.status).toBe(0)
+  expect(result.stdout).toBe('')
+  expect(result.stderr).toBe('')
+})
+
+test('hook finds jaypost in ~/.local/bin when it is not on PATH', async () => {
+  const sandbox = await createSandbox(null)
+  const localBin = join(sandbox.home, '.local', 'bin')
+  await mkdir(localBin, { recursive: true })
+  await writeFile(join(localBin, 'jaypost'), FAKE_SCRIPT, { mode: 0o755 })
+  const result = run('hook', sandbox, {}, PERMISSION_EVENT)
+  expect(result.status).toBe(0)
+  expect(await readLog(sandbox)).toContain('args=hook\n')
+})
+
+test('hook forwards sigterm to jaypost', async () => {
+  const sandbox = await createSandbox(TRAPPING_SCRIPT)
+  const child = spawn(WRAPPER, ['hook'], {
+    env: environment(sandbox),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const exited = new Promise<number | null>((resolve) => child.on('close', resolve))
+  const deadline = Date.now() + 10_000
+  let started = false
+  while (!started && Date.now() < deadline) {
+    started = await readLog(sandbox).then(
+      (text) => text.includes('started'),
+      () => false,
+    )
+    if (!started) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+  }
+  expect(started).toBe(true)
+  child.kill('SIGTERM')
+  expect(await exited).toBe(0)
+  expect(await readLog(sandbox)).toContain('terminated')
+})
+
+test('session start without jaypost prints the install message', async () => {
+  const sandbox = await createSandbox(null)
+  const result = run('session-start', sandbox)
+  expect(result.status).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual({ systemMessage: INSTALL_MESSAGE })
+})
+
+test('session start with an old jaypost says to update', async () => {
+  const sandbox = await createSandbox()
+  const result = run('session-start', sandbox, {
+    FAKE_EXIT: '1',
+    FAKE_STDERR: 'jaypost: unsupported hook event "SessionStart"',
+  })
+  expect(result.status).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual({ systemMessage: TOO_OLD_MESSAGE })
+})
+
+test("session start passes jaypost's message through", async () => {
+  const sandbox = await createSandbox()
+  const result = run('session-start', sandbox, { FAKE_STDOUT: '{"systemMessage":"x"}' })
+  expect(result.status).toBe(0)
+  expect(result.stdout).toBe('{"systemMessage":"x"}\n')
+})
+
+test('session start prints nothing for other failures', async () => {
+  const sandbox = await createSandbox()
+  const result = run('session-start', sandbox, { FAKE_EXIT: '1', FAKE_STDERR: 'boom' })
+  expect(result.status).toBe(0)
+  expect(result.stdout).toBe('')
+})
+
+test('session start leaves no temp files behind', async () => {
+  const sandbox = await createSandbox()
+  const temporary = await createDirectory()
+  run('session-start', sandbox, { TMPDIR: temporary, FAKE_EXIT: '1', FAKE_STDERR: 'boom' })
+  expect(await readdir(temporary)).toEqual([])
+})
+
+test('mcp runs jaypost mcp without PORT', async () => {
+  const sandbox = await createSandbox()
+  run('mcp', sandbox, { PORT: '3000' })
+  const log = await readLog(sandbox)
+  expect(log).toContain('args=mcp\n')
+  expect(log).toContain('PORT=unset\n')
+})
+
+test('mcp without jaypost exits 1 with the install message', async () => {
+  const sandbox = await createSandbox(null)
+  const result = run('mcp', sandbox)
+  expect(result.status).toBe(1)
+  expect(result.stderr).toBe(`${INSTALL_MESSAGE}\n`)
+})
+
+test('an unknown mode exits 1 naming it', async () => {
+  const sandbox = await createSandbox()
+  const result = run('bogus', sandbox)
+  expect(result.status).toBe(1)
+  expect(result.stderr).toBe('jaypost-plugin: unknown mode "bogus"\n')
+})
+
+test('session start against the real cli reports a stopped service', async () => {
+  const sandbox = await createSandbox(
+    `#!/bin/sh\nexec "${process.execPath}" "${ROOT}src/cli.ts" "$@"\n`,
+  )
+  const configHome = join(sandbox.root, 'config')
+  await mkdir(configHome)
+  const env = { HOME: sandbox.home, XDG_CONFIG_HOME: configHome }
+  const installedPort = await freePort()
+  let environmentPort = await freePort()
+  while (environmentPort === installedPort) {
+    environmentPort = await freePort()
+  }
+  const { installFile } = resolveInstallPaths(env)
+  await mkdir(join(installFile, '..'), { recursive: true })
+  writeInstall(installFile, { target: 'systemd', port: installedPort, version: '0.0.0' })
+  const result = run(
+    'session-start',
+    sandbox,
+    { XDG_CONFIG_HOME: configHome, PORT: String(environmentPort) },
+    '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup","cwd":"/work"}',
+  )
+  expect(result.status).toBe(0)
+  expect(JSON.parse(result.stdout)).toEqual({
+    systemMessage: `jaypost isn't running on 127.0.0.1:${installedPort}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`,
+  })
+})

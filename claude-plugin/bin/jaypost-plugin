@@ -1,0 +1,51 @@
+#!/bin/sh
+INSTALL_MESSAGE="jaypost isn't installed, so permission prompts stay in the terminal. Install it with \`npm install -g jaypost\` or see https://github.com/bithyte/jaypost#quick-start"
+TOO_OLD_MESSAGE="jaypost is too old for this plugin. Run \`jaypost update\`."
+
+bin=$(command -v jaypost)
+if [ -z "$bin" ] && [ -x "$HOME/.local/bin/jaypost" ]; then
+  bin="$HOME/.local/bin/jaypost"
+fi
+
+case "$1" in
+  hook)
+    if [ -z "$bin" ]; then
+      cat >/dev/null
+      exit 0
+    fi
+    exec 3<&0 # async lists get /dev/null as stdin, so keep the real one on fd 3
+    env -u PORT "$bin" hook <&3 2>/dev/null &
+    child=$!
+    trap 'kill -TERM "$child" 2>/dev/null' TERM INT
+    wait "$child"
+    wait "$child" 2>/dev/null # the first wait returns early when a trap fires
+    exit 0
+    ;;
+  session-start)
+    if [ -z "$bin" ]; then
+      printf '{"systemMessage":"%s"}\n' "$INSTALL_MESSAGE"
+      exit 0
+    fi
+    errors=$(mktemp) || exit 0
+    trap 'rm -f "$errors"' EXIT
+    if output=$(env -u PORT "$bin" hook 2>"$errors"); then
+      if [ -n "$output" ]; then
+        printf '%s\n' "$output"
+      fi
+    elif grep -q 'unsupported hook event' "$errors"; then
+      printf '{"systemMessage":"%s"}\n' "$TOO_OLD_MESSAGE"
+    fi
+    exit 0
+    ;;
+  mcp)
+    if [ -z "$bin" ]; then
+      printf '%s\n' "$INSTALL_MESSAGE" >&2
+      exit 1
+    fi
+    exec env -u PORT "$bin" mcp
+    ;;
+  *)
+    printf 'jaypost-plugin: unknown mode "%s"\n' "$1" >&2
+    exit 1
+    ;;
+esac
