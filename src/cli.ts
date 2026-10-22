@@ -645,9 +645,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           text,
           ...(options.option === undefined
             ? {}
-            : {
-                options: toButtons(options.option, options.default, options.allowText),
-              }),
+            : { options: toButtons(options.option, options.default, options.allowText) }),
           ...(options.allowText === undefined ? {} : { allowText: options.allowText }),
           timeoutOption: options.default,
           ...(options.timeout === undefined ? {} : { timeout: options.timeout }),

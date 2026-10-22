@@ -8,9 +8,7 @@ import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
  * answered or timed out, 1 on any failure, with the reason on stderr.
  */
 export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Promise<number> {
-  const result = await toCaller(deps).ask(toQuestion(args), {
-    signal: deps.signal,
-  })
+  const result = await toCaller(deps).ask(toQuestion(args), { signal: deps.signal })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
@@ -21,9 +19,7 @@ export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Pro
 
 /** Sends a notification; prints nothing on success. Returns 0 once sent, 1 on any failure. */
 export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promise<number> {
-  const result = await toCaller(deps).notify(toMessage(args), {
-    signal: deps.signal,
-  })
+  const result = await toCaller(deps).notify(toMessage(args), { signal: deps.signal })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
