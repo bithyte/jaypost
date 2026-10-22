@@ -331,3 +331,49 @@ test('send --attach-name without --attach exits 2', async () => {
   const output = stderr.mock.calls.map((call) => String(call[0])).join('')
   expect(output).toContain("error: option '--attach-name <name>' needs '--attach <file>'")
 })
+
+const REQUEST_ARGS = ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No']
+
+test('vote and retry flags need direct mode', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', '')
+  for (const flags of [
+    ['-u', '1'],
+    ['--require', 'all'],
+    ['--retry', '2'],
+  ]) {
+    expect(await main([...REQUEST_ARGS, ...flags])).toBe(2)
+  }
+})
+
+test('a vote needs one -o and a different -d without --allow-text', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  const base = ['send', 'request', 'Deploy?']
+  expect(await main([...base, '-o', 'Yes', '-o', 'Maybe', '-d', 'No', '-u', '1'])).toBe(2)
+  expect(await main([...base, '--allow-text', '-d', 'No', '--require', 'all'])).toBe(2)
+  expect(await main([...base, '-o', 'No', '-d', 'No', '-u', '1'])).toBe(2)
+})
+
+test('--require only takes all or majority', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  expect(await main([...REQUEST_ARGS, '--require', 'some'])).toBe(2)
+})
+
+test('--retry rejects a negative or non-integer count', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  for (const count of ['-1', '1.5', 'x', '', '101']) {
+    expect(await main([...REQUEST_ARGS, '--retry', count])).toBe(2)
+  }
+})
+
+test('valid vote and retry flags pass validation and reach the direct send', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  const flags = ['-u', '1', '-u', '2', '--require', 'majority', '--retry', '3']
+  expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
+  expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
+})

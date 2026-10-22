@@ -471,6 +471,24 @@ With `--allow-text`, a typed reply counts as the `-d` answer only when it equals
 
 So `-d No` works as a gate: the step fails unless someone approves. In service mode `send request` still exits 0 for any answer, including the default.
 
+### Several approvers
+
+In direct mode, `-u ID` sends the question to a paired user instead of the owner. Repeat it for each approver, and each one gets their own message. `--require` sets how the votes decide:
+
+- `all` (the default with `-u`): approved when every approver answers the `-o` button, rejected on the first `-d`.
+- `majority`: approved when more than half of the listed approvers answer `-o`, rejected once that can't happen. A tie rejects.
+
+```yaml
+- run: npx jaypost send request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
+  env: # same four
+```
+
+`--retry N` asks again after a timeout, up to N more times, and only the approvers who haven't answered. Votes already cast stand. Each round waits `--timeout` seconds. A vote that runs out of rounds is rejected, since a missing vote counts as `-d`. `--retry` alone re-asks a plain question, with no vote. `--require` without `-u` is a vote of one, the owner.
+
+A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
+
+`-u`, `--require` and `--retry` exit 2 in service mode.
+
 Other differences from service mode:
 
 - Notifications have no Dismiss button and aren't deleted automatically.
@@ -685,7 +703,7 @@ jaypost mcp [--port N]
 jaypost hook [--port N] [--project NAME] [--timeout S]
 jaypost setup-ci [--provider NAME]
 jaypost openapi [FILE] [--port N]
-jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
+jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
 jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
 ```
 

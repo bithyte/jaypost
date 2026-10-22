@@ -22,6 +22,8 @@ export const UNREACHABLE_STATUS = { kind: 'unreachable' } as const satisfies Sta
 
 /** Direct `send request` exit code when the answer is the `-d` value or the timeout fired. */
 export const DECLINED_EXIT_CODE = 3
+/** Most re-asks `send request --retry` accepts. */
+export const MAX_RETRY_COUNT = 100
 /** Shown for a failed provider send; the cause can hold provider internals, so it's left out. */
 export const DIRECT_SEND_FAILED_MESSAGE = 'failed to send message'
 /** Shown when a direct question is cancelled by a signal. */

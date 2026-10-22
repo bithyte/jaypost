@@ -6,6 +6,8 @@ import { resolve } from 'node:path'
 import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
 import { parseSince } from './audit/index.ts'
+import { VOTE_RULES } from './approval/index.ts'
+import type { VoteRule } from './approval/index.ts'
 import { resolveClientToken, resolveTokenFile } from './auth/index.ts'
 import { DEFAULT_ATTACHMENT_NAME } from './client/index.ts'
 import type { AttachmentSource } from './client/index.ts'
@@ -30,6 +32,7 @@ import {
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
+import { MAX_RETRY_COUNT } from './commands/constants.ts'
 import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
 import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
 import { runService } from './daemon/index.ts'
@@ -53,7 +56,7 @@ import { formatOpenApiYaml } from './server/index.ts'
 import { isPortFree, realExec } from './system/index.ts'
 import { NPM_LATEST_URL, RELEASES_API_URL } from './update/index.ts'
 
-const PORT_PATTERN = /^\d+$/
+const DIGITS_PATTERN = /^\d+$/
 
 function resolvePort(): number {
   try {
@@ -65,7 +68,7 @@ function resolvePort(): number {
 }
 
 function parsePort(rawPort: string): number {
-  const port = PORT_PATTERN.test(rawPort) ? Number(rawPort) : NaN
+  const port = DIGITS_PATTERN.test(rawPort) ? Number(rawPort) : NaN
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new InvalidArgumentError('must be an integer 1-65535')
   }
@@ -78,6 +81,14 @@ function parseTimeout(rawTimeout: string): number {
     throw new InvalidArgumentError('must be a positive number of seconds')
   }
   return timeout
+}
+
+function parseRetry(rawRetry: string): number {
+  const retry = DIGITS_PATTERN.test(rawRetry) ? Number(rawRetry) : NaN
+  if (!Number.isInteger(retry) || retry > MAX_RETRY_COUNT) {
+    throw new InvalidArgumentError(`must be an integer 0-${MAX_RETRY_COUNT}`)
+  }
+  return retry
 }
 
 function parseSinceOption(raw: string): Date {
@@ -99,7 +110,7 @@ function parseProjectOption(raw: string): string {
 }
 
 function parseLimit(raw: string): number {
-  const limit = PORT_PATTERN.test(raw) ? Number(raw) : NaN
+  const limit = DIGITS_PATTERN.test(raw) ? Number(raw) : NaN
   if (!Number.isSafeInteger(limit) || limit < 1) {
     throw new InvalidArgumentError('must be a positive integer')
   }
@@ -549,6 +560,18 @@ export async function main(argv: readonly string[]): Promise<number> {
       'seconds to wait; default 300, max 86400 (24 h); longer values are capped',
       parseTimeout,
     )
+    .option(
+      '-u, --user <id>',
+      'send to this paired user instead of the owner; repeat per approver (direct mode)',
+      collect,
+    )
+    .addOption(
+      new Option(
+        '--require <rule>',
+        'votes needed to approve: all or majority (direct mode)',
+      ).choices(VOTE_RULES),
+    )
+    .option('--retry <count>', 're-ask up to N times after a timeout (direct mode)', parseRetry)
     .option('--project <name>', 'shown as [name] above the question')
     .addOption(
       new Option('--format <format>', 'how to read TEXT: plain (default) or markdown').choices(
@@ -574,6 +597,9 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly allowText?: boolean
           readonly default: string
           readonly timeout?: number
+          readonly user?: readonly string[]
+          readonly require?: VoteRule
+          readonly retry?: number
           readonly project?: string
           readonly format?: MessageFormat
           readonly json?: boolean
@@ -583,6 +609,25 @@ export async function main(argv: readonly string[]): Promise<number> {
         },
       ) => {
         const mode = requireSendMode(request)
+        const isVote = options.user !== undefined || options.require !== undefined
+        if (mode.kind !== 'direct' && (isVote || options.retry !== undefined)) {
+          request.error('error: -u, --require and --retry need JAYPOST_MODE=direct', {
+            exitCode: 2,
+          })
+        }
+        if (
+          isVote &&
+          (options.allowText === true ||
+            options.option?.length !== 1 ||
+            options.option[0] === options.default)
+        ) {
+          request.error(
+            'error: a vote needs exactly one -o and a different -d, without --allow-text',
+            {
+              exitCode: 2,
+            },
+          )
+        }
         if (options.attachName !== undefined && options.attach === undefined) {
           request.error("error: option '--attach-name <name>' needs '--attach <file>'", {
             exitCode: 2,
@@ -598,7 +643,9 @@ export async function main(argv: readonly string[]): Promise<number> {
           text,
           ...(options.option === undefined
             ? {}
-            : { options: toButtons(options.option, options.default, options.allowText) }),
+            : {
+                options: toButtons(options.option, options.default, options.allowText),
+              }),
           ...(options.allowText === undefined ? {} : { allowText: options.allowText }),
           timeoutOption: options.default,
           ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
@@ -606,6 +653,9 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.format === undefined ? {} : { format: options.format }),
           ...(options.json === undefined ? {} : { json: options.json }),
           ...(attachment === undefined ? {} : { attachment }),
+          ...(options.user === undefined ? {} : { voters: options.user }),
+          ...(options.require === undefined ? {} : { rule: options.require }),
+          ...(options.retry === undefined ? {} : { retryCount: options.retry }),
         }
         // A cancelled CI run sends SIGTERM; the question is still edited to the cancelled line.
         code =
