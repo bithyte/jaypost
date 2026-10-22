@@ -140,7 +140,7 @@ If the token file isn't readable where the MCP server runs (a container, another
 
 For a container, `export JAYPOST_TOKEN=$(cat ~/.config/jaypost/token)` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`.
 
-The port comes from `--port`, then `PORT`, then the install's `install.json`, then 8787. If you run `start` by hand on a custom port without an install, pass `--port` or set `PORT`.
+The port comes from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. If you run `start` by hand on a custom port without an install, pass `--port` or set `JAYPOST_PORT`.
 
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 
@@ -189,7 +189,7 @@ A timeout behaves like `Ask in terminal`. Long inputs that don't fit in the mess
 - Without the package on `PATH`, use `npx -y jaypost hook` as the command. npx adds startup time to every prompt.
 - `--project NAME` sets the `[name]` line. Default is the Claude Code project folder.
 - `--timeout S` is how long to wait for a tap on a permission prompt. Default 300, max 86400 (24 h); longer values are capped.
-- `--port N` picks the port as for [`mcp`](#agents-mcp), including `PORT`. Hooks inherit Claude Code's environment, so a `PORT` meant for your own app (say `PORT=3000`) points the hook at the wrong place. Pass `--port` then.
+- `--port N` picks the port as for [`mcp`](#agents-mcp), including `JAYPOST_PORT`.
 - It finds the API token the same way `mcp` and `send` do: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`.
 
 It fails open. If the service is down or not paired, the hook does nothing and the terminal prompt works as usual. In `-p` (non-interactive) mode there's no terminal prompt, so no decision means Claude Code denies.
@@ -431,6 +431,51 @@ Attachments need a service at least as new as this release; an older one ignores
 
 The API is described in OpenAPI 3.1: [`docs/openapi.yaml`](docs/openapi.yaml) (port 8787, Telegram's text limit), `GET /openapi.yaml` on a running service, or `jaypost openapi [FILE]`. The last two use the install's port and its provider's text limit. Regenerate the docs copy with `vp run openapi`.
 
+## CI (GitHub Actions)
+
+In CI there's no service to run. Set `JAYPOST_MODE=direct` and `jaypost send` talks to the chat app itself, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
+
+Run `jaypost setup-ci` once on your machine (`--provider NAME` picks the chat app). It prints a pairing code, waits for you to send it to the bot, then prints the env vars to store as GitHub secrets. It writes no files.
+
+```
+JAYPOST_MODE=direct
+JAYPOST_PROVIDER=telegram
+JAYPOST_BOT_TOKEN=...
+JAYPOST_OWNER_ID=...
+```
+
+Workflow example:
+
+```yaml
+- uses: actions/setup-node@v4
+  with:
+    node-version: 24
+- run: npx jaypost send request 'Publish v123?' -o Yes -d No
+  env:
+    JAYPOST_MODE: direct
+    JAYPOST_PROVIDER: telegram
+    JAYPOST_BOT_TOKEN: ${{ secrets.JAYPOST_BOT_TOKEN }}
+    JAYPOST_OWNER_ID: ${{ secrets.JAYPOST_OWNER_ID }}
+- run: npx jaypost send notify 'New version published'
+  env: # same four
+```
+
+In direct mode `send request` exits with:
+
+- 0: any answer other than the `-d` one
+- 1: an error
+- 2: bad arguments
+- 3: the answer was the `-d` value, or the timeout fired
+
+So `-d No` works as a gate: the step fails unless someone approves. In service mode `send request` still exits 0 for any answer, including the default.
+
+Other differences from service mode:
+
+- Notifications have no Dismiss button and aren't deleted automatically.
+- The config file isn't read, and `--port` is ignored.
+- SIGINT and SIGTERM (a cancelled run) cancel a pending question, edit the message to the cancelled line and exit 1.
+- On Telegram, pairing in `setup-ci` and running a direct session both set the owner's command menu to empty. If the same bot backs a running jaypost service, its menu is gone until that service restarts. Use a separate bot for CI.
+
 ## Install options
 
 Create a bot with @BotFather first and have the token ready. `init`:
@@ -528,7 +573,7 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 ### Config
 
-Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
+Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
 ## Pairing
 
@@ -636,6 +681,7 @@ jaypost update
 jaypost start
 jaypost mcp [--port N]
 jaypost hook [--port N] [--project NAME] [--timeout S]
+jaypost setup-ci [--provider NAME]
 jaypost openapi [FILE] [--port N]
 jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
 jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
@@ -652,6 +698,7 @@ jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FI
 - `mcp`: runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents (MCP)](#agents-mcp).
 - `hook`: a Claude Code hook that sends permission prompts to your chat app. See [Claude Code hook](#claude-code-hook).
 - `openapi`: prints the API's OpenAPI spec, or writes it to `FILE`. See [OpenAPI spec](#openapi-spec).
+- `setup-ci`: pairs an owner and prints the env vars for CI. See [CI (GitHub Actions)](#ci-github-actions).
 - `send request` / `send notify`: the HTTP API from a shell. See [From the shell](#from-the-shell).
 
 ### One instance per token
