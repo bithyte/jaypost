@@ -52,6 +52,21 @@ export async function prepareAttachment(
   return { kind: 'ok', attachment: read.body }
 }
 
+/**
+ * Reads the attachment locally with no service call, for callers that run without the service.
+ * Never throws; same size cap and failure messages as `prepareAttachment`.
+ */
+export async function readAttachment(
+  source: AttachmentSource,
+  signal: AbortSignal,
+): Promise<AttachmentResult> {
+  const read = await readSource(source, describeSource(source), signal)
+  if (read.kind === 'failed') {
+    return read
+  }
+  return { kind: 'ok', attachment: read.body }
+}
+
 function describeSource(source: AttachmentSource): string {
   if ('stream' in source) {
     return 'attachment from stdin'

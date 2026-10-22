@@ -1,4 +1,4 @@
-export { prepareAttachment } from './attachment.ts'
+export { prepareAttachment, readAttachment } from './attachment.ts'
 export { Client, JaypostError } from './client.ts'
 export {
   ATTACHMENT_GRACE_MS,

@@ -11,7 +11,7 @@ import {
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   ATTACHMENT_TOO_OLD_MESSAGE,
 } from '../../src/client/constants.ts'
-import { prepareAttachment } from '../../src/client/attachment.ts'
+import { prepareAttachment, readAttachment } from '../../src/client/attachment.ts'
 
 const OPTIONS = { signal: new AbortController().signal }
 let directory = ''
@@ -230,5 +230,21 @@ test('an unreachable service fails with the not reachable message', async () => 
   expect(result).toEqual({
     kind: 'failed',
     message: `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
+  })
+})
+
+test('readAttachment reads a file without calling the service', async () => {
+  const path = writeFile('a.txt', new TextEncoder().encode('hi'))
+  expect(await readAttachment({ path }, new AbortController().signal)).toEqual({
+    kind: 'ok',
+    attachment: { name: 'a.txt', data: Buffer.from('hi').toString('base64') },
+  })
+})
+
+test('readAttachment reports a missing file', async () => {
+  const path = join(directory, 'missing.txt')
+  expect(await readAttachment({ path }, new AbortController().signal)).toEqual({
+    kind: 'failed',
+    message: `attachment ${JSON.stringify(path)} not found`,
   })
 })
