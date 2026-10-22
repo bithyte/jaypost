@@ -212,7 +212,7 @@ function describeError(error: unknown): string {
  * Sends requests as inline-keyboard messages to the owner; the final edit removes the buttons.
  * A request without options has no keyboard, and `allowText` appends a hint on how to reply.
  * Each sent request is added to `openQuestions` and removed again by `finalize`, even when the
- * final edit fails. Notifications get a single Dismiss button. Sending throws when nobody is
+ * final edit fails. Notifications get a single Dismiss button unless not dismissible. Sending throws when nobody is
  * paired.
  */
 export function createTelegramMessenger(
@@ -312,9 +312,11 @@ export function createTelegramMessenger(
           bot.api.sendMessage(ownerId, message.text, {
             ...extra,
             disable_notification: options.silent,
-            reply_markup: {
-              inline_keyboard: [[{ text: DISMISS_LABEL, callback_data: formatDismissData(id) }]],
-            },
+            ...(options.dismissible && {
+              reply_markup: {
+                inline_keyboard: [[{ text: DISMISS_LABEL, callback_data: formatDismissData(id) }]],
+              },
+            }),
             ...(documentMessageId !== undefined && {
               reply_parameters: { message_id: documentMessageId },
             }),

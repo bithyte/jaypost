@@ -400,7 +400,7 @@ test('sendNotification sends text with one Dismiss button', async () => {
   const ref = await createTelegramMessenger(bot, { id: 42 }).sendNotification(
     'id1',
     plain('hi'),
-    { silent: false },
+    { silent: false, dismissible: true },
     undefined,
   )
   expect(ref).toEqual({ chatId: 42, messageId: 5 })
@@ -412,6 +412,22 @@ test('sendNotification sends text with one Dismiss button', async () => {
   })
 })
 
+test('sendNotification without dismissible sends no keyboard', async () => {
+  const sendMessage = vi.fn(async (_chatId: number, _text: string, _other: object) => ({
+    message_id: 5,
+    chat: { id: 42 },
+  }))
+  const bot = { api: { sendMessage } } as unknown as Bot
+  const ref = await createTelegramMessenger(bot, { id: 42 }).sendNotification(
+    'id1',
+    plain('hi'),
+    { silent: false, dismissible: false },
+    undefined,
+  )
+  expect(ref).toEqual({ chatId: 42, messageId: 5 })
+  expect(sendMessage).toHaveBeenCalledWith(42, 'hi', { disable_notification: false })
+})
+
 test('sendNotification sets disable_notification when silent', async () => {
   const sendMessage = vi.fn(async (_chatId: number, _text: string, _other: object) => ({
     message_id: 5,
@@ -421,7 +437,7 @@ test('sendNotification sets disable_notification when silent', async () => {
   await createTelegramMessenger(bot, { id: 42 }).sendNotification(
     'id1',
     plain('hi'),
-    { silent: true },
+    { silent: true, dismissible: true },
     undefined,
   )
   expect(sendMessage.mock.calls[0]?.[2]).toMatchObject({
@@ -452,7 +468,7 @@ test('sendNotification throws when unpaired', async () => {
     createTelegramMessenger(bot, { id: undefined }).sendNotification(
       'id1',
       plain('hi'),
-      { silent: true },
+      { silent: true, dismissible: true },
       undefined,
     ),
   ).rejects.toThrow()
@@ -1248,7 +1264,12 @@ test('plain sends have no entities key', async () => {
   const { bot, sendMessage, editMessageText } = createSendBot()
   const messenger = createTelegramMessenger(bot, { id: 42 })
   await messenger.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)
-  await messenger.sendNotification('id1', plain('hi'), { silent: false }, undefined)
+  await messenger.sendNotification(
+    'id1',
+    plain('hi'),
+    { silent: false, dismissible: true },
+    undefined,
+  )
   await messenger.finalize({ chatId: 42, messageId: 5 }, plain('done'), {
     kind: 'cancelled',
   })
@@ -1383,7 +1404,7 @@ test('notification falls back the same way', async () => {
   await createTelegramMessenger(bot, { id: 42 }, new Map(), log).sendNotification(
     'id1',
     RUN_LS,
-    { silent: true },
+    { silent: true, dismissible: true },
     undefined,
   )
   expect(sendMessage).toHaveBeenCalledTimes(2)
@@ -1500,7 +1521,12 @@ test('a failed cleanup delete is logged without the file name', async () => {
 
 test('a notification with an attachment replies to its document', async () => {
   const { messenger, sendDocument, sendMessage } = createAttachmentBot()
-  const ref = await messenger.sendNotification('id1', plain('done'), { silent: false }, ATTACHMENT)
+  const ref = await messenger.sendNotification(
+    'id1',
+    plain('done'),
+    { silent: false, dismissible: true },
+    ATTACHMENT,
+  )
   expect(sendDocument).toHaveBeenCalledWith(42, expect.any(InputFile), {
     disable_notification: true,
   })
@@ -1516,7 +1542,12 @@ test('a notification with an attachment replies to its document', async () => {
 
 test('a quiet notification with an attachment does not ping', async () => {
   const { messenger, sendDocument, sendMessage } = createAttachmentBot()
-  await messenger.sendNotification('id1', plain('done'), { silent: true }, ATTACHMENT)
+  await messenger.sendNotification(
+    'id1',
+    plain('done'),
+    { silent: true, dismissible: true },
+    ATTACHMENT,
+  )
   expect(sendDocument.mock.calls[0]?.[2]).toEqual({
     disable_notification: true,
   })

@@ -56,7 +56,7 @@ export class NotificationService {
       reference = await this.#notifier.sendNotification(
         id,
         request.message,
-        { silent: quietEnd !== undefined },
+        { silent: quietEnd !== undefined, dismissible: true },
         request.attachment,
       )
     } catch (cause) {

@@ -171,7 +171,7 @@ test('without deleteMessage no timer is started', async () => {
   expect(sendNotification).toHaveBeenCalledWith(
     'id1',
     { text: 'hi', spans: [] },
-    { silent: false },
+    { silent: false, dismissible: true },
     undefined,
   )
   expect(svc.size).toBe(0)

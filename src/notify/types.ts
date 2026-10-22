@@ -14,9 +14,13 @@ export type NotifyParseResult =
   | { readonly ok: true; readonly value: NotifyRequest }
   | { readonly ok: false; readonly error: string }
 
-/** How a notification is delivered; `silent` suppresses the sound and vibration. */
+/**
+ * How a notification is delivered; `silent` suppresses the sound and vibration, `dismissible`
+ * adds a Dismiss button (off when no process stays alive to handle the tap).
+ */
 export type SendNotificationOptions = {
   readonly silent: boolean
+  readonly dismissible: boolean
 }
 
 /**
