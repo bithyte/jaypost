@@ -1,0 +1,56 @@
+name: jaypost approval
+description: Ask someone on Telegram or Discord before a step runs, or tell them something. A No or a timeout fails the step.
+branding:
+  icon: message-circle
+  color: blue
+inputs:
+  command:
+    description: request asks a question and waits for the answer; notify sends a message.
+    default: request
+  text:
+    description: The question or message. A link to the workflow run is added at the end.
+    required: true
+  options:
+    description: Answer buttons, one per line (command request).
+  default:
+    description: The answer on a timeout, added as the last button. Choosing it fails the step (command request).
+  timeout:
+    description: Seconds to wait for an answer; 300 by default, 86400 at most (command request).
+  allow-text:
+    description: Also accept a typed answer, true or false (command request).
+  project:
+    description: Project name shown on the message. The repository name by default.
+  format:
+    description: How text is read, plain (default) or markdown.
+  provider:
+    description: telegram (default) or discord.
+  bot-token:
+    description: The bot token. Pass it from a secret.
+    required: true
+  owner-id:
+    description: Who gets the message. Pass it from a secret.
+    required: true
+outputs:
+  answer:
+    description: The answer printed by jaypost send request; empty for notify or on an error.
+    value: ${{ steps.send.outputs.answer }}
+runs:
+  using: composite
+  steps:
+    - id: send
+      shell: bash
+      # exec: the runner signals only the step's shell, so run.sh must be that process
+      run: exec bash "$GITHUB_ACTION_PATH/action/run.sh"
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_TEXT: ${{ inputs.text }}
+        INPUT_OPTIONS: ${{ inputs.options }}
+        INPUT_DEFAULT: ${{ inputs.default }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_ALLOW_TEXT: ${{ inputs.allow-text }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        JAYPOST_MODE: direct
+        JAYPOST_PROVIDER: ${{ inputs.provider }}
+        JAYPOST_BOT_TOKEN: ${{ inputs.bot-token }}
+        JAYPOST_OWNER_ID: ${{ inputs.owner-id }}

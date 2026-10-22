@@ -1,0 +1,38 @@
+name: action-test
+
+# Tries the released action (bithyte/jaypost@v0) against the real chat app: asks, then sends the
+# answer back as a notification.
+on:
+  workflow_dispatch:
+    inputs:
+      text:
+        description: The question to ask
+        default: Does the jaypost action work?
+      timeout:
+        description: Seconds to wait for an answer
+        default: '300'
+
+permissions: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - id: approval
+        uses: bithyte/jaypost@v0
+        with:
+          text: ${{ inputs.text }}
+          options: 'Yes'
+          default: 'No'
+          timeout: ${{ inputs.timeout }}
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+
+      - uses: bithyte/jaypost@v0
+        with:
+          command: notify
+          text: Got "${{ steps.approval.outputs.answer }}"
+          provider: ${{ secrets.JAYPOST_PROVIDER }}
+          bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+          owner-id: ${{ secrets.JAYPOST_OWNER_ID }}

@@ -2,10 +2,12 @@
 # Installs the jaypost standalone binary to ~/.local/bin, then runs `jaypost init`.
 # Usage: curl -fsSL https://unpkg.com/jaypost/install.sh | sh
 # JAYPOST_RELEASE_URL overrides where the binaries come from (tests use it).
+# JAYPOST_INSTALL_DIR overrides where the binary goes, and JAYPOST_NO_INIT=1 skips init
+# (the GitHub Action uses both).
 set -eu
 
 release_url="${JAYPOST_RELEASE_URL:-https://github.com/bithyte/jaypost/releases/latest/download}"
-bin_dir="$HOME/.local/bin"
+bin_dir="${JAYPOST_INSTALL_DIR:-$HOME/.local/bin}"
 
 fail() {
   echo "jaypost install: $1" >&2
@@ -60,6 +62,10 @@ gunzip -c "$temp_dir/$asset" >"$bin_dir/jaypost.$$.tmp"
 chmod +x "$bin_dir/jaypost.$$.tmp"
 mv -f "$bin_dir/jaypost.$$.tmp" "$bin_dir/jaypost"
 echo "Installed $bin_dir/jaypost"
+
+if [ "${JAYPOST_NO_INIT:-}" = 1 ]; then
+  exit 0
+fi
 
 # stdin is this script when piped from curl, so init's prompts need the terminal
 if ! (: </dev/tty) 2>/dev/null; then

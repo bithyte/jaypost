@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -72,11 +73,16 @@ function createHome(system: string, machine: string): { home: string; path: stri
 }
 
 // detached starts a new session, so the script has no /dev/tty and skips init
-function runScript(home: string, path: string, releaseUrl: string): Promise<RunResult> {
+function runScript(
+  home: string,
+  path: string,
+  releaseUrl: string,
+  extraEnv: Record<string, string> = {},
+): Promise<RunResult> {
   return new Promise((resolve, reject) => {
     const child = spawn('sh', [SCRIPT], {
       detached: true,
-      env: { HOME: home, PATH: path, JAYPOST_RELEASE_URL: releaseUrl },
+      env: { HOME: home, PATH: path, JAYPOST_RELEASE_URL: releaseUrl, ...extraEnv },
     })
     let stdout = ''
     let stderr = ''
@@ -164,4 +170,22 @@ test('points to npx on an unsupported architecture', async () => {
   const result = await runScript(home, path, 'http://127.0.0.1:9')
   expect(result.status).toBe(1)
   expect(result.stderr).toContain('no binary for riscv64; use npx jaypost init')
+})
+
+test('installs into JAYPOST_INSTALL_DIR when set', async () => {
+  const releaseUrl = await startRelease(createReleaseFiles('jaypost-linux-x64.gz'))
+  const { home, path } = createHome('Linux', 'x86_64')
+  const installDir = join(home, 'tool')
+  const result = await runScript(home, path, releaseUrl, { JAYPOST_INSTALL_DIR: installDir })
+  expect(result.status, result.stderr).toBe(0)
+  expect(readFileSync(join(installDir, 'jaypost'), 'utf8')).toBe(BINARY)
+  expect(existsSync(join(home, '.local'))).toBe(false)
+})
+
+test('stops after installing when JAYPOST_NO_INIT is 1', async () => {
+  const releaseUrl = await startRelease(createReleaseFiles('jaypost-linux-x64.gz'))
+  const { home, path } = createHome('Linux', 'x86_64')
+  const result = await runScript(home, path, releaseUrl, { JAYPOST_NO_INIT: '1' })
+  expect(result.status, result.stderr).toBe(0)
+  expect(result.stdout).not.toContain('init')
 })
