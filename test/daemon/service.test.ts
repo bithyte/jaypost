@@ -294,9 +294,10 @@ test('/mute is saved and a restarted service is still muted', async () => {
   expect(Math.abs(drift)).toBeLessThan(60_000)
   await running?.stop()
   running = undefined
-  const config = loadConfig({ JAYPOST_CONFIG: configPath, PROVIDER: 'fake', FAKE_KEY: 'k' }, [
-    provider,
-  ])
+  const config = loadConfig(
+    { JAYPOST_CONFIG: configPath, JAYPOST_PROVIDER: 'fake', FAKE_KEY: 'k' },
+    [provider],
+  )
   const second = await start(provider, { configPath, config })
   expect(second.runtime.handlers?.command('quiet', '')).toContain('Muted until')
   await post(second.url, '/notify', { text: 'x' })

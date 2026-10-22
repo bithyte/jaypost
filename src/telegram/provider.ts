@@ -29,7 +29,7 @@ export const telegramProvider: Provider = {
   settings: [
     {
       configKey: 'botToken',
-      envVar: 'BOT_TOKEN',
+      envVar: 'JAYPOST_BOT_TOKEN',
       description: 'bot token',
       secret: true,
       owner: false,
@@ -39,7 +39,7 @@ export const telegramProvider: Provider = {
     },
     {
       configKey: 'ownerId',
-      envVar: 'OWNER_ID',
+      envVar: 'JAYPOST_OWNER_ID',
       description: 'owner id',
       secret: false,
       owner: true,

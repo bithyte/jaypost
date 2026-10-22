@@ -1,4 +1,9 @@
-import { readConfigFile, resolveConfigPath, updateConfigFile } from '../config/index.ts'
+import {
+  PROVIDER_ENV_VAR,
+  readConfigFile,
+  resolveConfigPath,
+  updateConfigFile,
+} from '../config/index.ts'
 import {
   DEFAULT_PROVIDER,
   findOwnerSetting,
@@ -23,7 +28,9 @@ export function runOwner(
   try {
     provider = requireProvider(
       providers,
-      (env.PROVIDER === '' ? undefined : env.PROVIDER) ?? file.provider ?? DEFAULT_PROVIDER,
+      (env[PROVIDER_ENV_VAR] === '' ? undefined : env[PROVIDER_ENV_VAR]) ??
+        file.provider ??
+        DEFAULT_PROVIDER,
     )
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))

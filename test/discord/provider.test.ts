@@ -14,7 +14,7 @@ test('identity and limits', () => {
 })
 
 test('owner id accepts snowflake strings only', () => {
-  expect(owner?.envVar).toBe('OWNER_ID')
+  expect(owner?.envVar).toBe('JAYPOST_OWNER_ID')
   expect(owner?.required).toBe(false)
   expect(owner?.prompt).toBeUndefined()
   expect(owner?.parse(' 123456789012345678 ')).toBe('123456789012345678')
@@ -26,7 +26,7 @@ test('owner id accepts snowflake strings only', () => {
 
 test('bot token is a required secret that parses non-empty strings', () => {
   expect(token).toMatchObject({
-    envVar: 'BOT_TOKEN',
+    envVar: 'JAYPOST_BOT_TOKEN',
     secret: true,
     required: true,
     prompt: 'Bot token',

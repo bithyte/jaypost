@@ -6,6 +6,7 @@ import {
   findProvider,
 } from '../provider/index.ts'
 import type { Provider } from '../provider/index.ts'
+import { PROVIDER_ENV_VAR } from '../config/constants.ts'
 import { isMissingFileError, writeFileAtomic } from '../system/index.ts'
 import type { ExecResult } from '../system/index.ts'
 import { SECRET_FILE_MODE } from './constants.ts'
@@ -62,12 +63,12 @@ export function removeEnvKey(path: string, key: string): void {
 }
 
 /**
- * Provider named by `PROVIDER` (Telegram when absent) and its settings from the env file; settings
+ * Provider named by `JAYPOST_PROVIDER` (Telegram when absent) and its settings from the env file; settings
  * are empty for an unknown provider or a missing file.
  */
 export function readEnvSecrets(path: string, providers: readonly Provider[]): Secrets {
   const values = readEnvFile(path)
-  const name = values.PROVIDER || DEFAULT_PROVIDER
+  const name = values[PROVIDER_ENV_VAR] || DEFAULT_PROVIDER
   const provider = findProvider(providers, name)
   if (provider === undefined) {
     return { provider: name, settings: {} }

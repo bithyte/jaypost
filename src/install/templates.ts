@@ -27,7 +27,7 @@ export function formatDockerfile(options: {
       ? `RUN npm i -g jaypost@${options.version}`
       : `COPY ${basename(options.tarball)} /tmp/pkg.tgz\nRUN npm i -g /tmp/pkg.tgz && rm /tmp/pkg.tgz`
   return `FROM node:24-slim
-ENV NODE_ENV=production JAYPOST_CONFIG=/data/config.json HOST=0.0.0.0
+ENV NODE_ENV=production JAYPOST_CONFIG=/data/config.json JAYPOST_HOST=0.0.0.0
 ${install}
 RUN mkdir /data && chown node:node /data
 VOLUME /data
@@ -54,8 +54,8 @@ volumes:
 }
 
 /**
- * KEY=VALUE lines for the container: `PROVIDER`, then each known setting in declaration order with
- * `PORT` after the first, and the api token (when set) right after `PORT`. Throws a RangeError for
+ * KEY=VALUE lines for the container: `JAYPOST_PROVIDER`, then each known setting in declaration order with
+ * `JAYPOST_PORT` after the first, and the api token (when set) right after `JAYPOST_PORT`. Throws a RangeError for
  * a value with a line break, which would inject lines. `TZ` is the last line when a time zone is
  * given.
  */
@@ -81,9 +81,9 @@ export function formatEnvFile(options: {
     throw new RangeError('time zone contains a line break')
   }
   const lines = [
-    `PROVIDER=${options.provider.name}`,
+    `JAYPOST_PROVIDER=${options.provider.name}`,
     ...settingLines.slice(0, 1),
-    `PORT=${options.port}`,
+    `JAYPOST_PORT=${options.port}`,
     ...(options.auth.kind === 'token' ? [`${TOKEN_ENV_VAR}=${options.auth.token}`] : []),
     ...settingLines.slice(1),
     ...(options.timeZone === undefined ? [] : [`TZ=${options.timeZone}`]),

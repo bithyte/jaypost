@@ -28,7 +28,7 @@ import {
   writeAll,
 } from './commands/index.ts'
 import type { InitArgs, LogArgs, SendDeps } from './commands/index.ts'
-import { DEFAULT_PORT, loadConfig, VERSION } from './config/index.ts'
+import { DEFAULT_PORT, loadConfig, PORT_ENV_VAR, VERSION } from './config/index.ts'
 import { runService } from './daemon/index.ts'
 import { MESSAGE_FORMATS } from './format/index.ts'
 import type { MessageFormat } from './format/index.ts'
@@ -54,7 +54,7 @@ function resolvePort(): number {
   try {
     return loadConfig().port
   } catch {
-    const port = Number(process.env.PORT)
+    const port = Number(process.env[PORT_ENV_VAR])
     return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT
   }
 }
@@ -450,7 +450,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('mcp')
     .description('run an MCP server on stdin/stdout for agents')
-    .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
     .action(async (options: { readonly port?: number }) => {
       // Not resolvePort(): that reads config.json, which an agent's container may not have.
       const tokenFile = resolveTokenFile(process.env)
@@ -463,7 +467,11 @@ export async function main(argv: readonly string[]): Promise<number> {
     .command('openapi')
     .description('print the OpenAPI spec of the HTTP API, or write it to a file')
     .argument('[file]', 'file to write; prints to stdout without one')
-    .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
     .action((file: string | undefined, options: { readonly port?: number }) => {
       code = runOpenApiCommand(file, options.port)
     })
@@ -501,7 +509,11 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--attach-name <name>',
       'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
-    .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
     .action(
       async (
         text: string,
@@ -564,7 +576,11 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--attach-name <name>',
       'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
-    .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
     .action(
       async (
         text: string,
@@ -600,7 +616,11 @@ export async function main(argv: readonly string[]): Promise<number> {
     .description(
       'answer Claude Code permission prompts and forward notifications (reads a hook event on stdin)',
     )
-    .option('--port <n>', 'API port (default: PORT, then the install, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
     .option('--project <name>', 'shown as [name] (default: the Claude Code project folder)')
     .option(
       '--timeout <seconds>',

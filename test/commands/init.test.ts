@@ -507,7 +507,10 @@ test('no install record: reuses a token and owner kept by uninstall, no replace 
 
 test('no install record: leftover token from a container .env, rejected token prompts', async () => {
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'BOT_TOKEN=stale\nPORT=1\nOWNER_ID=4\n')
+  writeFileSync(
+    join(paths.quadletDirectory, '.env'),
+    'JAYPOST_BOT_TOKEN=stale\nJAYPOST_PORT=1\nJAYPOST_OWNER_ID=4\n',
+  )
   const validate = vi.fn(async (settings: SettingValues) =>
     settings.botToken === 'stale' ? REJECTED : ACCEPTED,
   )
@@ -633,7 +636,10 @@ test('declining the switch changes nothing', async () => {
 
 test('leftover secrets of another provider are not reused', async () => {
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'BOT_TOKEN=LEFT\nOWNER_ID=4\n')
+  writeFileSync(
+    join(paths.quadletDirectory, '.env'),
+    'JAYPOST_BOT_TOKEN=LEFT\nJAYPOST_OWNER_ID=4\n',
+  )
   const d = deps({ providers: [telegram(), createFakeProvider()] })
   expect(await runInit({ provider: 'fake' }, d)).toBe(0)
   expect(out).not.toContain(telegramProvider.setup.text.leftoverFound)

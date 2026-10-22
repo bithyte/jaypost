@@ -8,8 +8,8 @@ const dir = () => mkdtempSync(join(tmpdir(), 'env-'))
 
 test('roundtrip with mode 0600', () => {
   const f = join(dir(), '.env')
-  writeEnvFile(f, 'BOT_TOKEN=a=b\nPORT=1\n')
-  expect(readEnvFile(f)).toEqual({ BOT_TOKEN: 'a=b', PORT: '1' })
+  writeEnvFile(f, 'JAYPOST_BOT_TOKEN=a=b\nJAYPOST_PORT=1\n')
+  expect(readEnvFile(f)).toEqual({ JAYPOST_BOT_TOKEN: 'a=b', JAYPOST_PORT: '1' })
   expect(statSync(f).mode & 0o777).toBe(0o600)
 })
 
@@ -19,9 +19,9 @@ test('missing file reads as empty', () => {
 
 test('removeEnvKey keeps other lines and mode', () => {
   const f = join(dir(), '.env')
-  writeEnvFile(f, 'BOT_TOKEN=t\nOWNER_ID=5\nPORT=1\n')
-  removeEnvKey(f, 'OWNER_ID')
-  expect(readFileSync(f, 'utf8')).toBe('BOT_TOKEN=t\nPORT=1\n')
+  writeEnvFile(f, 'JAYPOST_BOT_TOKEN=t\nJAYPOST_OWNER_ID=5\nJAYPOST_PORT=1\n')
+  removeEnvKey(f, 'JAYPOST_OWNER_ID')
+  expect(readFileSync(f, 'utf8')).toBe('JAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=1\n')
   expect(statSync(f).mode & 0o777).toBe(0o600)
 })
 

@@ -120,7 +120,7 @@ test('install writes files and runs up -d --build', async () => {
   const envPath = join(paths.composeDirectory, '.env')
   expect(statSync(envPath).mode & 0o777).toBe(0o600)
   expect(readFileSync(envPath, 'utf8')).toBe(
-    'PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nOWNER_ID=9\n',
+    'JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\nJAYPOST_OWNER_ID=9\n',
   )
   expect(readFileSync(join(paths.composeDirectory, '.dockerignore'), 'utf8')).toBe('.env\n')
   expect(calls.at(-1)).toEqual([
@@ -135,7 +135,7 @@ test('install throws when up fails', async () => {
   await expect(t.install(base)).rejects.toThrow(/docker compose up/)
 })
 
-test('readSecrets prefers OWNER_ID in .env, falls back to owner get', async () => {
+test('readSecrets prefers JAYPOST_OWNER_ID in .env, falls back to owner get', async () => {
   const { t } = make()
   await t.install(withOwner)
   expect(await t.readSecrets(rec)).toEqual({
@@ -188,7 +188,10 @@ test('readAuditLog throws with stderr when compose run fails', async () => {
 test('readSecrets on an old env file reads as telegram', async () => {
   const { t, paths } = make()
   mkdirSync(paths.composeDirectory, { recursive: true })
-  writeFileSync(join(paths.composeDirectory, '.env'), 'BOT_TOKEN=t\nPORT=1\nOWNER_ID=8\n')
+  writeFileSync(
+    join(paths.composeDirectory, '.env'),
+    'JAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=1\nJAYPOST_OWNER_ID=8\n',
+  )
   expect(await t.readSecrets(rec)).toEqual({
     provider: 'telegram',
     settings: { botToken: 't', ownerId: 8 },
@@ -199,7 +202,10 @@ test('readSecrets on an old env file reads as telegram', async () => {
 test('readSecrets of an unknown provider has no settings', async () => {
   const { t, paths } = make()
   mkdirSync(paths.composeDirectory, { recursive: true })
-  writeFileSync(join(paths.composeDirectory, '.env'), 'PROVIDER=nope\nBOT_TOKEN=t\n')
+  writeFileSync(
+    join(paths.composeDirectory, '.env'),
+    'JAYPOST_PROVIDER=nope\nJAYPOST_BOT_TOKEN=t\n',
+  )
   expect(await t.readSecrets(rec)).toEqual({ provider: 'nope', settings: {} })
 })
 
@@ -213,10 +219,12 @@ test("clearOwner removes the owner env var of the record's provider", async () =
   expect(record.provider).toBe('fakepair')
   const envPath = join(paths.composeDirectory, '.env')
   expect(readFileSync(envPath, 'utf8')).toBe(
-    'PROVIDER=fakepair\nFAKE_KEY=k\nPORT=8787\nFAKE_OWNER=o\n',
+    'JAYPOST_PROVIDER=fakepair\nFAKE_KEY=k\nJAYPOST_PORT=8787\nFAKE_OWNER=o\n',
   )
   await t.clearOwner(record)
-  expect(readFileSync(envPath, 'utf8')).toBe('PROVIDER=fakepair\nFAKE_KEY=k\nPORT=8787\n')
+  expect(readFileSync(envPath, 'utf8')).toBe(
+    'JAYPOST_PROVIDER=fakepair\nFAKE_KEY=k\nJAYPOST_PORT=8787\n',
+  )
 })
 
 test('clearOwner throws when the provider has no owner setting', async () => {
@@ -240,7 +248,9 @@ test('clearOwner removes env key and runs owner clear', async () => {
   await t.install(withOwner)
   calls = []
   await t.clearOwner(rec)
-  expect(readFileSync(join(paths.composeDirectory, '.env'), 'utf8')).not.toContain('OWNER_ID')
+  expect(readFileSync(join(paths.composeDirectory, '.env'), 'utf8')).not.toContain(
+    'JAYPOST_OWNER_ID',
+  )
   expect(calls[0]![1]).toContain('clear')
 })
 

@@ -129,7 +129,9 @@ test('quadlet install builds tagged image then starts', async () => {
   ])
   const envPath = join(paths.quadletDirectory, '.env')
   expect(statSync(envPath).mode & 0o777).toBe(0o600)
-  expect(readFileSync(envPath, 'utf8')).toBe('PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\n')
+  expect(readFileSync(envPath, 'utf8')).toBe(
+    'JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\n',
+  )
   expect(existsSync(join(paths.quadletDirectory, 'pkg-1.tgz'))).toBe(true)
   expect(readFileSync(paths.quadletUnit, 'utf8')).toContain(`Image=${TAG}`)
   expect(readFileSync(join(paths.quadletDirectory, '.dockerignore'), 'utf8')).toBe('.env\n')
@@ -165,7 +167,10 @@ test('readSecrets prefers .env, falls back to owner get in container', async () 
 test('readSecrets on an old env file reads as telegram', async () => {
   const { t, paths } = make()
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'BOT_TOKEN=t\nPORT=1\nOWNER_ID=8\n')
+  writeFileSync(
+    join(paths.quadletDirectory, '.env'),
+    'JAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=1\nJAYPOST_OWNER_ID=8\n',
+  )
   expect(await t.readSecrets(rec)).toEqual({
     provider: 'telegram',
     settings: { botToken: 't', ownerId: 8 },
@@ -183,7 +188,7 @@ test("clearOwner removes the owner env var of the record's provider", async () =
   expect(record.provider).toBe('fakepair')
   await t.clearOwner(record)
   expect(readFileSync(join(paths.quadletDirectory, '.env'), 'utf8')).toBe(
-    'PROVIDER=fakepair\nFAKE_KEY=k\nPORT=8787\n',
+    'JAYPOST_PROVIDER=fakepair\nFAKE_KEY=k\nJAYPOST_PORT=8787\n',
   )
 })
 

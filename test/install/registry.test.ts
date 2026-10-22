@@ -171,13 +171,19 @@ test('leftover secrets from config.json (honoring JAYPOST_CONFIG)', () => {
 test('leftover secrets from a container .env', () => {
   const paths = resolveInstallPaths({ HOME: tmp })
   mkdirSync(paths.composeDirectory, { recursive: true })
-  writeFileSync(join(paths.composeDirectory, '.env'), 'BOT_TOKEN=et\nPORT=1\nOWNER_ID=8\n')
+  writeFileSync(
+    join(paths.composeDirectory, '.env'),
+    'JAYPOST_BOT_TOKEN=et\nJAYPOST_PORT=1\nJAYPOST_OWNER_ID=8\n',
+  )
   expect(findLeftoverSecrets(paths, { HOME: tmp })).toEqual({
     provider: 'telegram',
     settings: { botToken: 'et', ownerId: 8 },
   })
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'PROVIDER=telegram\nBOT_TOKEN=qt\nPORT=1\n')
+  writeFileSync(
+    join(paths.quadletDirectory, '.env'),
+    'JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=qt\nJAYPOST_PORT=1\n',
+  )
   expect(findLeftoverSecrets(paths, { HOME: tmp })).toEqual({
     provider: 'telegram',
     settings: { botToken: 'qt' },
@@ -189,16 +195,19 @@ test('leftover secrets ignore corrupt config and token-less files', () => {
   mkdirSync(paths.configDirectory, { recursive: true })
   writeFileSync(paths.configFile, '{oops')
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'PORT=1\nOWNER_ID=2\n')
+  writeFileSync(join(paths.quadletDirectory, '.env'), 'JAYPOST_PORT=1\nJAYPOST_OWNER_ID=2\n')
   expect(findLeftoverSecrets(paths, { HOME: tmp })).toBeUndefined()
 })
 
 test('leftover with an unknown provider is skipped', () => {
   const paths = resolveInstallPaths({ HOME: tmp })
   mkdirSync(paths.quadletDirectory, { recursive: true })
-  writeFileSync(join(paths.quadletDirectory, '.env'), 'PROVIDER=nope\nBOT_TOKEN=qt\n')
+  writeFileSync(
+    join(paths.quadletDirectory, '.env'),
+    'JAYPOST_PROVIDER=nope\nJAYPOST_BOT_TOKEN=qt\n',
+  )
   mkdirSync(paths.composeDirectory, { recursive: true })
-  writeFileSync(join(paths.composeDirectory, '.env'), 'BOT_TOKEN=et\n')
+  writeFileSync(join(paths.composeDirectory, '.env'), 'JAYPOST_BOT_TOKEN=et\n')
   expect(findLeftoverSecrets(paths, { HOME: tmp })).toEqual({
     provider: 'telegram',
     settings: { botToken: 'et' },
@@ -209,7 +218,10 @@ test('leftover needs every required secret', () => {
   const paths = resolveInstallPaths({ HOME: tmp })
   const providers = [telegramProvider, createFakeProvider()]
   mkdirSync(paths.composeDirectory, { recursive: true })
-  writeFileSync(join(paths.composeDirectory, '.env'), 'PROVIDER=fake\nBOT_TOKEN=x\n')
+  writeFileSync(
+    join(paths.composeDirectory, '.env'),
+    'JAYPOST_PROVIDER=fake\nJAYPOST_BOT_TOKEN=x\n',
+  )
   mkdirSync(paths.configDirectory, { recursive: true })
   writeFileSync(paths.configFile, JSON.stringify({ provider: 'fake', fakeKey: 'k' }))
   expect(findLeftoverSecrets(paths, { HOME: tmp }, providers)).toEqual({

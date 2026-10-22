@@ -57,3 +57,9 @@ test('the api token key and env var are reserved', () => {
 test('the quiet settings keys are reserved', () => {
   expect(RESERVED_CONFIG_KEYS).toEqual(expect.arrayContaining(['quietHours', 'mutedUntil']))
 })
+
+test('every provider setting reads a JAYPOST_ env var', () => {
+  for (const setting of PROVIDERS.flatMap((provider) => provider.settings)) {
+    expect(setting.envVar).toMatch(/^JAYPOST_/)
+  }
+})

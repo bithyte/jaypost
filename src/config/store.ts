@@ -8,6 +8,9 @@ import type { QuietHours } from '../quiet/index.ts'
 import { isMissingFileError, writeFileAtomic } from '../system/index.ts'
 import {
   DEFAULT_HOST,
+  HOST_ENV_VAR,
+  PORT_ENV_VAR,
+  PROVIDER_ENV_VAR,
   DEFAULT_PORT,
   INIT_HINT,
   INTEGER_PATTERN,
@@ -101,8 +104,8 @@ function resolveMutedUntil(
 }
 
 /**
- * Provider (PROVIDER env, else the file, else telegram), its settings, port and host. Env vars
- * (e.g. PROVIDER, PORT, HOST) override the config file. Throws a user-facing error on an unknown
+ * Provider (JAYPOST_PROVIDER env, else the file, else telegram), its settings, port and host. Env vars
+ * (e.g. JAYPOST_PROVIDER, JAYPOST_PORT, JAYPOST_HOST) override the config file. Throws a user-facing error on an unknown
  * provider, a missing required setting, or an invalid setting, port or api token
  * (JAYPOST_TOKEN, else apiToken in the file; the message never quotes it); read errors other
  * than a missing config file are rethrown. quietHours (HH:MM-HH:MM; empty means off) throws when
@@ -117,7 +120,7 @@ export function loadConfig(
   const file = readConfigFile(path)
   const provider = requireProvider(
     providers,
-    findEnvValue(env, 'PROVIDER') ?? file.provider ?? DEFAULT_PROVIDER,
+    findEnvValue(env, PROVIDER_ENV_VAR) ?? file.provider ?? DEFAULT_PROVIDER,
   )
   const settings: Record<string, SettingValue> = {}
   for (const setting of provider.settings) {
@@ -135,7 +138,7 @@ export function loadConfig(
     }
     settings[setting.configKey] = value
   }
-  const rawPort = findEnvValue(env, 'PORT') ?? file.port ?? DEFAULT_PORT
+  const rawPort = findEnvValue(env, PORT_ENV_VAR) ?? file.port ?? DEFAULT_PORT
   const port = toInteger(rawPort)
   if (port === undefined || port < 1 || port > 65535) {
     throw new Error(`invalid port ${JSON.stringify(String(rawPort))}: must be an integer 1-65535`)
@@ -147,7 +150,7 @@ export function loadConfig(
     provider,
     settings,
     port,
-    host: findEnvValue(env, 'HOST') ?? DEFAULT_HOST,
+    host: findEnvValue(env, HOST_ENV_VAR) ?? DEFAULT_HOST,
     auth,
     ...(quietHours === undefined ? {} : { quietHours }),
     ...(mutedUntil === undefined ? {} : { mutedUntil }),

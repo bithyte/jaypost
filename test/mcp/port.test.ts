@@ -19,17 +19,17 @@ function writePort(port: number): void {
 
 test('flag wins', () => {
   writePort(9002)
-  expect(resolveMcpPort(9000, { PORT: '9001' }, file)).toBe(9000)
+  expect(resolveMcpPort(9000, { JAYPOST_PORT: '9001' }, file)).toBe(9000)
 })
 
-test('PORT env next', () => {
+test('JAYPOST_PORT env next', () => {
   writePort(9002)
-  expect(resolveMcpPort(undefined, { PORT: '9001' }, file)).toBe(9001)
+  expect(resolveMcpPort(undefined, { JAYPOST_PORT: '9001' }, file)).toBe(9001)
 })
 
-test.each(['abc', '0', '70000', ''])('bad PORT %s falls through', (value) => {
+test.each(['abc', '0', '70000', ''])('bad JAYPOST_PORT %s falls through', (value) => {
   writePort(9002)
-  expect(resolveMcpPort(undefined, { PORT: value }, file)).toBe(9002)
+  expect(resolveMcpPort(undefined, { JAYPOST_PORT: value }, file)).toBe(9002)
 })
 
 test('install.json next', () => {

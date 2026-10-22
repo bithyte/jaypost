@@ -28,7 +28,7 @@ test('formatDockerfile from tarball', () => {
 })
 test('formatDockerfile binds all interfaces inside', () => {
   const d = formatDockerfile({ version: '1' })
-  expect(d).toContain('HOST=0.0.0.0')
+  expect(d).toContain('JAYPOST_HOST=0.0.0.0')
   expect(d).toContain('CMD ["jaypost","start"]')
 })
 test('compose publishes on localhost only, restarts', () => {
@@ -74,8 +74,10 @@ test('formatEnvFile writes the provider, its settings and the port', () =>
       settings: { botToken: 't', ownerId: 42 },
       auth: NO_AUTH,
     }),
-  ).toBe('PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nOWNER_ID=42\n'))
-test('formatEnvFile writes the api token right after PORT', () =>
+  ).toBe(
+    'JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\nJAYPOST_OWNER_ID=42\n',
+  ))
+test('formatEnvFile writes the api token right after JAYPOST_PORT', () =>
   expect(
     formatEnvFile({
       provider: telegramProvider,
@@ -83,10 +85,12 @@ test('formatEnvFile writes the api token right after PORT', () =>
       settings: { botToken: 't', ownerId: 42 },
       auth: { kind: 'token', token: TOKEN },
     }),
-  ).toBe(`PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nJAYPOST_TOKEN=${TOKEN}\nOWNER_ID=42\n`))
+  ).toBe(
+    `JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\nJAYPOST_TOKEN=${TOKEN}\nJAYPOST_OWNER_ID=42\n`,
+  ))
 test('formatDockerfile never carries the token', () =>
   expect(formatDockerfile({ version: '0.1.0' })).not.toContain('JAYPOST_TOKEN'))
-test('formatEnvFile omits OWNER_ID when unknown', () =>
+test('formatEnvFile omits JAYPOST_OWNER_ID when unknown', () =>
   expect(
     formatEnvFile({
       provider: telegramProvider,
@@ -94,7 +98,7 @@ test('formatEnvFile omits OWNER_ID when unknown', () =>
       settings: { botToken: 't' },
       auth: NO_AUTH,
     }),
-  ).toBe('PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\n'))
+  ).toBe('JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\n'))
 test('formatEnvFile works for any provider', () =>
   expect(
     formatEnvFile({
@@ -103,7 +107,7 @@ test('formatEnvFile works for any provider', () =>
       settings: { fakeKey: 'k' },
       auth: NO_AUTH,
     }),
-  ).toBe('PROVIDER=fake\nFAKE_KEY=k\nPORT=1\n'))
+  ).toBe('JAYPOST_PROVIDER=fake\nFAKE_KEY=k\nJAYPOST_PORT=1\n'))
 test('formatEnvFile ends with TZ when a zone is given', () =>
   expect(
     formatEnvFile({
@@ -113,7 +117,9 @@ test('formatEnvFile ends with TZ when a zone is given', () =>
       auth: NO_AUTH,
       timeZone: 'Europe/Bucharest',
     }),
-  ).toBe('PROVIDER=telegram\nBOT_TOKEN=t\nPORT=8787\nOWNER_ID=42\nTZ=Europe/Bucharest\n'))
+  ).toBe(
+    'JAYPOST_PROVIDER=telegram\nJAYPOST_BOT_TOKEN=t\nJAYPOST_PORT=8787\nJAYPOST_OWNER_ID=42\nTZ=Europe/Bucharest\n',
+  ))
 test('formatEnvFile rejects a zone with a line break', () => {
   const format = () =>
     formatEnvFile({
@@ -121,13 +127,13 @@ test('formatEnvFile rejects a zone with a line break', () => {
       port: 1,
       settings: { botToken: 't' },
       auth: NO_AUTH,
-      timeZone: 'UTC\nPORT=1',
+      timeZone: 'UTC\nJAYPOST_PORT=1',
     })
   expect(format).toThrow(RangeError)
   expect(format).toThrow('time zone contains a line break')
 })
 test('formatEnvFile rejects a value with a newline', () => {
-  for (const botToken of ['a\nOWNER_ID=1', 'a\rb']) {
+  for (const botToken of ['a\nJAYPOST_OWNER_ID=1', 'a\rb']) {
     const format = () =>
       formatEnvFile({ provider: telegramProvider, port: 1, settings: { botToken }, auth: NO_AUTH })
     expect(format).toThrow(RangeError)

@@ -52,9 +52,10 @@ test('save then load roundtrip, host defaults to 127.0.0.1', () => {
 test('port defaults to DEFAULT_PORT', () => {
   updateConfigFile(file, { botToken: 'tok', ownerId: 7, port: DEFAULT_PORT })
   expect(loadConfig({ JAYPOST_CONFIG: file }).port).toBe(8787)
-  expect(loadConfig({ BOT_TOKEN: 't', OWNER_ID: '1', JAYPOST_CONFIG: join(dir, 'no') }).port).toBe(
-    8787,
-  )
+  expect(
+    loadConfig({ JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1', JAYPOST_CONFIG: join(dir, 'no') })
+      .port,
+  ).toBe(8787)
 })
 
 test('saved file has mode 0o600, including when it already existed', () => {
@@ -72,10 +73,10 @@ test('env overrides file values; env-only config works with no file', () => {
   expect(
     loadConfig({
       JAYPOST_CONFIG: file,
-      BOT_TOKEN: 'envtok',
-      OWNER_ID: '42',
-      PORT: '2222',
-      HOST: '0.0.0.0',
+      JAYPOST_BOT_TOKEN: 'envtok',
+      JAYPOST_OWNER_ID: '42',
+      JAYPOST_PORT: '2222',
+      JAYPOST_HOST: '0.0.0.0',
     }),
   ).toEqual({
     provider: TELEGRAM,
@@ -85,7 +86,11 @@ test('env overrides file values; env-only config works with no file', () => {
     auth: NO_AUTH,
   })
   expect(
-    loadConfig({ JAYPOST_CONFIG: join(dir, 'missing.json'), BOT_TOKEN: 't', OWNER_ID: '42' }),
+    loadConfig({
+      JAYPOST_CONFIG: join(dir, 'missing.json'),
+      JAYPOST_BOT_TOKEN: 't',
+      JAYPOST_OWNER_ID: '42',
+    }),
   ).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 't', ownerId: 42 },
@@ -98,7 +103,13 @@ test('env overrides file values; env-only config works with no file', () => {
 test('empty-string env vars count as unset', () => {
   updateConfigFile(file, { botToken: 'filetok', ownerId: 1, port: 1111 })
   expect(
-    loadConfig({ JAYPOST_CONFIG: file, BOT_TOKEN: '', OWNER_ID: '', PORT: '', HOST: '' }),
+    loadConfig({
+      JAYPOST_CONFIG: file,
+      JAYPOST_BOT_TOKEN: '',
+      JAYPOST_OWNER_ID: '',
+      JAYPOST_PORT: '',
+      JAYPOST_HOST: '',
+    }),
   ).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 'filetok', ownerId: 1 },
@@ -111,27 +122,27 @@ test('empty-string env vars count as unset', () => {
 test('empty string in the file counts as missing', () => {
   const file = join(dir, 'empty.json')
   writeFileSync(file, JSON.stringify({ botToken: '' }))
-  expect(() => loadConfig({ JAYPOST_CONFIG: file, OWNER_ID: '1' })).toThrow(
-    'missing bot token; run `jaypost init` to set up the bot (or set BOT_TOKEN)',
+  expect(() => loadConfig({ JAYPOST_CONFIG: file, JAYPOST_OWNER_ID: '1' })).toThrow(
+    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
   )
 })
 
-test('missing token or non-integer OWNER_ID throws mentioning init', () => {
+test('missing token or non-integer JAYPOST_OWNER_ID throws mentioning init', () => {
   const none = join(dir, 'none.json')
-  expect(() => loadConfig({ JAYPOST_CONFIG: none, OWNER_ID: '1' })).toThrow(
-    'missing bot token; run `jaypost init` to set up the bot (or set BOT_TOKEN)',
+  expect(() => loadConfig({ JAYPOST_CONFIG: none, JAYPOST_OWNER_ID: '1' })).toThrow(
+    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
   )
-  expect(() => loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: 'abc' })).toThrow(
-    'invalid owner id; run `jaypost init` to set up the bot (or set OWNER_ID)',
-  )
-  expect(() => loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: '1.5' })).toThrow(
-    /jaypost init/,
-  )
+  expect(() =>
+    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: 'abc' }),
+  ).toThrow('invalid owner id; run `jaypost init` to set up the bot (or set JAYPOST_OWNER_ID)')
+  expect(() =>
+    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1.5' }),
+  ).toThrow(/jaypost init/)
 })
 
 test('missing owner is undefined, not an error', () => {
   const none = join(dir, 'none.json')
-  expect(loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't' }).settings).toEqual({
+  expect(loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't' }).settings).toEqual({
     botToken: 't',
   })
 })
@@ -151,7 +162,7 @@ test('updateConfigFile merges, null deletes, keeps 0600', () => {
 
 test('updateConfigFile does not copy env values into the file', () => {
   updateConfigFile(file, { ownerId: 1 })
-  loadConfig({ JAYPOST_CONFIG: file, BOT_TOKEN: 'envtok' })
+  loadConfig({ JAYPOST_CONFIG: file, JAYPOST_BOT_TOKEN: 'envtok' })
   expect(readConfigFile(file)).toEqual({ ownerId: 1 })
 })
 
@@ -164,9 +175,9 @@ test.each(['0', '65536', '-1', 'abc', '80.5'])('invalid port %s throws', (p) => 
   expect(() =>
     loadConfig({
       JAYPOST_CONFIG: join(dir, 'none.json'),
-      BOT_TOKEN: 't',
-      OWNER_ID: '1',
-      PORT: p,
+      JAYPOST_BOT_TOKEN: 't',
+      JAYPOST_OWNER_ID: '1',
+      JAYPOST_PORT: p,
     }),
   ).toThrow(/port/i)
 })
@@ -186,10 +197,10 @@ test('old config without provider loads as telegram', () => {
   expect(config.settings).toEqual({ botToken: 't', ownerId: 42 })
 })
 
-test('PROVIDER env overrides the file provider', () => {
+test('JAYPOST_PROVIDER env overrides the file provider', () => {
   const fake = createFakeProvider()
   updateConfigFile(file, { provider: 'telegram', fakeKey: 'k' })
-  const config = loadConfig({ JAYPOST_CONFIG: file, PROVIDER: 'fake' }, [TELEGRAM!, fake])
+  const config = loadConfig({ JAYPOST_CONFIG: file, JAYPOST_PROVIDER: 'fake' }, [TELEGRAM!, fake])
   expect(config.provider.name).toBe('fake')
 })
 
@@ -290,4 +301,11 @@ test('an invalid mutedUntil is ignored and logged', () => {
 test('a non-string quietHours is an invalid field', () => {
   updateConfigFile(file, { botToken: 't', quietHours: 2300 })
   expect(() => loadConfig({ JAYPOST_CONFIG: file })).toThrow('has invalid or missing fields')
+})
+
+test('unprefixed env vars are ignored', () => {
+  const none = join(dir, 'none.json')
+  expect(() => loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: '1' })).toThrow(
+    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
+  )
 })
