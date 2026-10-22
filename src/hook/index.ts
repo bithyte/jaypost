@@ -28,5 +28,6 @@ export type {
   PermissionDecision,
   PermissionRequestEvent,
   PermissionSuggestion,
+  SessionStartEvent,
 } from './types.ts'
 export { resolveHookProject } from './project.ts'

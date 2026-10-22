@@ -37,6 +37,10 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   if (event.kind === 'PermissionRequest' && event.toolName === ASK_USER_QUESTION_TOOL) {
     return 0
   }
+  // Placeholder until the SessionStart announcement lands.
+  if (event.kind === 'SessionStart') {
+    return 0
+  }
   const caller = new Caller({ port: deps.port, readToken: () => deps.token })
   const maxLength = await resolveMaxLength(project, caller, deps)
   switch (event.kind) {

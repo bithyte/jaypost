@@ -28,7 +28,13 @@ export type NotificationEvent = {
   readonly cwd: string | undefined
 }
 
-export type HookEvent = PermissionRequestEvent | NotificationEvent
+export type SessionStartEvent = {
+  readonly kind: 'SessionStart'
+  readonly source: string | undefined
+  readonly cwd: string | undefined
+}
+
+export type HookEvent = PermissionRequestEvent | NotificationEvent | SessionStartEvent
 
 export type HookParseResult =
   | { readonly kind: 'parsed'; readonly event: HookEvent }

@@ -122,3 +122,32 @@ test('rejects a missing hook_event_name', () => {
     expect(result.message).toMatch(/^invalid hook input/)
   }
 })
+
+test('parses a session start event', () => {
+  const raw = JSON.stringify({
+    session_id: 's1',
+    hook_event_name: 'SessionStart',
+    source: 'startup',
+    cwd: '/work/api',
+    model: 'x',
+  })
+  expect(parseHookEvent(raw)).toEqual({
+    kind: 'parsed',
+    event: { kind: 'SessionStart', source: 'startup', cwd: '/work/api' },
+  })
+})
+
+test('session start without source or cwd parses', () => {
+  expect(parseHookEvent(JSON.stringify({ hook_event_name: 'SessionStart' }))).toEqual({
+    kind: 'parsed',
+    event: { kind: 'SessionStart', source: undefined, cwd: undefined },
+  })
+})
+
+test('session start with a non-string source is invalid', () => {
+  const result = parseHookEvent(JSON.stringify({ hook_event_name: 'SessionStart', source: 3 }))
+  expect(result.kind).toBe('invalid')
+  if (result.kind === 'invalid') {
+    expect(result.message).toMatch(/^invalid hook input: source:/)
+  }
+})

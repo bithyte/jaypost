@@ -28,6 +28,11 @@ const NOTIFICATION_SCHEMA = z.looseObject({
   cwd: z.string().optional(),
 })
 
+const SESSION_START_SCHEMA = z.looseObject({
+  source: z.string().optional(),
+  cwd: z.string().optional(),
+})
+
 function invalid(error: z.ZodError): HookParseResult {
   const issue = error.issues[0]
   if (issue === undefined) {
@@ -85,6 +90,13 @@ export function parseHookEvent(raw: string): HookParseResult {
         agentType: data.agent_type,
         cwd: data.cwd,
       })
+    }
+    case 'SessionStart': {
+      const result = SESSION_START_SCHEMA.safeParse(json)
+      if (!result.success) {
+        return invalid(result.error)
+      }
+      return parsed({ kind: 'SessionStart', source: result.data.source, cwd: result.data.cwd })
     }
     default:
       return {
