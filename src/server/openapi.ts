@@ -29,7 +29,7 @@ const BODY_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
   project: { description: 'Shown as `[project]` on the first line. Trimmed.' },
   format: {
     description:
-      '`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See Formatting in the README.',
+      '`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See docs/formatting.md in the repo.',
   },
   allowText: { description: 'Let the owner answer by replying with text. Default false.' },
   options: {

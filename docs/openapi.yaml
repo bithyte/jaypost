@@ -214,7 +214,7 @@ components:
           enum:
             - plain
             - markdown
-          description: "`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See Formatting in the README."
+          description: "`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See docs/formatting.md in the repo."
         allowText:
           type: boolean
           description: Let the owner answer by replying with text. Default false.
@@ -325,7 +325,7 @@ components:
           enum:
             - plain
             - markdown
-          description: "`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See Formatting in the README."
+          description: "`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See docs/formatting.md in the repo."
         attachment:
           $ref: "#/components/schemas/Attachment"
       required:
