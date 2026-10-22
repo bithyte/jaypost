@@ -10,6 +10,7 @@ export {
   MAX_HOOK_TEXT_LENGTH,
   MAX_SUGGESTION_LINE_LENGTH,
   PREVIEW_LENGTH,
+  SETUP_STATUS_TIMEOUT_MS,
   TOO_LONG_LINE,
 } from './constants.ts'
 export { decidePermission, formatNotificationText, formatPermissionQuestion } from './formatter.ts'

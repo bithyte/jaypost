@@ -8,14 +8,11 @@ import {
 import { decidePermission, formatNotificationText, formatPermissionQuestion } from './formatter.ts'
 import { parseHookEvent } from './parser.ts'
 import { resolveHookProject } from './project.ts'
+import { checkService } from './setup.ts'
 import type { HookArgs, HookDeps, NotificationEvent, PermissionRequestEvent } from './types.ts'
 
 /** Handles one hook event from stdin. Returns 0 when handled, 1 on any failure (stderr says why). */
 export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
-  if (deps.token.kind === 'unusable') {
-    deps.printError(`jaypost: ${deps.token.message}`)
-    return 1
-  }
   let input: string
   try {
     input = await deps.readInput()
@@ -32,13 +29,16 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
     return 1
   }
   const event = parsed.event
+  if (event.kind === 'SessionStart') {
+    return checkSetup(deps)
+  }
+  if (deps.token.kind === 'unusable') {
+    deps.printError(`jaypost: ${deps.token.message}`)
+    return 1
+  }
   const project = resolveHookProject(args.project, deps.env, event.cwd)
   // A plain allow doesn't answer AskUserQuestion, so the terminal keeps it (spec non-goal).
   if (event.kind === 'PermissionRequest' && event.toolName === ASK_USER_QUESTION_TOOL) {
-    return 0
-  }
-  // Placeholder until the SessionStart announcement lands.
-  if (event.kind === 'SessionStart') {
     return 0
   }
   const caller = new Caller({ port: deps.port, readToken: () => deps.token })
@@ -49,6 +49,16 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
     case 'PermissionRequest':
       return askPermission(event, project, maxLength, args, caller, deps)
   }
+}
+
+/** SessionStart: prints one systemMessage listing what's wrong, nothing when all is well. Exits 0. */
+async function checkSetup(deps: HookDeps): Promise<number> {
+  const caller = new Caller({ port: deps.port, readToken: () => deps.token })
+  const lines = [await checkService(caller, deps)].filter((line) => line !== undefined)
+  if (lines.length > 0 && !deps.signal.aborted) {
+    deps.print(JSON.stringify({ systemMessage: lines.join('\n') }))
+  }
+  return 0
 }
 
 /**

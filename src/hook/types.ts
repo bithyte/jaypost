@@ -66,7 +66,7 @@ export type HookArgs = { readonly project?: string; readonly timeout?: number }
 /** Everything `runHook` touches outside itself; aborting `signal` cancels the call silently. */
 export type HookDeps = {
   readonly port: number
-  /** Found the same way as for `send` and `mcp`; `unusable` fails before stdin is read. */
+  /** Found the same way as for `send` and `mcp`; `unusable` fails right after the input is parsed (SessionStart reports it instead). */
   readonly token: ClientToken
   readonly signal: AbortSignal
   /** All of stdin; rejects when `signal` aborts. */

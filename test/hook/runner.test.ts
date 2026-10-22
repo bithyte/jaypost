@@ -1,4 +1,7 @@
 import { spawn } from 'node:child_process'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { FormattedText } from '../../src/format/index.ts'
 import { createServer } from 'node:http'
 import type { Server } from 'node:http'
@@ -134,9 +137,10 @@ async function freePort(): Promise<number> {
   return port
 }
 
-function spawnHook(port: number, input: string | undefined) {
+function spawnHook(port: number, input: string | undefined, env?: NodeJS.ProcessEnv) {
   const child = spawn(process.execPath, ['src/cli.ts', 'hook', '--port', String(port)], {
     cwd: ROOT,
+    ...(env === undefined ? {} : { env }),
   })
   const output = { stdout: '', stderr: '' }
   child.stdout.setEncoding('utf8')
@@ -505,21 +509,12 @@ test('a wrong token prints the rejected message', async () => {
   expect(messenger.sent).toEqual([])
 })
 
-test('an unusable token fails without reading stdin or calling the service', async () => {
+test('an unusable token fails without calling the service', async () => {
   const { port, messenger, notifier } = await startApi()
   const { deps, out, errors } = createDeps(port, BASH_EVENT, {
     token: { kind: 'unusable', message: 'bad token here' },
   })
-  let readCount = 0
-  const counting: HookDeps = {
-    ...deps,
-    readInput: async () => {
-      readCount += 1
-      return BASH_EVENT
-    },
-  }
-  expect(await runHook({}, counting)).toBe(1)
-  expect(readCount).toBe(0)
+  expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
   expect(errors).toEqual(['jaypost: bad token here'])
   expect(messenger.sent).toEqual([])
@@ -624,4 +619,110 @@ test('aborting mid-read rejects instead of waiting for the end of input', async 
   controller.abort()
   await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   expect(stream.destroyed).toBe(true)
+})
+
+const SESSION_START_EVENT = JSON.stringify({
+  session_id: 's1',
+  hook_event_name: 'SessionStart',
+  source: 'startup',
+  cwd: '/work/api',
+})
+
+async function createEmptyHome(): Promise<NodeJS.ProcessEnv> {
+  return { HOME: await mkdtemp(join(tmpdir(), 'jaypost-hook-home-')) }
+}
+
+function unreachableLine(port: number): string {
+  return `jaypost isn't running on 127.0.0.1:${port}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
+}
+
+function tokenLine(message: string): string {
+  return `jaypost can't use its API token (${message}), so permission prompts stay in the terminal. Run \`jaypost init\`, or set JAYPOST_TOKEN in a container.`
+}
+
+test('session start with a paired service prints nothing', async () => {
+  const { port, messenger, notifier } = await startApi()
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: await createEmptyHome(),
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+  expect(messenger.sent).toEqual([])
+  expect(notifier.sent).toEqual([])
+})
+
+test('session start with the service down reports it', async () => {
+  const port = await freePort()
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: await createEmptyHome(),
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([JSON.stringify({ systemMessage: unreachableLine(port) })])
+  expect(errors).toEqual([])
+})
+
+test('session start when not paired says to pair', async () => {
+  const port = await startStub({
+    paired: false,
+    code: 'ABCD-EFGH',
+    maxTextLength: 3900,
+    maxAttachmentBytes: 1,
+  })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, { env: await createEmptyHome() })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage:
+        "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair.",
+    }),
+  ])
+})
+
+test('session start with a rejected token reports the token', async () => {
+  const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, {
+    env: await createEmptyHome(),
+    token: { kind: 'token', token: 'x'.repeat(43), source: 'env' },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([JSON.stringify({ systemMessage: tokenLine(TOKEN_REJECTED_MESSAGE) })])
+})
+
+test('session start with an unusable token reports it without calling the service', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: await createEmptyHome(),
+    token: { kind: 'unusable', message: 'bad token here' },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([JSON.stringify({ systemMessage: tokenLine('bad token here') })])
+  expect(errors).toEqual([])
+  expect(messenger.sent).toEqual([])
+})
+
+test('session start aborted prints nothing', async () => {
+  const { port } = await startApi()
+  const controller = new AbortController()
+  controller.abort()
+  const { deps, out, errors } = createDeps(port, SESSION_START_EVENT, {
+    env: await createEmptyHome(),
+    signal: controller.signal,
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('the cli prints the session start check as one json line', async () => {
+  const port = await freePort()
+  const { output, exited } = spawnHook(port, SESSION_START_EVENT, {
+    ...process.env,
+    ...(await createEmptyHome()),
+  })
+  expect(await exited).toBe(0)
+  expect(output.stderr).toBe('')
+  expect(output.stdout.endsWith('\n')).toBe(true)
+  expect(output.stdout.trimEnd().split('\n')).toHaveLength(1)
+  expect(JSON.parse(output.stdout)).toEqual({ systemMessage: unreachableLine(port) })
 })
