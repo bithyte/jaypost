@@ -393,6 +393,35 @@ test('keeps 3000 when /status has no maxTextLength', async () => {
   expect(posted.text?.length).toBe(3000)
 })
 
+test('an old status without maxTextLength keeps the default cap for notifications', async () => {
+  let posted: { text?: string } = {}
+  const stub = createServer((request, response) => {
+    let raw = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => (raw += chunk))
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      if (request.method === 'GET') {
+        response.end(JSON.stringify({ paired: true }))
+        return
+      }
+      posted = JSON.parse(raw)
+      response.end('{}')
+    })
+  })
+  stubs.push(stub)
+  await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve))
+  const { port } = stub.address() as AddressInfo
+  const input = JSON.stringify({
+    hook_event_name: 'Notification',
+    cwd: '/work/api',
+    message: 'x'.repeat(5000),
+  })
+  const { deps } = createDeps(port, input)
+  expect(await runHook({}, deps)).toBe(0)
+  expect(posted.text?.length).toBe(3000)
+})
+
 test('service down exits 1 with the reachability message', async () => {
   const port = await freePort()
   const { deps, out, errors } = createDeps(port, BASH_EVENT)

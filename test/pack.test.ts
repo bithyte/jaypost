@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vite-plus/test'
 
@@ -13,7 +12,8 @@ afterEach(() => {
 })
 
 test('cjs build exposes the client to require()', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'jaypost-pack-'))
+  // Under node_modules so the bundle's external dependencies (zod) resolve, as in an installed package.
+  const directory = mkdtempSync(join(process.cwd(), 'node_modules', '.jaypost-pack-'))
   directories.push(directory)
   const result = spawnSync(join('node_modules', '.bin', 'vp'), ['pack', '--out-dir', directory], {
     encoding: 'utf8',

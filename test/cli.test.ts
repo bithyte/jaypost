@@ -123,6 +123,33 @@ test('send request adds the default as the last button unless an option names it
   ])
 })
 
+test('test --port sends to that port, over the install and PORT', async () => {
+  const urls: (string | undefined)[] = []
+  const server = createServer((request, response) => {
+    urls.push(request.url)
+    request.resume()
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ answer: 'Approve', timedOut: false }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = String((server.address() as AddressInfo).port)
+  vi.stubEnv('PORT', '1')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['test', '--port', port])).toBe(0)
+  } finally {
+    server.close()
+  }
+  expect(urls).toEqual(['/request'])
+})
+
+test('test rejects a bad port with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['test', '--port', 'abc'])).toBe(2)
+})
+
 test('send notify requires text', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   expect(await main(['send', 'notify'])).toBe(2)

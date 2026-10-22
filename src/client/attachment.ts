@@ -2,13 +2,8 @@ import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { MAX_ATTACHMENT_BYTES } from '../approval/constants.ts'
-import {
-  ATTACHMENT_NOT_SUPPORTED_MESSAGE,
-  ATTACHMENT_TOO_OLD_MESSAGE,
-  FETCH_GRACE_MS,
-} from './constants.ts'
-import { callApi } from './http.ts'
-import type { ApiOptions, AttachmentBody, AttachmentResult, AttachmentSource } from './types.ts'
+import { ATTACHMENT_NOT_SUPPORTED_MESSAGE, ATTACHMENT_TOO_OLD_MESSAGE } from './constants.ts'
+import type { AttachmentBody, AttachmentResult, AttachmentSource, Failure } from './types.ts'
 
 type Read =
   | {
@@ -16,53 +11,49 @@ type Read =
       readonly body: AttachmentBody
       readonly byteLength: number
     }
-  | { readonly kind: 'failed'; readonly message: string }
+  | Failure
 
-/**
- * Reads the attachment locally, then asks the service for its size limit, so a bad file or an
- * old or unsupporting service fails before any upload. Never throws; doesn't log names or content.
- */
-export async function prepareAttachment(
-  port: number,
-  source: AttachmentSource,
-  options: Omit<ApiOptions, 'timeoutMs'>,
-): Promise<AttachmentResult> {
-  const label = describeSource(source)
-  const read = await readSource(source, label, options.signal)
-  if (read.kind === 'failed') {
-    return read
-  }
-  const status = await callApi(port, 'GET', '/status', undefined, {
-    ...options,
-    timeoutMs: FETCH_GRACE_MS,
-  })
-  if (status.kind === 'failed') {
-    return status
-  }
-  const limit = readLimit(status.body)
-  if (limit === undefined) {
-    return { kind: 'failed', message: ATTACHMENT_TOO_OLD_MESSAGE }
-  }
-  if (limit === 0) {
-    return { kind: 'failed', message: ATTACHMENT_NOT_SUPPORTED_MESSAGE }
-  }
-  if (read.byteLength > limit) {
-    return { kind: 'failed', message: describeOver(label, limit) }
-  }
-  return { kind: 'ok', attachment: read.body }
+/** An attachment read locally and not yet checked against the service's limit. */
+export type ReadAttachment = {
+  readonly kind: 'read'
+  readonly body: AttachmentBody
+  readonly byteLength: number
+  readonly label: string
 }
 
 /**
- * Reads the attachment locally with no service call, for callers that run without the service.
- * Never throws; same size cap and failure messages as `prepareAttachment`.
+ * Reads the attachment locally. Never throws; doesn't log names or content. An abort while
+ * reading fails with reason `cancelled`.
  */
 export async function readAttachment(
   source: AttachmentSource,
   signal: AbortSignal,
-): Promise<AttachmentResult> {
-  const read = await readSource(source, describeSource(source), signal)
+): Promise<ReadAttachment | Failure> {
+  const label = describeSource(source)
+  const read = await readSource(source, label, signal)
   if (read.kind === 'failed') {
-    return read
+    return signal.aborted ? { ...read, reason: 'cancelled' } : read
+  }
+  return { ...read, label }
+}
+
+/** Checks a read attachment against the service's limit; `undefined` means an old service. */
+export function checkAttachmentLimit(
+  read: ReadAttachment,
+  maxAttachmentBytes: number | undefined,
+): AttachmentResult {
+  if (maxAttachmentBytes === undefined) {
+    return { kind: 'failed', reason: 'tooOld', message: ATTACHMENT_TOO_OLD_MESSAGE }
+  }
+  if (maxAttachmentBytes === 0) {
+    return { kind: 'failed', reason: 'notSupported', message: ATTACHMENT_NOT_SUPPORTED_MESSAGE }
+  }
+  if (read.byteLength > maxAttachmentBytes) {
+    return {
+      kind: 'failed',
+      reason: 'attachment',
+      message: describeOver(read.label, maxAttachmentBytes),
+    }
   }
   return { kind: 'ok', attachment: read.body }
 }
@@ -83,13 +74,6 @@ function describeOver(label: string, limit: number): string {
 
 function describeReadFailure(label: string, error: unknown): string {
   return `couldn't read ${label}: ${error instanceof Error ? error.message : String(error)}`
-}
-
-function readLimit(body: unknown): number | undefined {
-  if (typeof body === 'object' && body !== null && 'maxAttachmentBytes' in body) {
-    return typeof body.maxAttachmentBytes === 'number' ? body.maxAttachmentBytes : undefined
-  }
-  return undefined
 }
 
 function readSource(source: AttachmentSource, label: string, signal: AbortSignal): Promise<Read> {
@@ -122,11 +106,12 @@ async function readPath(path: string, name: string | undefined, label: string): 
   try {
     const info = await stat(absolute)
     if (!info.isFile()) {
-      return { kind: 'failed', message: `${label} is not a file` }
+      return { kind: 'failed', reason: 'attachment', message: `${label} is not a file` }
     }
     if (info.size > MAX_ATTACHMENT_BYTES) {
       return {
         kind: 'failed',
+        reason: 'attachment',
         message: describeOver(label, MAX_ATTACHMENT_BYTES),
       }
     }
@@ -139,13 +124,14 @@ async function readPath(path: string, name: string | undefined, label: string): 
     }
   } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-      return { kind: 'failed', message: `${label} not found` }
+      return { kind: 'failed', reason: 'attachment', message: `${label} not found` }
     }
-    return { kind: 'failed', message: describeReadFailure(label, error) }
+    return { kind: 'failed', reason: 'attachment', message: describeReadFailure(label, error) }
   }
   if (collected.kind === 'over') {
     return {
       kind: 'failed',
+      reason: 'attachment',
       message: describeOver(label, MAX_ATTACHMENT_BYTES),
     }
   }
@@ -169,11 +155,12 @@ async function readStream(
   try {
     collected = await collect(stream, signal)
   } catch (error) {
-    return { kind: 'failed', message: describeReadFailure(label, error) }
+    return { kind: 'failed', reason: 'attachment', message: describeReadFailure(label, error) }
   }
   if (collected.kind === 'over') {
     return {
       kind: 'failed',
+      reason: 'attachment',
       message: describeOver(label, MAX_ATTACHMENT_BYTES),
     }
   }

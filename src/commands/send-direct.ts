@@ -1,5 +1,10 @@
 import { parseApprovalRequest, SendError } from '../approval/index.ts'
-import { ATTACHMENT_NOT_SUPPORTED_MESSAGE, readAttachment } from '../client/index.ts'
+import {
+  ATTACHMENT_NOT_SUPPORTED_MESSAGE,
+  readAttachment,
+  toAskBody,
+  toNotifyBody,
+} from '../client/index.ts'
 import type { AttachmentBody, AttachmentSource } from '../client/index.ts'
 import { loadDirectConfig, openDirectSession } from '../direct/index.ts'
 import type { DirectConfig, DirectSession } from '../direct/index.ts'
@@ -10,7 +15,7 @@ import {
   DIRECT_CANCELLED_MESSAGE,
   DIRECT_SEND_FAILED_MESSAGE,
 } from './constants.ts'
-import { formatAnswer, toAskBody, toNotifyBody } from './send.ts'
+import { formatAnswer, toMessage, toQuestion } from './send.ts'
 import type { DirectSendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
 
 type Prepared =
@@ -41,7 +46,7 @@ export async function runDirectSendRequest(
   }
   const { provider } = prepared.config
   const parsed = parseApprovalRequest(
-    toAskBody(args, prepared.attachment),
+    toAskBody(toQuestion(args), prepared.attachment),
     provider.maxTextLength,
     resolveMaxAttachmentBytes(provider),
     provider.maxOptionCount,
@@ -63,7 +68,7 @@ export async function runDirectSendRequest(
       return 1
     case 'completed': {
       const { outcome } = result.value
-      deps.print(formatAnswer(outcome, args.json))
+      deps.print(formatAnswer(outcome.answer, outcome.timedOut, args.json))
       return outcome.timedOut || outcome.answer === args.timeoutOption ? DECLINED_EXIT_CODE : 0
     }
   }
@@ -84,7 +89,7 @@ export async function runDirectSendNotify(
   }
   const { provider } = prepared.config
   const parsed = parseNotifyRequest(
-    toNotifyBody(args, prepared.attachment),
+    toNotifyBody(toMessage(args), prepared.attachment),
     provider.maxTextLength,
     resolveMaxAttachmentBytes(provider),
   )
@@ -121,7 +126,7 @@ async function prepare(
   if (read.kind === 'failed') {
     return read
   }
-  return { kind: 'ready', config, attachment: read.attachment }
+  return { kind: 'ready', config, attachment: read.body }
 }
 
 /** Opens a session, runs `use` and always stops the runtime; failures come back as messages. */

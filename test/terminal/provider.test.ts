@@ -1,0 +1,27 @@
+import { expect, test } from 'vite-plus/test'
+import { MAX_ATTACHMENT_BYTES } from '../../src/approval/index.ts'
+import { loadConfig } from '../../src/config/index.ts'
+import { PROVIDERS } from '../../src/provider/index.ts'
+import { terminalProvider } from '../../src/terminal/index.ts'
+
+test('identity and limits', () => {
+  expect([terminalProvider.name, terminalProvider.label]).toEqual(['terminal', 'Terminal'])
+  expect(terminalProvider.maxAttachmentBytes).toBe(MAX_ATTACHMENT_BYTES)
+})
+
+test('needs no settings, so no token and no pairing', () => {
+  expect(terminalProvider.settings).toEqual([])
+})
+
+test('init does not offer it', () => {
+  expect(PROVIDERS.map((provider) => provider.name)).not.toContain('terminal')
+})
+
+test('the service loads it from JAYPOST_PROVIDER=terminal with no config file', () => {
+  const config = loadConfig({
+    JAYPOST_PROVIDER: 'terminal',
+    JAYPOST_CONFIG: '/nonexistent/config.json',
+  })
+  expect(config.provider).toBe(terminalProvider)
+  expect(config.settings).toEqual({})
+})

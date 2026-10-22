@@ -4,6 +4,7 @@ export { runLog } from './log.ts'
 export { runOwner } from './owner.ts'
 export { defaultFetchStatus, waitForPairing } from './pairing-wait.ts'
 export { createClackPrompts, PromptAborted } from './prompts.ts'
+export { resolveProviderSettings, selectProvider } from './provider-setup.ts'
 export { runResetOwner } from './reset-owner.ts'
 export { runDirectSendNotify, runDirectSendRequest } from './send-direct.ts'
 export { runSendNotify, runSendRequest } from './send.ts'
@@ -21,6 +22,8 @@ export type {
   LogDeps,
   FetchStatus,
   Prompts,
+  ProviderSettingsOptions,
+  ProviderSettingsResult,
   ResetOwnerDeps,
   SelectOption,
   SendDeps,

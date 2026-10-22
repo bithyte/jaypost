@@ -20,16 +20,18 @@ All tokens live in `src/styles/global.css` on `:root`.
 
 ## Logo
 
-A chat bubble that is also a blue jay: the bubble is the body, its tail is the bird's tail, with a swept-back crest, a beak, and an eye cut out of the shape (a mask, so it works on any background). It's filled with a top-to-bottom gradient from `#2aabee` to `#5865f2`.
+A perched blue jay in profile: round head with one thick crest swept back, a short beak, a teardrop body, and a long thin tail angled down to the left. The eye is cut out of the shape (a mask, so it works on any background). It's filled with one top-to-bottom gradient from `#2aabee` to `#5865f2` spanning the whole logo (`userSpaceOnUse`, y 2 to 44), so overlapping parts don't show seams.
 
-Source of truth is `public/favicon.svg`. `src/components/Header.astro` inlines the same paths; change both together. Geometry on a 48x48 grid:
+Source of truth is `public/favicon.svg`. `src/components/Header.astro` inlines the same shapes; change both together. Geometry on a 48x48 grid:
 
-- crest: `M17 15 3 7l16 4L8 1l15 9-4-10 9 13z`
-- body and tail: `M25 12a15 14 0 1 1-9 26L4 44l5-11a15 14 0 0 1 16-21z`
-- beak: `m38 22 9 3-9 3z`
-- eye (cut out): circle at `31,22`, radius `2.4`
+- crest: `M27 15 22 3 35 10Z`
+- head: circle at `32,16`, radius `6.5`
+- beak: `m37.5 13.2 7.5 2.8-7.5 2.8Z`
+- body: `M26 13.5C35 15 39 26 31.5 32 25.5 36.5 17.5 34.5 15 30Z`
+- tail: `M21 27 3 44 24 33Z`
+- eye (cut out): circle at `33.5,15`, radius `2`
 
-Picked over nine other directions (jay head, crested bubble, jay on a post, check bubble, crested J, crested envelope, ask/answer bubbles, tapped button, `jp` monogram) and then over variations of the bubble bird (chunky, minimal, outline, check wing, mirrored, two-tone flat, forked tail, open beak, soft corners, app tile, chest band, notification dot). The swept crest and the vertical gradient came from that second round. The eye has no glint.
+Replaced the earlier chat-bubble jay (the bubble was the body, its tail the bird's tail, with a three-spike crest). Its three-spike crest read as too thin. Single-spike crests, no crest with a longer or bigger beak, and the bubble adapted to this pose were all tried; the owner preferred this plain silhouette. The eye has no glint.
 
 The header wordmark reads "JayPost" in the monospace font. The page `<title>` and footer still say "jaypost".
 

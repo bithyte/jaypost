@@ -3,8 +3,8 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { expect, test, vi } from 'vite-plus/test'
 import { OWNER_COMMANDS } from '../../src/approval/index.ts'
+import { PAIRED_REPLY } from '../../src/conversation/index.ts'
 import {
-  PAIRED_REPLY,
   REJECTED_TOKEN_FATAL,
   createDiscordClient,
   createDiscordRuntime,

@@ -7,3 +7,4 @@ dist/
 .mcp.json
 dist-exe/
 site/.astro/
+.dev/

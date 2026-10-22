@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { NO_AUTH, parseToken, TOKEN_ENV_VAR } from '../auth/index.ts'
 import type { ApiAuth } from '../auth/index.ts'
-import { DEFAULT_PROVIDER, PROVIDERS, requireProvider } from '../provider/index.ts'
+import { DEFAULT_PROVIDER, requireProvider, SERVICE_PROVIDERS } from '../provider/index.ts'
 import type { Provider, SettingValue } from '../provider/index.ts'
 import { parseQuietHours } from '../quiet/index.ts'
 import type { QuietHours } from '../quiet/index.ts'
@@ -113,7 +113,7 @@ function resolveMutedUntil(
  */
 export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
-  providers: readonly Provider[] = PROVIDERS,
+  providers: readonly Provider[] = SERVICE_PROVIDERS,
   log: (line: string) => void = console.error,
 ): Config {
   const path = resolveConfigPath(env)

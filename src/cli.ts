@@ -471,10 +471,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('test')
     .description('send a test approval request')
-    .action(async () => {
+    .option('--port <n>', 'API port (default: the install, then PORT, then 8787)', parsePort)
+    .action(async (options: { readonly port?: number }) => {
       code = await runTest(
-        resolvePort(),
-        resolveInstallPaths().installFile,
+        options.port ?? resolvePort(),
+        options.port === undefined ? resolveInstallPaths().installFile : undefined,
         resolveClientToken(process.env, resolveTokenFile(process.env)),
       )
     })

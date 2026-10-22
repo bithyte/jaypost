@@ -24,6 +24,7 @@ import type {
   AskBody,
   AskOptions,
   AskResult,
+  Failure,
   StateBody,
 } from './types.ts'
 
@@ -63,18 +64,12 @@ export async function callApi(
       options.token,
     )
   } catch {
-    return {
-      kind: 'failed',
-      message: describeTransportFailure(port, options, timeout),
-    }
+    return toTransportFailure(port, options, timeout)
   }
   if (response.status === 200 || response.status === 202) {
     return parseOk(response.text)
   }
-  return {
-    kind: 'failed',
-    message: describeStatus(response.status, path, response.text, options.token !== undefined),
-  }
+  return toStatusFailure(response.status, path, response.text, options.token !== undefined)
 }
 
 const KEEPALIVE_MS = 60_000
@@ -83,10 +78,7 @@ const KEEPALIVE_MS = 60_000
  * HTTP timeout for a /request call: the capped approval timeout plus a grace period, and more
  * when the call uploads an attachment.
  */
-export function toFetchTimeoutMs(
-  timeoutSeconds: number | undefined,
-  hasAttachment = false,
-): number {
+function toFetchTimeoutMs(timeoutSeconds: number | undefined, hasAttachment = false): number {
   return (
     Math.min(timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS) * 1000 +
     toSendTimeoutMs(hasAttachment)
@@ -118,14 +110,11 @@ export async function requestApi(
     return result
   }
   if (!isOutcome(result.body)) {
-    return {
-      kind: 'failed',
-      message: `jaypost service sent an unreadable answer: ${JSON.stringify(result.body)}`,
-    }
+    return unreadable(JSON.stringify(result.body))
   }
   const { answer, timedOut } = result.body
   if (timedOut && isTooEarly(body.timeout, elapsedMs)) {
-    return { kind: 'failed', message: TIMEOUT_TOO_OLD_MESSAGE }
+    return { kind: 'failed', reason: 'tooOld', message: TIMEOUT_TOO_OLD_MESSAGE }
   }
   return { kind: 'ok', outcome: { answer, timedOut } }
 }
@@ -191,14 +180,31 @@ function send(
   })
 }
 
-function describeTransportFailure(port: number, options: ApiOptions, timeout: AbortSignal): string {
+function toTransportFailure(port: number, options: ApiOptions, timeout: AbortSignal): Failure {
   if (options.signal.aborted) {
-    return CANCELLED_MESSAGE
+    return { kind: 'failed', reason: 'cancelled', message: CANCELLED_MESSAGE }
   }
   if (timeout.aborted) {
-    return `jaypost service didn't answer within ${options.timeoutMs / 1000} s`
+    return {
+      kind: 'failed',
+      reason: 'httpTimeout',
+      message: `jaypost service didn't answer within ${options.timeoutMs / 1000} s`,
+    }
   }
-  return `jaypost service not reachable on ${options.host ?? HOST}:${port} (run jaypost status)`
+  return {
+    kind: 'failed',
+    reason: 'unreachable',
+    message: `jaypost service not reachable on ${options.host ?? HOST}:${port} (run jaypost status)`,
+  }
+}
+
+/** The failure for a body that parsed but isn't the shape the service promised. */
+export function unreadable(shown: string): Failure {
+  return {
+    kind: 'failed',
+    reason: 'unreadable',
+    message: `jaypost service sent an unreadable answer: ${shown}`,
+  }
 }
 
 /** True for a GET /request/<id> body. */
@@ -227,12 +233,12 @@ export function isStateBody(body: unknown): body is StateBody {
 }
 
 /** The copy for a 404 on a request id. */
-export function describeUnknownRequest(id: string): string {
+function describeUnknownRequest(id: string): string {
   return `jaypost doesn't know request ${id} (the service restarted, or the answer expired after 24 h)`
 }
 
 /** True for a /request answer body: `{ answer, timedOut }`. */
-export function isOutcome(body: unknown): body is { answer: string; timedOut: boolean } {
+function isOutcome(body: unknown): body is { answer: string; timedOut: boolean } {
   return (
     typeof body === 'object' &&
     body !== null &&
@@ -247,10 +253,7 @@ function parseOk(text: string): ApiResult {
   try {
     return { kind: 'ok', body: JSON.parse(text) }
   } catch {
-    return {
-      kind: 'failed',
-      message: `jaypost service sent an unreadable answer: ${text.trim()}`,
-    }
+    return unreadable(text.trim())
   }
 }
 
@@ -259,35 +262,48 @@ export function describeUnauthorized(sentToken: boolean): string {
   return sentToken ? TOKEN_REJECTED_MESSAGE : TOKEN_REQUIRED_MESSAGE
 }
 
-function describeStatus(status: number, path: ApiPath, text: string, sentToken: boolean): string {
+function toStatusFailure(status: number, path: ApiPath, text: string, sentToken: boolean): Failure {
   const error = readErrorField(text)
   if (status === 401) {
-    return describeUnauthorized(sentToken)
+    return { kind: 'failed', reason: 'unauthorized', message: describeUnauthorized(sentToken) }
   }
   if (status === 400 && error !== undefined) {
-    return error
+    return { kind: 'failed', reason: 'rejected', message: error }
   }
   if (status === 404 && path === '/notify') {
-    return TOO_OLD_MESSAGE
+    return { kind: 'failed', reason: 'tooOld', message: TOO_OLD_MESSAGE }
   }
   if (status === 404 && path === '/request/async') {
-    return BACKGROUND_TOO_OLD_MESSAGE
+    return { kind: 'failed', reason: 'tooOld', message: BACKGROUND_TOO_OLD_MESSAGE }
   }
   if (status === 404 && path.startsWith('/request/')) {
-    return describeUnknownRequest(path.slice('/request/'.length).split('?')[0] ?? '')
+    return {
+      kind: 'failed',
+      reason: 'unknownRequest',
+      message: describeUnknownRequest(path.slice('/request/'.length).split('?')[0] ?? ''),
+    }
   }
   if (status === 501) {
-    return error === 'attachments not supported'
-      ? ATTACHMENT_NOT_SUPPORTED_MESSAGE
-      : NOT_SUPPORTED_MESSAGE
+    return {
+      kind: 'failed',
+      reason: 'notSupported',
+      message:
+        error === 'attachments not supported'
+          ? ATTACHMENT_NOT_SUPPORTED_MESSAGE
+          : NOT_SUPPORTED_MESSAGE,
+    }
   }
   if (status === 503) {
-    return NOT_PAIRED_MESSAGE
+    return { kind: 'failed', reason: 'notPaired', message: NOT_PAIRED_MESSAGE }
   }
   if (status === 502) {
-    return SEND_FAILED_MESSAGE
+    return { kind: 'failed', reason: 'sendFailed', message: SEND_FAILED_MESSAGE }
   }
-  return `jaypost service error ${status}: ${error ?? text.trim()}`
+  return {
+    kind: 'failed',
+    reason: 'unexpected',
+    message: `jaypost service error ${status}: ${error ?? text.trim()}`,
+  }
 }
 
 function readErrorField(text: string): string | undefined {

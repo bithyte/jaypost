@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { RequestListener, Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
@@ -203,42 +203,6 @@ test('a rejected token surfaces the rejected message', async () => {
   )
 })
 
-test('request sends format when set', async () => {
-  const { port, seen } = await startStub(200, '{"answer":"Approve","timedOut":false}')
-  await new Client({ port }).request({ ...ASK, format: 'markdown' })
-  expect(seen.body).toEqual({ ...ASK, format: 'markdown' })
-})
-
-test('notify sends format when set', async () => {
-  const { port, seen } = await startStub(200, '{"ok":true}')
-  await new Client({ port }).notify({ text: '`ls`', format: 'markdown' })
-  expect(seen.body).toEqual({ text: '`ls`', format: 'markdown' })
-})
-
-test('format is omitted by default', async () => {
-  const stub = await startStub(200, '{"answer":"Approve","timedOut":false}')
-  const client = new Client({ port: stub.port })
-  await client.request(ASK)
-  expect(stub.seen.body).not.toHaveProperty('format')
-  await client.notify({ text: 'hi' })
-  expect(stub.seen.body).not.toHaveProperty('format')
-})
-
-test('allowText is sent, and options only when given', async () => {
-  const { port, seen } = await startStub(200, '{"answer":"feature/x","timedOut":false}')
-  const client = new Client({ port })
-  await client.request({
-    text: 'Which branch?',
-    allowText: true,
-    timeoutOption: 'main',
-  })
-  expect(seen.body).toEqual({
-    text: 'Which branch?',
-    allowText: true,
-    timeoutOption: 'main',
-  })
-})
-
 async function startRealServer(): Promise<{
   port: number
   requests: ApprovalRequest[]
@@ -281,33 +245,6 @@ async function startRealServer(): Promise<{
     notifications,
   }
 }
-
-test('request with a path attachment delivers the file bytes', async () => {
-  const { port, requests } = await startRealServer()
-  const path = join(directory, 'build.log')
-  writeFileSync(path, new Uint8Array([0, 1, 2]))
-  const answer = await new Client({ port }).request({
-    ...ASK,
-    attachment: { path },
-  })
-  expect(answer).toEqual({ answer: 'Approve', timedOut: false })
-  expect(requests[0]?.attachment).toEqual({
-    name: 'build.log',
-    content: new Uint8Array([0, 1, 2]),
-  })
-})
-
-test('notify with a text attachment delivers it', async () => {
-  const { port, notifications } = await startRealServer()
-  await new Client({ port }).notify({
-    text: 'done',
-    attachment: { name: 'a.diff', text: 'x' },
-  })
-  expect(notifications[0]?.attachment).toEqual({
-    name: 'a.diff',
-    content: new Uint8Array([120]),
-  })
-})
 
 test('an attachment against an old service throws the upgrade message', async () => {
   const server = createServer((_request, response) => {

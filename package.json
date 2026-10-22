@@ -38,6 +38,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "dev": "node scripts/dev.ts",
     "start": "node src/cli.ts start",
     "cli": "node src/cli.ts",
     "test": "vp test",

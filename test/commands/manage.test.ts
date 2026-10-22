@@ -1,7 +1,10 @@
 import { existsSync, mkdtempSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { NO_CLIENT_TOKEN, writeTokenFile } from '../../src/auth/index.ts'
 import type { ClientToken } from '../../src/auth/index.ts'
 import { TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
@@ -325,31 +328,54 @@ test('uninstall failure: generic error, 1, install.json kept', async () => {
   expect(existsSync(paths.installFile)).toBe(true)
 })
 
-test('test command takes port from install.json first', async () => {
-  const { runTest } = await import('../../src/commands/index.ts')
-  seed()
-  const f = vi.fn(
-    async (_url: string, _init?: { headers?: Record<string, string> }) =>
-      new Response('ok', { status: 200 }),
+type Seen = { readonly url?: string; readonly authorization?: string }
+
+const stubs: Server[] = []
+
+afterEach(async () => {
+  await Promise.all(
+    stubs.splice(0).map((stub) => {
+      stub.closeAllConnections()
+      return new Promise<void>((resolve) => stub.close(() => resolve()))
+    }),
   )
-  vi.stubGlobal('fetch', f)
-  vi.spyOn(console, 'log').mockImplementation(() => {})
+})
+
+async function startStub(status: number, body: string): Promise<{ port: number; seen: Seen[] }> {
+  const seen: Seen[] = []
+  const stub = createServer((request, response) => {
+    request.resume()
+    request.on('end', () => {
+      seen.push({
+        ...(request.url === undefined ? {} : { url: `${request.method} ${request.url}` }),
+        ...(request.headers.authorization === undefined
+          ? {}
+          : { authorization: request.headers.authorization }),
+      })
+      response.statusCode = status
+      response.end(body)
+    })
+  })
+  stubs.push(stub)
+  await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve))
+  return { port: (stub.address() as AddressInfo).port, seen }
+}
+
+test('test command takes port from install.json first and prints the answer', async () => {
+  const { runTest } = await import('../../src/commands/index.ts')
+  const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
+  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {})
   expect(await runTest(1234, paths.installFile, NO_CLIENT_TOKEN)).toBe(0)
-  expect(f.mock.calls[0]![0]).toBe('http://127.0.0.1:9000/request')
-  expect(f.mock.calls[0]![1]?.headers).not.toHaveProperty('authorization')
-  vi.unstubAllGlobals()
+  expect(seen).toEqual([{ url: 'POST /request' }])
+  expect(log).toHaveBeenCalledWith('Decline')
 })
 
 test('test sends the token and explains a 401', async () => {
   const { runTest } = await import('../../src/commands/index.ts')
-  seed()
+  const { port, seen } = await startStub(401, '{"error":"unauthorized"}')
+  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
   const token = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
-  const f = vi.fn(
-    async (_url: string, _init?: { headers?: Record<string, string> }) =>
-      new Response('{"error":"unauthorized"}', { status: 401 }),
-  )
-  vi.stubGlobal('fetch', f)
-  vi.spyOn(console, 'log').mockImplementation(() => {})
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   expect(
     await runTest(1234, paths.installFile, {
@@ -358,16 +384,14 @@ test('test sends the token and explains a 401', async () => {
       source: 'file',
     }),
   ).toBe(1)
-  expect(f.mock.calls[0]![1]?.headers?.authorization).toBe(`Bearer ${token}`)
+  expect(seen).toEqual([{ url: 'POST /request', authorization: `Bearer ${token}` }])
   expect(error).toHaveBeenCalledWith(TOKEN_REJECTED_MESSAGE)
-  vi.unstubAllGlobals()
 })
 
 test('test with an unusable token fails before calling', async () => {
   const { runTest } = await import('../../src/commands/index.ts')
-  seed()
-  const f = vi.fn(async () => new Response('ok', { status: 200 }))
-  vi.stubGlobal('fetch', f)
+  const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
+  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   expect(
     await runTest(1234, paths.installFile, {
@@ -375,9 +399,22 @@ test('test with an unusable token fails before calling', async () => {
       message: 'bad token here',
     }),
   ).toBe(1)
-  expect(f).not.toHaveBeenCalled()
+  expect(seen).toEqual([])
   expect(error).toHaveBeenCalledWith('bad token here')
-  vi.unstubAllGlobals()
+})
+
+test('test with the service down reports it', async () => {
+  const { runTest } = await import('../../src/commands/index.ts')
+  const probe = createServer()
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
+  const { port } = probe.address() as AddressInfo
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await runTest(1234, paths.installFile, NO_CLIENT_TOKEN)).toBe(1)
+  expect(error).toHaveBeenCalledWith(
+    `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
+  )
 })
 
 test('reset-owner restart failure reports Reset failed, not Paired', async () => {

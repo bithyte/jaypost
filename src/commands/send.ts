@@ -1,6 +1,5 @@
-import type { ClientToken } from '../auth/index.ts'
-import { postApi, prepareAttachment, requestApi, toSendTimeoutMs } from '../client/index.ts'
-import type { Answer, AskBody, AttachmentBody, AttachmentSource } from '../client/index.ts'
+import { Caller } from '../client/index.ts'
+import type { Message, Question } from '../client/index.ts'
 import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
 
 /**
@@ -8,41 +7,18 @@ import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
  * answered or timed out, 1 on any failure, with the reason on stderr.
  */
 export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Promise<number> {
-  if (deps.token.kind === 'unusable') {
-    deps.printError(`jaypost: ${deps.token.message}`)
-    return 1
-  }
-  const attachment = await prepare(args.attachment, deps)
-  if (attachment.kind === 'failed') {
-    return 1
-  }
-  const result = await requestApi(deps.port, toAskBody(args, attachment.attachment), {
-    signal: deps.signal,
-    ...toTokenOption(deps.token),
-  })
+  const result = await toCaller(deps).ask(toQuestion(args), { signal: deps.signal })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
   }
-  deps.print(formatAnswer(result.outcome, args.json))
+  deps.print(formatAnswer(result.answer, result.timedOut, args.json))
   return 0
 }
 
 /** Sends a notification; prints nothing on success. Returns 0 once sent, 1 on any failure. */
 export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promise<number> {
-  if (deps.token.kind === 'unusable') {
-    deps.printError(`jaypost: ${deps.token.message}`)
-    return 1
-  }
-  const attachment = await prepare(args.attachment, deps)
-  if (attachment.kind === 'failed') {
-    return 1
-  }
-  const result = await postApi(deps.port, '/notify', toNotifyBody(args, attachment.attachment), {
-    signal: deps.signal,
-    timeoutMs: toSendTimeoutMs(args.attachment !== undefined),
-    ...toTokenOption(deps.token),
-  })
+  const result = await toCaller(deps).notify(toMessage(args), { signal: deps.signal })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
@@ -50,8 +26,12 @@ export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promi
   return 0
 }
 
-/** The `/request` body for `args`, shared by the service and direct paths. */
-export function toAskBody(args: SendRequestArgs, attachment: AttachmentBody | undefined): AskBody {
+function toCaller(deps: SendDeps): Caller {
+  return new Caller({ port: deps.port, readToken: () => deps.token })
+}
+
+/** The question `send request` asks, from its parsed arguments. */
+export function toQuestion(args: SendRequestArgs): Question {
   return {
     text: args.text,
     ...(args.options === undefined ? {} : { options: args.options }),
@@ -60,45 +40,21 @@ export function toAskBody(args: SendRequestArgs, attachment: AttachmentBody | un
     ...(args.timeout === undefined ? {} : { timeout: args.timeout }),
     ...(args.project === undefined ? {} : { project: args.project }),
     ...(args.format === undefined ? {} : { format: args.format }),
-    ...(attachment === undefined ? {} : { attachment }),
+    ...(args.attachment === undefined ? {} : { attachment: args.attachment }),
   }
 }
 
-/** The `/notify` body for `args`, shared by the service and direct paths. */
-export function toNotifyBody(args: SendNotifyArgs, attachment: AttachmentBody | undefined) {
+/** The notification `send notify` sends, from its parsed arguments. */
+export function toMessage(args: SendNotifyArgs): Message {
   return {
     text: args.text,
     ...(args.project === undefined ? {} : { project: args.project }),
     ...(args.format === undefined ? {} : { format: args.format }),
-    ...(attachment === undefined ? {} : { attachment }),
+    ...(args.attachment === undefined ? {} : { attachment: args.attachment }),
   }
 }
 
-/** The line `send request` prints: the bare answer, or `{ answer, timedOut }` with `json`. */
-export function formatAnswer(outcome: Answer, json: boolean | undefined): string {
-  const { answer, timedOut } = outcome
+/** The answer line `send request` prints: the bare answer, or `{ answer, timedOut }` with `json`. */
+export function formatAnswer(answer: string, timedOut: boolean, json: boolean | undefined): string {
   return json === true ? JSON.stringify({ answer, timedOut }) : answer
-}
-
-type Prepared =
-  | { readonly kind: 'ready'; readonly attachment: AttachmentBody | undefined }
-  | { readonly kind: 'failed' }
-
-async function prepare(source: AttachmentSource | undefined, deps: SendDeps): Promise<Prepared> {
-  if (source === undefined) {
-    return { kind: 'ready', attachment: undefined }
-  }
-  const result = await prepareAttachment(deps.port, source, {
-    signal: deps.signal,
-    ...toTokenOption(deps.token),
-  })
-  if (result.kind === 'failed') {
-    deps.printError(`jaypost: ${result.message}`)
-    return { kind: 'failed' }
-  }
-  return { kind: 'ready', attachment: result.attachment }
-}
-
-function toTokenOption(token: ClientToken): { readonly token?: string } {
-  return token.kind === 'token' ? { token: token.token } : {}
 }

@@ -7,33 +7,15 @@ import type {
   ServerRequest,
 } from '@modelcontextprotocol/sdk/types.js'
 import { z } from 'zod'
-import type { ClientToken } from '../auth/index.ts'
 import { MESSAGE_FORMATS } from '../format/index.ts'
 import {
   DEFAULT_TIMEOUT_SECONDS,
   MAX_OPTION_LENGTH,
   MAX_PROJECT_LENGTH,
   MAX_TIMEOUT_SECONDS,
-  MAX_WAIT_SECONDS,
 } from '../approval/index.ts'
-import {
-  callApi,
-  DEFAULT_ATTACHMENT_NAME,
-  describeUnknownRequest,
-  FETCH_GRACE_MS,
-  isStateBody,
-  postApi,
-  prepareAttachment,
-  requestApi,
-  toSendTimeoutMs,
-} from '../client/index.ts'
-import type {
-  ApiOptions,
-  AskBody,
-  AttachmentBody,
-  AttachmentSource,
-  StateBody,
-} from '../client/index.ts'
+import { Caller, DEFAULT_ATTACHMENT_NAME } from '../client/index.ts'
+import type { AttachmentSource, CallerOptions, Question, QuestionState } from '../client/index.ts'
 import { VERSION } from '../config/constants.ts'
 import {
   CANCELLED_QUESTION_TEXT,
@@ -42,13 +24,7 @@ import {
   STILL_WAITING_TEXT,
 } from './constants.ts'
 import { OpenQuestions } from './questions.ts'
-import type {
-  AskArguments,
-  AttachmentArgument,
-  McpServerOptions,
-  PollResult,
-  ServiceAddress,
-} from './types.ts'
+import type { AskArguments, AttachmentArgument, McpServerOptions } from './types.ts'
 
 const ATTACH_SENTENCE =
   'Optionally attach a file (path) or long text (over the text limit, see GET /status maxTextLength; such as a diff or log) to show the user as a document with the message.'
@@ -167,7 +143,7 @@ const askInputSchema = {
  * `options.openQuestions`.
  */
 export function createMcpServer(
-  address: ServiceAddress,
+  caller: Caller,
   signal: AbortSignal,
   options: McpServerOptions = {},
 ): McpServer {
@@ -182,31 +158,20 @@ export function createMcpServer(
       outputSchema: { answer: z.string(), timed_out: z.boolean() },
     },
     async (args, extra): Promise<CallToolResult> => {
-      const token = address.readToken()
-      if (token.kind === 'unusable') {
-        return toErrorResult(token.message)
-      }
-      const callSignal = AbortSignal.any([extra.signal, signal])
-      const attachment = await prepare(address.port, args.attachment, token, callSignal)
-      if (attachment.kind === 'failed') {
-        return toErrorResult(attachment.message)
-      }
       const stopProgress = startProgress(
         extra,
         Math.min(args.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS),
         progressIntervalMs,
       )
-      const result = await requestApi(address.port, toAskBody(args, attachment.body), {
-        signal: callSignal,
-        ...(token.kind === 'token' ? { token: token.token } : {}),
-      }).finally(stopProgress)
+      const result = await caller
+        .ask(toQuestion(args), { signal: AbortSignal.any([extra.signal, signal]) })
+        .finally(stopProgress)
       if (result.kind === 'failed') {
         return toErrorResult(result.message)
       }
-      const { answer, timedOut } = result.outcome
       return {
-        content: [{ type: 'text', text: formatAnswer(answer, timedOut) }],
-        structuredContent: { answer, timed_out: timedOut },
+        content: [{ type: 'text', text: formatAnswer(result.answer, result.timedOut) }],
+        structuredContent: { answer: result.answer, timed_out: result.timedOut },
       }
     },
   )
@@ -218,33 +183,13 @@ export function createMcpServer(
       outputSchema: { request_id: z.string(), expires_at: z.string() },
     },
     async (args, extra): Promise<CallToolResult> => {
-      const token = address.readToken()
-      if (token.kind === 'unusable') {
-        return toErrorResult(token.message)
-      }
-      const callSignal = AbortSignal.any([extra.signal, signal])
-      const attachment = await prepare(address.port, args.attachment, token, callSignal)
-      if (attachment.kind === 'failed') {
-        return toErrorResult(attachment.message)
-      }
-      const result = await callApi(
-        address.port,
-        'POST',
-        '/request/async',
-        toAskBody(args, attachment.body),
-        {
-          signal: callSignal,
-          timeoutMs: toSendTimeoutMs(args.attachment !== undefined),
-          ...(token.kind === 'token' ? { token: token.token } : {}),
-        },
-      )
+      const result = await caller.askInBackground(toQuestion(args), {
+        signal: AbortSignal.any([extra.signal, signal]),
+      })
       if (result.kind === 'failed') {
         return toErrorResult(result.message)
       }
-      if (!isStateBody(result.body) || result.body.state !== 'pending') {
-        return toErrorResult(describeUnreadable(result.body))
-      }
-      const { id, expiresAt } = result.body
+      const { id, expiresAt } = result
       openQuestions.add(id)
       return {
         content: [
@@ -281,35 +226,27 @@ export function createMcpServer(
       },
     },
     async (args, extra): Promise<CallToolResult> => {
-      const token = address.readToken()
-      if (token.kind === 'unusable') {
-        return toErrorResult(token.message)
-      }
       const waitSeconds =
         args.wait_seconds === undefined
           ? undefined
           : Math.min(args.wait_seconds, MAX_TIMEOUT_SECONDS)
-      const path = `/request/${encodeURIComponent(args.request_id)}` as const
       const stopProgress = startProgress(extra, waitSeconds, progressIntervalMs)
-      const result = await pollState(
-        address.port,
-        path,
-        waitSeconds === undefined ? undefined : performance.now() + waitSeconds * 1000,
-        {
+      const result = await caller
+        .waitFor(args.request_id, {
           signal: AbortSignal.any([extra.signal, signal]),
-          ...(token.kind === 'token' ? { token: token.token } : {}),
-        },
-      ).finally(stopProgress)
+          ...(waitSeconds === undefined ? {} : { waitSeconds }),
+        })
+        .finally(stopProgress)
       if (result.kind === 'failed') {
-        if (result.message === describeUnknownRequest(path.slice('/request/'.length))) {
+        if (result.reason === 'unknownRequest') {
           openQuestions.settle(args.request_id)
         }
         return toErrorResult(result.message)
       }
-      if (result.state.state !== 'pending') {
+      if (result.kind !== 'pending') {
         openQuestions.settle(args.request_id)
       }
-      return toWaitResult(result.state)
+      return toWaitResult(result)
     },
   )
   server.registerTool(
@@ -324,29 +261,16 @@ export function createMcpServer(
       },
     },
     async (args, extra): Promise<CallToolResult> => {
-      const token = address.readToken()
-      if (token.kind === 'unusable') {
-        return toErrorResult(token.message)
-      }
-      const callSignal = AbortSignal.any([extra.signal, signal])
-      const attachment = await prepare(address.port, args.attachment, token, callSignal)
-      if (attachment.kind === 'failed') {
-        return toErrorResult(attachment.message)
-      }
-      const result = await postApi(
-        address.port,
-        '/notify',
+      const result = await caller.notify(
         {
           project: args.project_name,
           text: args.text,
           ...(args.format === undefined ? {} : { format: args.format }),
-          ...(attachment.body === undefined ? {} : { attachment: attachment.body }),
+          ...(args.attachment === undefined
+            ? {}
+            : { attachment: toAttachmentSource(args.attachment) }),
         },
-        {
-          signal: callSignal,
-          timeoutMs: toSendTimeoutMs(args.attachment !== undefined),
-          ...(token.kind === 'token' ? { token: token.token } : {}),
-        },
+        { signal: AbortSignal.any([extra.signal, signal]) },
       )
       if (result.kind === 'failed') {
         return toErrorResult(result.message)
@@ -362,10 +286,11 @@ export function createMcpServer(
  * background questions it asked that haven't settled (best effort, bounded by
  * `CANCEL_TIMEOUT_MS`), and closes. Resolves 0. Writes nothing to stdout but JSON-RPC.
  */
-export async function runMcp(address: ServiceAddress): Promise<number> {
+export async function runMcp(options: CallerOptions): Promise<number> {
+  const caller = new Caller(options)
   const controller = new AbortController()
   const openQuestions = new OpenQuestions()
-  const server = createMcpServer(address, controller.signal, { openQuestions })
+  const server = createMcpServer(caller, controller.signal, { openQuestions })
   // The SDK transport doesn't notice the end of stdin by itself.
   const stdinDone = new Promise<void>((resolve) => {
     process.stdin.once('end', resolve)
@@ -374,7 +299,7 @@ export async function runMcp(address: ServiceAddress): Promise<number> {
   await server.connect(new StdioServerTransport())
   await stdinDone
   controller.abort()
-  await openQuestions.cancelAll(address)
+  await openQuestions.cancelAll(caller)
   await server.close()
   return 0
 }
@@ -408,41 +333,8 @@ function startProgress(
   return () => clearInterval(timer)
 }
 
-/**
- * Long-polls a background question until it settles, or until `deadlineMs` (`performance.now()`
- * time) passes; no deadline waits until it settles. Polls once when the deadline is already due.
- */
-async function pollState(
-  port: number,
-  path: `/request/${string}`,
-  deadlineMs: number | undefined,
-  options: Omit<ApiOptions, 'timeoutMs'>,
-): Promise<PollResult> {
-  for (;;) {
-    const remainingSeconds =
-      deadlineMs === undefined
-        ? MAX_WAIT_SECONDS
-        : Math.max(0, (deadlineMs - performance.now()) / 1000)
-    const waitSeconds = Math.min(remainingSeconds, MAX_WAIT_SECONDS)
-    const result = await callApi(port, 'GET', `${path}?wait=${waitSeconds}`, undefined, {
-      ...options,
-      timeoutMs: waitSeconds * 1000 + FETCH_GRACE_MS,
-    })
-    if (result.kind === 'failed') {
-      return result
-    }
-    if (!isStateBody(result.body)) {
-      return { kind: 'failed', message: describeUnreadable(result.body) }
-    }
-    const isDue = deadlineMs !== undefined && performance.now() >= deadlineMs
-    if (result.body.state !== 'pending' || isDue) {
-      return { kind: 'ok', state: result.body }
-    }
-  }
-}
-
-function toWaitResult(state: StateBody): CallToolResult {
-  switch (state.state) {
+function toWaitResult(state: Exclude<QuestionState, { kind: 'failed' }>): CallToolResult {
+  switch (state.kind) {
     case 'pending':
       return {
         content: [{ type: 'text', text: STILL_WAITING_TEXT }],
@@ -461,29 +353,6 @@ function toWaitResult(state: StateBody): CallToolResult {
   }
 }
 
-type Prepared =
-  | { readonly kind: 'ready'; readonly body: AttachmentBody | undefined }
-  | { readonly kind: 'failed'; readonly message: string }
-
-async function prepare(
-  port: number,
-  attachment: AttachmentArgument | undefined,
-  token: ClientToken,
-  signal: AbortSignal,
-): Promise<Prepared> {
-  if (attachment === undefined) {
-    return { kind: 'ready', body: undefined }
-  }
-  const result = await prepareAttachment(port, toAttachmentSource(attachment), {
-    signal,
-    ...(token.kind === 'token' ? { token: token.token } : {}),
-  })
-  if (result.kind === 'failed') {
-    return result
-  }
-  return { kind: 'ready', body: result.attachment }
-}
-
 function toAttachmentSource(attachment: AttachmentArgument): AttachmentSource {
   if ('path' in attachment) {
     return attachment.name === undefined
@@ -493,7 +362,7 @@ function toAttachmentSource(attachment: AttachmentArgument): AttachmentSource {
   return { name: attachment.name ?? DEFAULT_ATTACHMENT_NAME, text: attachment.text }
 }
 
-function toAskBody(args: AskArguments, attachment: AttachmentBody | undefined): AskBody {
+function toQuestion(args: AskArguments): Question {
   return {
     project: args.project_name,
     text: args.text,
@@ -502,16 +371,12 @@ function toAskBody(args: AskArguments, attachment: AttachmentBody | undefined): 
     ...(args.allow_text === undefined ? {} : { allowText: args.allow_text }),
     timeoutOption: args.timeout_option,
     ...(args.timeout_seconds === undefined ? {} : { timeout: args.timeout_seconds }),
-    ...(attachment === undefined ? {} : { attachment }),
+    ...(args.attachment === undefined ? {} : { attachment: toAttachmentSource(args.attachment) }),
   }
 }
 
 function formatAnswer(answer: string, timedOut: boolean): string {
   return timedOut ? `${answer} (timed out, no answer from the user)` : answer
-}
-
-function describeUnreadable(body: unknown): string {
-  return `jaypost service sent an unreadable answer: ${JSON.stringify(body)}`
 }
 
 function toErrorResult(message: string): CallToolResult {

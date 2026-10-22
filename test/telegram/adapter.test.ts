@@ -4,24 +4,23 @@ import type { UserFromGetMe } from 'grammy/types'
 import type { Span } from '../../src/format/index.ts'
 import { ApprovalService, OWNER_COMMANDS } from '../../src/approval/index.ts'
 import {
-  formatCallbackData,
-  formatDismissData,
-  parseDismissData,
+  BUTTONS_ONLY_REPLY,
+  NOT_OPEN_REPLY,
+  OwnerConversation,
+  PAIRED_REPLY,
+  WRONG_CODE_REPLY,
+} from '../../src/conversation/index.ts'
+import {
   createTelegramMessenger,
-  handlePairingMessage,
-  isOwnerCommand,
   registerCommandHandler,
+  registerMessageHandler,
   setCommandMenu,
-  registerPairingHandler,
-  registerReplyHandler,
   registerTapHandler,
-  routeReply,
-  routeTap,
   toEntities,
   formatPairingInstructions,
   formatLegacyInstructions,
 } from '../../src/telegram/index.ts'
-import type { IncomingMessage, OpenQuestions, Owner, Reply } from '../../src/telegram/index.ts'
+import { pairOwner, receiveReplyTo } from '../conversation/helpers.ts'
 import { NotificationService } from '../../src/notify/index.ts'
 import { Pairing } from '../../src/pairing/index.ts'
 import { QUIET_COMMANDS } from '../../src/quiet/index.ts'
@@ -31,42 +30,10 @@ const plain = (text: string) => ({ text, spans: [] })
 const attempt = (pairing: Pairing) => (senderId: string, text: string) =>
   pairing.attempt(senderId, text)
 
-test('formatCallbackData format', () => expect(formatCallbackData('abc', 1)).toBe('abc:1'))
-
-test('formatCallbackData fits 64 bytes with a UUID', () => {
-  const data = formatCallbackData(crypto.randomUUID(), 9)
-  expect(Buffer.byteLength(data)).toBeLessThanOrEqual(64)
-})
-
-test('non-owner tap ignored, tap not called', () => {
-  const tap = vi.fn()
-  expect(routeTap(7, 'abc:0', 42, tap)).toBe('ignored')
-  expect(tap).not.toHaveBeenCalled()
-})
-
-test('owner tap routed', () => {
-  const tap = vi.fn(() => 'accepted' as const)
-  expect(routeTap(42, 'abc:1', 42, tap)).toBe('accepted')
-  expect(tap).toHaveBeenCalledWith('abc', 1)
-})
-
-test('owner tap on expired request', () => {
-  expect(routeTap(42, 'abc:1', 42, () => 'expired')).toBe('expired')
-})
-
-test.each([undefined, '', 'abc', 'abc:', 'abc:x', ':1', 'abc:1:2', 'abc:-1'])(
-  'malformed data %s is expired',
-  (d) => {
-    const tap = vi.fn()
-    expect(routeTap(42, d, 42, tap)).toBe('expired')
-    expect(tap).not.toHaveBeenCalled()
-  },
-)
-
 test('sendRequest sends plain text with one button per row', async () => {
   const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 42 } }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  const ref = await createTelegramMessenger(bot, { id: 42 }).sendRequest(
+  const ref = await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
     'id1',
     plain('Deploy?'),
     ['Yes', 'No'],
@@ -90,7 +57,7 @@ const at = new Date(2026, 0, 1, 9, 5)
 test('allowText with buttons appends the tap-or-reply hint', async () => {
   const sendMessage = vi.fn(async () => sentMessage)
   const bot = { api: { sendMessage } } as unknown as Bot
-  await createTelegramMessenger(bot, { id: 42 }).sendRequest(
+  await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
     'id1',
     plain('Branch?'),
     ['main'],
@@ -111,7 +78,7 @@ test('allowText with buttons appends the tap-or-reply hint', async () => {
 test('text-only question has the reply hint and no reply_markup', async () => {
   const sendMessage = vi.fn(async () => sentMessage)
   const bot = { api: { sendMessage } } as unknown as Bot
-  const ref = await createTelegramMessenger(bot, { id: 42 }).sendRequest(
+  const ref = await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
     'id1',
     plain('Branch?'),
     [],
@@ -127,25 +94,30 @@ test('text-only question has the reply hint and no reply_markup', async () => {
 })
 
 test('send tracks the question and finalize forgets it', async () => {
-  const openQuestions: OpenQuestions = new Map()
+  const conversation = new OwnerConversation('42')
   const bot = {
     api: {
       sendMessage: vi.fn(async () => sentMessage),
       editMessageText: vi.fn(async () => true),
     },
   } as unknown as Bot
-  const messenger = createTelegramMessenger(bot, { id: 42 }, openQuestions)
+  const messenger = createTelegramMessenger(bot, conversation)
   const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined)
-  expect([...openQuestions]).toEqual([['42:5', { id: 'id1', allowText: true }]])
+  const tracked = receiveReplyTo(conversation, '42:5')
+  expect(tracked.outcome).toEqual({ kind: 'answered' })
+  expect(tracked.reply).toHaveBeenCalledWith('id1', 'x')
   await messenger.finalize(ref, plain('done'), {
     kind: 'replied',
     answer: 'x',
   })
-  expect(openQuestions.size).toBe(0)
+  expect(receiveReplyTo(conversation, '42:5').outcome).toEqual({
+    kind: 'refused',
+    text: NOT_OPEN_REPLY,
+  })
 })
 
 test('a failed final edit still forgets the question', async () => {
-  const openQuestions: OpenQuestions = new Map()
+  const conversation = new OwnerConversation('42')
   const bot = {
     api: {
       sendMessage: vi.fn(async () => sentMessage),
@@ -154,13 +126,16 @@ test('a failed final edit still forgets the question', async () => {
       }),
     },
   } as unknown as Bot
-  const messenger = createTelegramMessenger(bot, { id: 42 }, openQuestions)
+  const messenger = createTelegramMessenger(bot, conversation)
   const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined)
-  expect(openQuestions.size).toBe(1)
+  expect(receiveReplyTo(conversation, '42:5').outcome).toEqual({ kind: 'answered' })
   await expect(messenger.finalize(ref, plain('done'), { kind: 'cancelled' })).rejects.toThrow(
     'message is not modified',
   )
-  expect(openQuestions.size).toBe(0)
+  expect(receiveReplyTo(conversation, '42:5').outcome).toEqual({
+    kind: 'refused',
+    text: NOT_OPEN_REPLY,
+  })
 })
 
 test.each([
@@ -172,9 +147,13 @@ test.each([
     async (_chatId: number, _messageId: number, _text: string, _other: object) => true,
   )
   const bot = { api: { editMessageText } } as unknown as Bot
-  await createTelegramMessenger(bot, { id: 42 }).finalize(reference, plain('done'), {
-    kind: 'cancelled',
-  })
+  await createTelegramMessenger(bot, new OwnerConversation('42')).finalize(
+    reference,
+    plain('done'),
+    {
+      kind: 'cancelled',
+    },
+  )
   expect(editMessageText).toHaveBeenCalledWith(42, 5, 'done', extra)
 })
 
@@ -183,7 +162,10 @@ test('restart expiry of a saved text-only request sends no reply_markup', async 
     async (_chatId: number, _messageId: number, _text: string, _other: object) => true,
   )
   const bot = { api: { editMessageText } } as unknown as Bot
-  const service = new ApprovalService(createTelegramMessenger(bot, { id: 42 }), () => at)
+  const service = new ApprovalService(
+    createTelegramMessenger(bot, new OwnerConversation('42')),
+    () => at,
+  )
   await service.expireOrphans([
     {
       id: 'old',
@@ -208,13 +190,14 @@ function fakeBot() {
     fromId: number,
     data: string | undefined,
     deleteMessage = vi.fn(async () => true),
-    message: unknown = undefined,
+    message: unknown = { message_id: 11, chat: { id: 42, type: 'private' } },
+    { withoutMessage = false }: { readonly withoutMessage?: boolean } = {},
   ) => {
     const answerCallbackQuery = vi.fn(async () => true)
     const apiDeleteMessage = vi.fn(async (_chatId: number, _messageId: number) => true)
     const p = handler({
       from: { id: fromId },
-      callbackQuery: { data, message },
+      callbackQuery: { data, message: withoutMessage ? undefined : message },
       answerCallbackQuery,
       deleteMessage,
       api: { deleteMessage: apiDeleteMessage },
@@ -224,18 +207,35 @@ function fakeBot() {
   return { bot: { on, botInfo: { id: 99 } } as unknown as Bot, on, run }
 }
 
+function createTapHandlers(
+  answer: (id: string, optionIndex: number) => 'accepted' | 'expired' = () => 'accepted',
+  dismiss: (id: string) => boolean = () => true,
+) {
+  return {
+    answer: vi.fn(answer),
+    reply: vi.fn((_id: string, _text: string) => 'accepted' as const),
+    dismiss: vi.fn(dismiss),
+  }
+}
+
 test('handler: owner accepted answers silently', async () => {
   const { bot, on, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, () => 'accepted', vi.fn())
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
   expect(on).toHaveBeenCalledWith('callback_query:data', expect.any(Function))
   const { answerCallbackQuery, p } = run(42, 'abc:0')
   await p
+  expect(handlers.answer).toHaveBeenCalledWith('abc', 0)
   expect(answerCallbackQuery).toHaveBeenCalledWith()
 })
 
 test('handler: expired shows Expired', async () => {
   const { bot, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, () => 'expired', vi.fn())
+  registerTapHandler(
+    bot,
+    new OwnerConversation('42'),
+    createTapHandlers(() => 'expired'),
+  )
   const { answerCallbackQuery, p } = run(42, 'abc:0')
   await p
   expect(answerCallbackQuery).toHaveBeenCalledWith({ text: 'Expired' })
@@ -243,30 +243,75 @@ test('handler: expired shows Expired', async () => {
 
 test('handler: non-owner ignored, tap not called, no text', async () => {
   const { bot, run } = fakeBot()
-  const tap = vi.fn()
-  registerTapHandler(bot, { id: 42 }, tap, vi.fn())
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
   const { answerCallbackQuery, p } = run(7, 'abc:0')
   await p
-  expect(tap).not.toHaveBeenCalled()
+  expect(handlers.answer).not.toHaveBeenCalled()
   expect(answerCallbackQuery).toHaveBeenCalledWith()
+})
+
+test('handler: an owner tap on an inaccessible message still answers', async () => {
+  const { bot, run } = fakeBot()
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
+  const { answerCallbackQuery, p } = run(42, 'abc:0', undefined, {
+    message_id: 11,
+    chat: { id: 42, type: 'private' },
+    date: 0,
+  })
+  await p
+  expect(handlers.answer).toHaveBeenCalledWith('abc', 0)
+  expect(answerCallbackQuery).toHaveBeenCalledWith()
+})
+
+test('handler: a tap without a message is ignored and still answered', async () => {
+  const { bot, run } = fakeBot()
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
+  const { answerCallbackQuery, p } = run(42, 'abc:0', undefined, undefined, {
+    withoutMessage: true,
+  })
+  await p
+  expect(handlers.answer).not.toHaveBeenCalled()
+  expect(answerCallbackQuery).toHaveBeenCalledWith()
+})
+
+test('handler: a tap outside a private chat is ignored', async () => {
+  const { bot, run } = fakeBot()
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
+  const group = { message_id: 11, chat: { id: -5, type: 'group' } }
+  const tap = run(42, 'abc:0', undefined, group)
+  const dismiss = run(42, 'dismiss/id1', undefined, group)
+  await tap.p
+  await dismiss.p
+  expect(handlers.answer).not.toHaveBeenCalled()
+  expect(handlers.dismiss).not.toHaveBeenCalled()
+  expect(dismiss.deleteMessage).not.toHaveBeenCalled()
+  expect(tap.answerCallbackQuery).toHaveBeenCalledWith()
+  expect(dismiss.answerCallbackQuery).toHaveBeenCalledWith()
 })
 
 test('handler: owner dismiss deletes the message and calls dismiss', async () => {
   const { bot, run } = fakeBot()
-  const tap = vi.fn()
-  const dismiss = vi.fn(() => true)
-  registerTapHandler(bot, { id: 42 }, tap, dismiss)
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
   const { answerCallbackQuery, deleteMessage, p } = run(42, 'dismiss/id1')
   await p
-  expect(dismiss).toHaveBeenCalledWith('id1')
+  expect(handlers.dismiss).toHaveBeenCalledWith('id1')
   expect(deleteMessage).toHaveBeenCalledTimes(1)
   expect(answerCallbackQuery).toHaveBeenCalledWith()
-  expect(tap).not.toHaveBeenCalled()
+  expect(handlers.answer).not.toHaveBeenCalled()
 })
 
 test('handler: dismiss for unknown id still deletes the message', async () => {
   const { bot, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => false)
+  registerTapHandler(
+    bot,
+    new OwnerConversation('42'),
+    createTapHandlers(undefined, () => false),
+  )
   const { answerCallbackQuery, deleteMessage, p } = run(42, 'dismiss/gone')
   await p
   expect(deleteMessage).toHaveBeenCalledTimes(1)
@@ -276,7 +321,7 @@ test('handler: dismiss for unknown id still deletes the message', async () => {
 test('handler: failed dismiss delete is logged and the tap answered', async () => {
   const { bot, run } = fakeBot()
   const log = vi.fn()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => true, log)
+  registerTapHandler(bot, new OwnerConversation('42'), createTapHandlers(), log)
   const deleteMessage = vi.fn(async () => {
     throw new Error('message to delete not found')
   })
@@ -286,11 +331,11 @@ test('handler: failed dismiss delete is logged and the tap answered', async () =
   expect(answerCallbackQuery).toHaveBeenCalledWith()
 })
 
-const DISMISSED_MESSAGE = { message_id: 11, chat: { id: 42 } }
+const DISMISSED_MESSAGE = { message_id: 11, chat: { id: 42, type: 'private' } }
 
 test("handler: dismiss also deletes the bot's document the message replies to", async () => {
   const { bot, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => true)
+  registerTapHandler(bot, new OwnerConversation('42'), createTapHandlers())
   const message = {
     ...DISMISSED_MESSAGE,
     reply_to_message: {
@@ -314,7 +359,7 @@ test("handler: dismiss also deletes the bot's document the message replies to", 
 
 test("handler: dismiss leaves a replied-to message that isn't the bot's document", async () => {
   const { bot, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => true)
+  registerTapHandler(bot, new OwnerConversation('42'), createTapHandlers())
   const owners = {
     ...DISMISSED_MESSAGE,
     reply_to_message: {
@@ -337,7 +382,7 @@ test("handler: dismiss leaves a replied-to message that isn't the bot's document
 
 test('handler: dismiss without a replied-to message deletes only itself', async () => {
   const { bot, run } = fakeBot()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => true)
+  registerTapHandler(bot, new OwnerConversation('42'), createTapHandlers())
   const { deleteMessage, apiDeleteMessage, p } = run(
     42,
     'dismiss/id1',
@@ -352,7 +397,7 @@ test('handler: dismiss without a replied-to message deletes only itself', async 
 test('handler: a failed document delete on dismiss is logged and the tap answered', async () => {
   const { bot, run } = fakeBot()
   const log = vi.fn()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), () => true, log)
+  registerTapHandler(bot, new OwnerConversation('42'), createTapHandlers(), log)
   const message = {
     ...DISMISSED_MESSAGE,
     reply_to_message: {
@@ -370,34 +415,19 @@ test('handler: a failed document delete on dismiss is logged and the tap answere
 
 test('handler: non-owner dismiss is ignored', async () => {
   const { bot, run } = fakeBot()
-  const dismiss = vi.fn()
-  registerTapHandler(bot, { id: 42 }, vi.fn(), dismiss)
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, new OwnerConversation('42'), handlers)
   const { answerCallbackQuery, deleteMessage, p } = run(7, 'dismiss/id1')
   await p
-  expect(dismiss).not.toHaveBeenCalled()
+  expect(handlers.dismiss).not.toHaveBeenCalled()
   expect(deleteMessage).not.toHaveBeenCalled()
   expect(answerCallbackQuery).toHaveBeenCalledWith()
-})
-
-test('formatDismissData format', () => expect(formatDismissData('abc')).toBe('dismiss/abc'))
-
-test('formatDismissData fits 64 bytes with a UUID', () => {
-  expect(Buffer.byteLength(formatDismissData(crypto.randomUUID()))).toBeLessThanOrEqual(64)
-})
-
-test("dismiss and approval payloads don't overlap", () => {
-  expect(parseDismissData(formatDismissData('abc'))).toBe('abc')
-  expect(parseDismissData('abc:0')).toBeUndefined()
-  expect(parseDismissData('dismiss/abc:0')).toBeUndefined()
-  const tap = vi.fn()
-  expect(routeTap(42, formatDismissData('abc'), 42, tap)).toBe('expired')
-  expect(tap).not.toHaveBeenCalled()
 })
 
 test('sendNotification sends text with one Dismiss button', async () => {
   const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 42 } }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  const ref = await createTelegramMessenger(bot, { id: 42 }).sendNotification(
+  const ref = await createTelegramMessenger(bot, new OwnerConversation('42')).sendNotification(
     'id1',
     plain('hi'),
     { silent: false, dismissible: true },
@@ -418,7 +448,7 @@ test('sendNotification without dismissible sends no keyboard', async () => {
     chat: { id: 42 },
   }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  const ref = await createTelegramMessenger(bot, { id: 42 }).sendNotification(
+  const ref = await createTelegramMessenger(bot, new OwnerConversation('42')).sendNotification(
     'id1',
     plain('hi'),
     { silent: false, dismissible: false },
@@ -434,7 +464,7 @@ test('sendNotification sets disable_notification when silent', async () => {
     chat: { id: 42 },
   }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  await createTelegramMessenger(bot, { id: 42 }).sendNotification(
+  await createTelegramMessenger(bot, new OwnerConversation('42')).sendNotification(
     'id1',
     plain('hi'),
     { silent: true, dismissible: true },
@@ -451,7 +481,7 @@ test('sendRequest never sets disable_notification', async () => {
     chat: { id: 42 },
   }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  await createTelegramMessenger(bot, { id: 42 }).sendRequest(
+  await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
     'id1',
     plain('hi'),
     ['Yes', 'No'],
@@ -465,7 +495,7 @@ test('sendNotification throws when unpaired', async () => {
   const sendMessage = vi.fn()
   const bot = { api: { sendMessage } } as unknown as Bot
   await expect(
-    createTelegramMessenger(bot, { id: undefined }).sendNotification(
+    createTelegramMessenger(bot, new OwnerConversation(undefined)).sendNotification(
       'id1',
       plain('hi'),
       { silent: true, dismissible: true },
@@ -478,122 +508,23 @@ test('sendNotification throws when unpaired', async () => {
 test('deleteMessage deletes by reference', async () => {
   const deleteMessage = vi.fn(async () => true)
   const bot = { api: { deleteMessage } } as unknown as Bot
-  await createTelegramMessenger(bot, { id: 42 }).deleteMessage({
+  await createTelegramMessenger(bot, new OwnerConversation('42')).deleteMessage({
     chatId: 42,
     messageId: 5,
   })
   expect(deleteMessage).toHaveBeenCalledWith(42, 5)
 })
 
-test('tap with no owner is ignored', () => {
-  const tap = vi.fn()
-  expect(routeTap(1, 'abc:0', undefined, tap)).toBe('ignored')
-  expect(tap).not.toHaveBeenCalled()
-})
-
 test('messenger sends to the owner id at call time', async () => {
   const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 9 } }))
   const bot = { api: { sendMessage } } as unknown as Bot
-  const owner: Owner = { id: undefined }
-  const m = createTelegramMessenger(bot, owner)
+  const conversation = new OwnerConversation(undefined)
+  const m = createTelegramMessenger(bot, conversation)
   await expect(m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)).rejects.toThrow()
   expect(sendMessage).not.toHaveBeenCalled()
-  owner.id = 9
+  pairOwner(conversation, '9')
   await m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)
   expect(sendMessage).toHaveBeenCalledWith(9, 'Q', expect.anything())
-})
-
-test('pairing: right code replies and calls onPaired', () => {
-  const onPaired = vi.fn()
-  const reply = handlePairingMessage(
-    { fromId: 9, chatType: 'private', text: '/start K7QM-4XPD' },
-    attempt(new Pairing('K7QM4XPD')),
-    onPaired,
-  )
-  expect(reply).toBe('Paired. Approval requests will appear here.')
-  expect(onPaired).toHaveBeenCalledWith(9)
-})
-
-test.each(['/start K7QM-4XPD', '/start@my_bot k7qm4xpd'])(
-  'handlePairingMessage strips /start and /start@bot: %s',
-  (text) => {
-    const onPaired = vi.fn()
-    const reply = handlePairingMessage(
-      { fromId: 42, chatType: 'private', text },
-      attempt(new Pairing('K7QM4XPD')),
-      onPaired,
-    )
-    expect(reply).toBe('Paired. Approval requests will appear here.')
-    expect(onPaired).toHaveBeenCalledWith(42)
-  },
-)
-
-test('pairing: wrong code gets the hint, onPaired not called', () => {
-  const onPaired = vi.fn()
-  const reply = handlePairingMessage(
-    { fromId: 9, chatType: 'private', text: 'nope' },
-    attempt(new Pairing('K7QM4XPD')),
-    onPaired,
-  )
-  expect(reply).toBe("This bot isn't paired. Check the service logs for the pairing code.")
-  expect(onPaired).not.toHaveBeenCalled()
-})
-
-test('pairing: group chat ignored', () => {
-  const p = new Pairing('K7QM4XPD')
-  expect(
-    handlePairingMessage({ fromId: 9, chatType: 'group', text: 'K7QM4XPD' }, attempt(p), vi.fn()),
-  ).toBeUndefined()
-  expect(p.paired).toBe(false)
-})
-
-test('pairing: blocked sender gets no reply', () => {
-  const p = new Pairing('K7QM4XPD', 1)
-  const msg = { fromId: 9, chatType: 'private', text: 'bad' }
-  handlePairingMessage(msg, attempt(p), vi.fn())
-  expect(handlePairingMessage(msg, attempt(p), vi.fn())).toBeUndefined()
-})
-
-test('after pairing, strangers and old codes get no reply', () => {
-  const p = new Pairing('K7QM4XPD')
-  p.attempt('1', 'K7QM4XPD')
-  const onPaired = vi.fn()
-  expect(
-    handlePairingMessage({ fromId: 2, chatType: 'private', text: '/start' }, attempt(p), onPaired),
-  ).toBeUndefined()
-  expect(
-    handlePairingMessage(
-      { fromId: 2, chatType: 'private', text: 'K7QM4XPD' },
-      attempt(p),
-      onPaired,
-    ),
-  ).toBeUndefined()
-  expect(onPaired).not.toHaveBeenCalled()
-})
-
-test('pairing handler replies via ctx.reply and stays silent when ignored', async () => {
-  let handler: (ctx: unknown) => Promise<void> = async () => {}
-  const on = vi.fn((_f: string, h: typeof handler) => {
-    handler = h
-  })
-  registerPairingHandler({ on } as unknown as Bot, attempt(new Pairing('K7QM4XPD')), vi.fn())
-  expect(on).toHaveBeenCalledWith('message:text', expect.any(Function))
-  const reply = vi.fn(async () => {})
-  await handler({
-    from: { id: 9 },
-    chat: { type: 'private' },
-    message: { text: 'K7QM4XPD' },
-    reply,
-  })
-  expect(reply).toHaveBeenCalledWith('Paired. Approval requests will appear here.')
-  reply.mockClear()
-  await handler({
-    from: { id: 2 },
-    chat: { type: 'private' },
-    message: { text: 'x' },
-    reply,
-  })
-  expect(reply).not.toHaveBeenCalled()
 })
 
 test('formatPairingInstructions text', () => {
@@ -638,18 +569,10 @@ function createCommandContext(overrides: Partial<CommandContext> = {}): CommandC
   }
 }
 
-test('isOwnerCommand: owner in private chat only', () => {
-  expect(isOwnerCommand({ fromId: 9, chatType: 'private' }, 9)).toBe(true)
-  expect(isOwnerCommand({ fromId: 8, chatType: 'private' }, 9)).toBe(false)
-  expect(isOwnerCommand({ fromId: 9, chatType: 'group' }, 9)).toBe(false)
-  expect(isOwnerCommand({ fromId: 9, chatType: 'private' }, undefined)).toBe(false)
-  expect(isOwnerCommand({ fromId: undefined, chatType: 'channel' }, 9)).toBe(false)
-})
-
 test('command handler replies to the owner with the core text', async () => {
   const { bot, handlers } = createCommandBot()
   const command = vi.fn((name: string, argument: string) => `${name}:${argument}`)
-  registerCommandHandler(bot, { id: 9 }, OWNER_COMMANDS, command)
+  registerCommandHandler(bot, new OwnerConversation('9'), OWNER_COMMANDS, command)
   expect([...handlers.keys()]).toEqual(['pending', 'cancel', 'history'])
   const context = createCommandContext({ match: '5' })
   await handlers.get('history')?.(
@@ -662,7 +585,7 @@ test('command handler replies to the owner with the core text', async () => {
 test('command handler is silent for strangers, groups and channel posts', async () => {
   const { bot, handlers } = createCommandBot()
   const command = vi.fn(() => 'text')
-  registerCommandHandler(bot, { id: 9 }, OWNER_COMMANDS, command)
+  registerCommandHandler(bot, new OwnerConversation('9'), OWNER_COMMANDS, command)
   const next = vi.fn(async () => {})
   const contexts = [
     createCommandContext({ from: { id: 8 } }),
@@ -680,7 +603,7 @@ test('command handler is silent for strangers, groups and channel posts', async 
 test('command handler is silent while no owner is paired', async () => {
   const { bot, handlers } = createCommandBot()
   const command = vi.fn(() => 'text')
-  registerCommandHandler(bot, { id: undefined }, OWNER_COMMANDS, command)
+  registerCommandHandler(bot, new OwnerConversation(undefined), OWNER_COMMANDS, command)
   const context = createCommandContext()
   await handlers.get('pending')?.(
     context,
@@ -692,7 +615,7 @@ test('command handler is silent while no owner is paired', async () => {
 
 test('command handler sends nothing when the core returns undefined', async () => {
   const { bot, handlers } = createCommandBot()
-  registerCommandHandler(bot, { id: 9 }, OWNER_COMMANDS, () => undefined)
+  registerCommandHandler(bot, new OwnerConversation('9'), OWNER_COMMANDS, () => undefined)
   const context = createCommandContext()
   await handlers.get('pending')?.(
     context,
@@ -759,316 +682,184 @@ test('setCommandMenu survives a synchronous throw', async () => {
   await vi.waitFor(() => expect(log).toHaveBeenCalledWith('failed to set bot commands'))
 })
 
-const BOT_ID = 100
-const QUESTION = { messageId: 5, fromId: BOT_ID }
-const OTHER_BOT_MESSAGE = { messageId: 7, fromId: BOT_ID }
-const messageOf = (overrides: Partial<IncomingMessage> = {}): IncomingMessage => ({
-  fromId: 9,
-  chatType: 'private',
-  chatId: 9,
-  text: 'feature/x',
-  replyTo: undefined,
-  ...overrides,
-})
-const questionsOf = (...entries: [number, boolean][]) =>
-  new Map(
-    entries.map(([messageId, allowText]) => [`9:${messageId}`, { id: `q${messageId}`, allowText }]),
-  )
-const accepting = () => vi.fn((_id: string, _text: string) => 'accepted' as const)
-const expiring = () => vi.fn((_id: string, _text: string) => 'expired' as const)
+type MessageContext = {
+  readonly from: { readonly id: number; readonly is_bot: boolean }
+  readonly chat: { readonly id: number; readonly type: string }
+  readonly message: {
+    readonly message_id: number
+    readonly text?: string
+    readonly reply_to_message?: { readonly message_id: number; readonly from?: { id: number } }
+  }
+  readonly reply: ReturnType<typeof vi.fn>
+}
 
-test('routeReply ignores a stranger', () => {
-  const reply = accepting()
-  const route = routeReply(messageOf({ fromId: 8 }), 9, BOT_ID, questionsOf([5, true]), reply)
-  expect(route).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a group chat', () => {
-  const reply = accepting()
-  const route = routeReply(
-    messageOf({ chatType: 'group' }),
-    9,
-    BOT_ID,
-    questionsOf([5, true]),
-    reply,
-  )
-  expect(route).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a channel post', () => {
-  const reply = accepting()
-  const route = routeReply(
-    messageOf({ fromId: undefined }),
-    9,
-    BOT_ID,
-    questionsOf([5, true]),
-    reply,
-  )
-  expect(route).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores everyone when nobody is paired', () => {
-  const reply = accepting()
-  const route = routeReply(messageOf(), undefined, BOT_ID, questionsOf([5, true]), reply)
-  expect(route).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply settles an open text question with the trimmed reply', () => {
-  const reply = accepting()
-  const message = messageOf({ text: '  feature/x \n', replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('accepted')
-  expect(reply).toHaveBeenCalledExactlyOnceWith('q5', 'feature/x')
-})
-
-test('routeReply keeps inner newlines', () => {
-  const reply = accepting()
-  const message = messageOf({ text: 'line 1\nline 2', replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('accepted')
-  expect(reply).toHaveBeenCalledExactlyOnceWith('q5', 'line 1\nline 2')
-})
-
-test('routeReply counts a reply starting with a slash', () => {
-  const reply = accepting()
-  const message = messageOf({ text: '/var/www', replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('accepted')
-  expect(reply).toHaveBeenCalledExactlyOnceWith('q5', '/var/www')
-})
-
-test('routeReply refuses a reply to a buttons-only question', () => {
-  const reply = accepting()
-  const message = messageOf({ replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, false]), reply)).toBe('buttonsOnly')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply reports expired when the question is settled but not finalized', () => {
-  const reply = expiring()
-  const message = messageOf({ replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('expired')
-  expect(reply).toHaveBeenCalledTimes(1)
-})
-
-test('routeReply says not open for a reply to another bot message', () => {
-  const reply = accepting()
-  const message = messageOf({ replyTo: OTHER_BOT_MESSAGE })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('notOpen')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply treats a reply to the owner own message as a non-reply', () => {
-  const reply = accepting()
-  const message = messageOf({ replyTo: { messageId: 7, fromId: 9 } })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('accepted')
-  expect(reply).toHaveBeenCalledExactlyOnceWith('q5', 'feature/x')
-})
-
-test('routeReply settles the one text question among buttons-only ones', () => {
-  const reply = accepting()
-  const questions = questionsOf([5, false], [6, true])
-  expect(routeReply(messageOf(), 9, BOT_ID, questions, reply)).toBe('accepted')
-  expect(reply).toHaveBeenCalledExactlyOnceWith('q6', 'feature/x')
-})
-
-test('routeReply is ambiguous with several text questions', () => {
-  const reply = accepting()
-  const questions = questionsOf([5, true], [6, true])
-  expect(routeReply(messageOf(), 9, BOT_ID, questions, reply)).toBe('ambiguous')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-reply when no text question is open', () => {
-  const reply = accepting()
-  expect(routeReply(messageOf(), 9, BOT_ID, questionsOf([5, false]), reply)).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-reply starting with a slash', () => {
-  const reply = accepting()
-  const message = messageOf({ text: '/start' })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-reply when the only text question is settled', () => {
-  const reply = expiring()
-  expect(routeReply(messageOf(), 9, BOT_ID, questionsOf([5, true]), reply)).toBe('ignored')
-  expect(reply).toHaveBeenCalledTimes(1)
-})
-
-test('routeReply says not text for a non-text reply to an open text question', () => {
-  const reply = accepting()
-  const message = messageOf({ text: undefined, replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('notText')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-text reply to a buttons-only question', () => {
-  const reply = accepting()
-  const message = messageOf({ text: undefined, replyTo: QUESTION })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, false]), reply)).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-text reply to another bot message', () => {
-  const reply = accepting()
-  const message = messageOf({ text: undefined, replyTo: OTHER_BOT_MESSAGE })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, false]), reply)).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-test('routeReply ignores a non-text non-reply', () => {
-  const reply = accepting()
-  const message = messageOf({ text: undefined })
-  expect(routeReply(message, 9, BOT_ID, questionsOf([5, true]), reply)).toBe('ignored')
-  expect(reply).not.toHaveBeenCalled()
-})
-
-const REPLY_BOT_ID = 100
-
-function setupReplyHandler(
+function setupMessageHandler(
   options: {
-    text?: string
-    from?: { id: number }
-    replyTo?: { message_id: number; from?: { id: number } }
-    reply?: Reply
-    questions?: OpenQuestions
-    contextReply?: ReturnType<typeof vi.fn>
+    readonly text?: string
+    readonly from?: { readonly id: number; readonly is_bot?: boolean }
+    readonly chat?: { readonly id: number; readonly type: string }
+    readonly replyTo?: { readonly message_id: number; readonly from?: { id: number } }
+    readonly conversation?: OwnerConversation
+    readonly pair?: (
+      senderId: string,
+      text: string,
+    ) => 'paired' | 'wrong' | 'blocked' | 'notPairing'
+    readonly contextReply?: ReturnType<typeof vi.fn>
   } = {},
 ) {
-  let handler: (context: unknown, next: () => Promise<void>) => Promise<void> = async () => {}
+  let handler: (context: MessageContext) => Promise<void> = async () => {}
   const on = vi.fn((_filter: string, registered: typeof handler) => {
     handler = registered
   })
-  const bot = { on, botInfo: { id: REPLY_BOT_ID } } as unknown as Bot
-  const reply = options.reply ?? vi.fn(() => 'accepted' as const)
+  const setMyCommands = vi.fn(async (_commands: unknown, _options: unknown) => true)
+  const bot = { on, botInfo: { id: 100 }, api: { setMyCommands } } as unknown as Bot
+  const conversation = options.conversation ?? new OwnerConversation('42')
+  if (options.conversation === undefined) {
+    conversation.track('42:7', 'q1', true)
+  }
+  const handlers = {
+    answer: vi.fn((_id: string, _optionIndex: number) => 'accepted' as const),
+    reply: vi.fn((_id: string, _text: string) => 'accepted' as const),
+    dismiss: vi.fn((_id: string) => true),
+    ...(options.pair !== undefined && { pair: options.pair }),
+    commands: OWNER_COMMANDS,
+    command: vi.fn(() => undefined),
+    fatal: vi.fn(),
+  }
   const log = vi.fn()
-  registerReplyHandler(
-    bot,
-    { id: 42 },
-    options.questions ?? new Map([['42:7', { id: 'q1', allowText: true }]]),
-    reply,
-    log,
-  )
+  registerMessageHandler(bot, conversation, handlers, log)
   const contextReply = options.contextReply ?? vi.fn(async () => {})
-  const next = vi.fn(async () => {})
   const run = () =>
-    handler(
-      {
-        from: options.from ?? { id: 42 },
-        chat: { id: 42, type: 'private' },
-        message: {
-          message_id: 50,
-          ...(options.text !== undefined && { text: options.text }),
-          ...(options.replyTo !== undefined && {
-            reply_to_message: options.replyTo,
-          }),
-        },
-        reply: contextReply,
+    handler({
+      from: { is_bot: false, ...(options.from ?? { id: 42 }) },
+      chat: options.chat ?? { id: 42, type: 'private' },
+      message: {
+        message_id: 50,
+        ...(options.text !== undefined && { text: options.text }),
+        ...(options.replyTo !== undefined && { reply_to_message: options.replyTo }),
       },
-      next,
-    )
-  return { on, reply, log, contextReply, next, run }
+      reply: contextReply,
+    })
+  return { on, conversation, handlers, setMyCommands, log, contextReply, run }
 }
 
-test('reply handler registers on message', () => {
-  const { on } = setupReplyHandler()
+test('message handler registers on message', () => {
+  const { on } = setupMessageHandler()
   expect(on).toHaveBeenCalledWith('message', expect.any(Function))
 })
 
-test('reply handler settles silently', async () => {
-  const { reply, contextReply, next, run } = setupReplyHandler({
+test('message handler settles silently', async () => {
+  const { handlers, contextReply, run } = setupMessageHandler({
     text: ' yes ',
-    replyTo: { message_id: 7, from: { id: REPLY_BOT_ID } },
+    replyTo: { message_id: 7, from: { id: 100 } },
   })
   await run()
-  expect(reply).toHaveBeenCalledWith('q1', 'yes')
+  expect(handlers.reply).toHaveBeenCalledWith('q1', 'yes')
   expect(contextReply).not.toHaveBeenCalled()
-  expect(next).not.toHaveBeenCalled()
 })
 
-test.each([
-  [
-    'buttonsOnly',
-    new Map([['42:7', { id: 'q1', allowText: false }]]),
-    { message_id: 7, from: { id: REPLY_BOT_ID } },
-    'hi',
-    'Tap one of the buttons to answer this question.',
-  ],
-  [
-    'notOpen',
-    new Map(),
-    { message_id: 7, from: { id: REPLY_BOT_ID } },
-    'hi',
-    "That message isn't waiting for an answer.",
-  ],
-  [
-    'expired',
-    new Map([['42:7', { id: 'q1', allowText: true }]]),
-    { message_id: 7, from: { id: REPLY_BOT_ID } },
-    'hi',
-    "That message isn't waiting for an answer.",
-  ],
-  [
-    'ambiguous',
-    new Map([
-      ['42:7', { id: 'q1', allowText: true }],
-      ['42:8', { id: 'q2', allowText: true }],
-    ]),
-    undefined,
-    'hi',
-    "Several questions are open; reply to the one you're answering.",
-  ],
-  [
-    'notText',
-    new Map([['42:7', { id: 'q1', allowText: true }]]),
-    { message_id: 7, from: { id: REPLY_BOT_ID } },
-    undefined,
-    'Only text replies count as an answer.',
-  ],
-])(
-  'reply handler answers as a reply to the owner message: %s',
-  async (kind, questions, replyTo, text, copy) => {
-    const { contextReply, next, run } = setupReplyHandler({
-      questions: questions as OpenQuestions,
-      ...(replyTo !== undefined && { replyTo }),
-      ...(text !== undefined && { text }),
-      reply:
-        kind === 'expired' ? vi.fn(() => 'expired' as const) : vi.fn(() => 'accepted' as const),
-    })
-    await run()
-    expect(contextReply).toHaveBeenCalledWith(copy, {
-      reply_parameters: { message_id: 50 },
-    })
-    expect(next).not.toHaveBeenCalled()
-  },
-)
+test('message handler answers a refusal as a reply to the owner message', async () => {
+  const conversation = new OwnerConversation('42')
+  conversation.track('42:7', 'q1', false)
+  const { contextReply, run } = setupMessageHandler({
+    conversation,
+    text: 'hi',
+    replyTo: { message_id: 7, from: { id: 100 } },
+  })
+  await run()
+  expect(contextReply).toHaveBeenCalledWith(BUTTONS_ONLY_REPLY, {
+    reply_parameters: { message_id: 50 },
+  })
+})
 
-test('reply handler passes ignored messages on', async () => {
-  const stranger = setupReplyHandler({ text: 'hi', from: { id: 7 } })
-  await stranger.run()
-  expect(stranger.next).toHaveBeenCalledTimes(1)
-  expect(stranger.contextReply).not.toHaveBeenCalled()
-  const plain = setupReplyHandler({ text: 'hi', questions: new Map() })
-  await plain.run()
-  expect(plain.next).toHaveBeenCalledTimes(1)
-  expect(plain.contextReply).not.toHaveBeenCalled()
+test('a reply to an untracked bot message says not open', async () => {
+  const { contextReply, run } = setupMessageHandler({
+    conversation: new OwnerConversation('42'),
+    text: 'hi',
+    replyTo: { message_id: 7, from: { id: 100 } },
+  })
+  await run()
+  expect(contextReply).toHaveBeenCalledWith(NOT_OPEN_REPLY, {
+    reply_parameters: { message_id: 50 },
+  })
+})
+
+test('message handler pairs and sets the command menu', async () => {
+  const { conversation, contextReply, setMyCommands, run } = setupMessageHandler({
+    conversation: new OwnerConversation(undefined),
+    pair: () => 'paired',
+    from: { id: 9 },
+    chat: { id: 9, type: 'private' },
+    text: '/start K7QM4XPD',
+  })
+  await run()
+  expect(contextReply).toHaveBeenCalledWith(PAIRED_REPLY)
+  expect(contextReply.mock.calls[0]).toHaveLength(1)
+  expect(conversation.ownerId).toBe('9')
+  await vi.waitFor(() => expect(setMyCommands).toHaveBeenCalledTimes(1))
+  expect(setMyCommands.mock.calls[0]?.[1]).toEqual({ scope: { type: 'chat', chat_id: 9 } })
+})
+
+test('message handler sends the wrong-code hint', async () => {
+  const { contextReply, run } = setupMessageHandler({
+    conversation: new OwnerConversation(undefined),
+    pair: () => 'wrong',
+    from: { id: 9 },
+    chat: { id: 9, type: 'private' },
+    text: 'nope',
+  })
+  await run()
+  expect(contextReply).toHaveBeenCalledWith(WRONG_CODE_REPLY)
+  expect(contextReply.mock.calls[0]).toHaveLength(1)
+})
+
+test('message handler ignores bots and group chats', async () => {
+  const fromBot = setupMessageHandler({
+    text: 'hi',
+    from: { id: 42, is_bot: true },
+    replyTo: { message_id: 7, from: { id: 100 } },
+  })
+  const group = setupMessageHandler({
+    text: 'hi',
+    chat: { id: -5, type: 'group' },
+    replyTo: { message_id: 7, from: { id: 100 } },
+  })
+  await fromBot.run()
+  await group.run()
+  expect(fromBot.handlers.reply).not.toHaveBeenCalled()
+  expect(fromBot.contextReply).not.toHaveBeenCalled()
+  expect(group.handlers.reply).not.toHaveBeenCalled()
+  expect(group.contextReply).not.toHaveBeenCalled()
 })
 
 test('a failed bot reply is logged, not thrown', async () => {
-  const { log, run } = setupReplyHandler({
+  const { log, run } = setupMessageHandler({
+    conversation: new OwnerConversation('42'),
     text: 'hi',
-    replyTo: { message_id: 7, from: { id: REPLY_BOT_ID } },
-    questions: new Map(),
+    replyTo: { message_id: 7, from: { id: 100 } },
     contextReply: vi.fn(async () => {
       throw new Error('boom')
     }),
   })
   await expect(run()).resolves.toBeUndefined()
   expect(log).toHaveBeenCalledWith('failed to reply: boom')
+})
+
+test('a failed pairing reply is logged and the owner still set', async () => {
+  const { conversation, setMyCommands, log, run } = setupMessageHandler({
+    conversation: new OwnerConversation(undefined),
+    pair: () => 'paired',
+    from: { id: 9 },
+    chat: { id: 9, type: 'private' },
+    text: '/start K7QM4XPD',
+    contextReply: vi.fn(async () => {
+      throw new Error('boom')
+    }),
+  })
+  await expect(run()).resolves.toBeUndefined()
+  expect(log).toHaveBeenCalledWith('failed to reply: boom')
+  expect(conversation.ownerId).toBe('9')
+  await vi.waitFor(() => expect(setMyCommands).toHaveBeenCalledTimes(1))
 })
 
 const BOT_INFO = {
@@ -1120,21 +911,34 @@ function textUpdate(text: string, fromId = 9, chatType = 'private') {
   } as never
 }
 
+function createDispatchHandlers(
+  command: (name: string, argument: string) => string | undefined,
+  pair?: (senderId: string, text: string) => 'paired' | 'wrong' | 'blocked' | 'notPairing',
+) {
+  return {
+    answer: vi.fn((_id: string, _optionIndex: number) => 'accepted' as const),
+    reply: vi.fn((_id: string, _text: string) => 'accepted' as const),
+    dismiss: vi.fn((_id: string) => true),
+    ...(pair !== undefined && { pair }),
+    commands: [...OWNER_COMMANDS, ...QUIET_COMMANDS],
+    command,
+    fatal: vi.fn(),
+  }
+}
+
 function registerDispatchHandlers(
   bot: Bot,
-  owner: Owner,
-  command: (name: string, argument: string) => string | undefined,
-  pair: (senderId: string, text: string) => 'paired' | 'wrong' | 'blocked' | 'notPairing',
-  onPaired: (id: number) => void,
+  conversation: OwnerConversation,
+  handlers: ReturnType<typeof createDispatchHandlers>,
 ): void {
-  registerCommandHandler(bot, owner, [...OWNER_COMMANDS, ...QUIET_COMMANDS], command)
-  registerPairingHandler(bot, pair, onPaired)
+  registerCommandHandler(bot, conversation, handlers.commands, handlers.command)
+  registerMessageHandler(bot, conversation, handlers)
 }
 
 test('/mute@mybot reaches the core with its argument', async () => {
   const { bot, calls } = createDispatchBot()
   const command = vi.fn(() => 'ok')
-  registerDispatchHandlers(bot, { id: 9 }, command, vi.fn(), vi.fn())
+  registerDispatchHandlers(bot, new OwnerConversation('9'), createDispatchHandlers(command))
   await bot.handleUpdate(textUpdate('/mute@mybot 2h'))
   expect(command).toHaveBeenCalledWith('mute', '2h')
   expect(calls.map((call) => call.method)).toEqual(['sendMessage'])
@@ -1145,11 +949,15 @@ test('quiet commands from strangers, groups or while unpaired get nothing and ne
   const { bot, calls } = createDispatchBot()
   const command = vi.fn(() => 'ok')
   const pair = vi.fn(() => 'wrong' as const)
-  registerDispatchHandlers(bot, { id: 9 }, command, pair, vi.fn())
+  registerDispatchHandlers(bot, new OwnerConversation('9'), createDispatchHandlers(command, pair))
   await bot.handleUpdate(textUpdate('/mute 2h', 8))
   await bot.handleUpdate(textUpdate('/quiet off', 9, 'group'))
   const unpaired = createDispatchBot()
-  registerDispatchHandlers(unpaired.bot, { id: undefined }, command, pair, vi.fn())
+  registerDispatchHandlers(
+    unpaired.bot,
+    new OwnerConversation(undefined),
+    createDispatchHandlers(command, pair),
+  )
   await unpaired.bot.handleUpdate(textUpdate('/mute'))
   expect(command).not.toHaveBeenCalled()
   expect(pair).not.toHaveBeenCalled()
@@ -1160,13 +968,13 @@ test('quiet commands from strangers, groups or while unpaired get nothing and ne
 test('/start CODE still pairs with the command handler registered', async () => {
   const { bot, calls } = createDispatchBot()
   const pairing = new Pairing('K7QM4XPD')
-  const onPaired = vi.fn()
-  registerDispatchHandlers(bot, { id: undefined }, vi.fn(), attempt(pairing), onPaired)
+  const conversation = new OwnerConversation(undefined)
+  registerDispatchHandlers(bot, conversation, createDispatchHandlers(vi.fn(), attempt(pairing)))
   await bot.handleUpdate(textUpdate('/start K7QM4XPD'))
-  expect(onPaired).toHaveBeenCalledWith(9)
-  expect(calls.map((call) => call.payload)).toMatchObject([
-    { text: 'Paired. Approval requests will appear here.' },
-  ])
+  expect(conversation.ownerId).toBe('9')
+  expect(
+    calls.filter((call) => call.method === 'sendMessage').map((call) => call.payload),
+  ).toMatchObject([{ text: 'Paired. Approval requests will appear here.' }])
 })
 
 const CODE_4_2 = { kind: 'code', offset: 4, length: 2 } as const
@@ -1262,7 +1070,7 @@ test('toEntities drops a blockquote holding code', () => {
 
 test('plain sends have no entities key', async () => {
   const { bot, sendMessage, editMessageText } = createSendBot()
-  const messenger = createTelegramMessenger(bot, { id: 42 })
+  const messenger = createTelegramMessenger(bot, new OwnerConversation('42'))
   await messenger.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)
   await messenger.sendNotification(
     'id1',
@@ -1286,7 +1094,7 @@ test('plain sends have no entities key', async () => {
 
 test('markdown sends carry entities', async () => {
   const { bot, sendMessage } = createSendBot()
-  await createTelegramMessenger(bot, { id: 42 }).sendRequest(
+  await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
     'id1',
     RUN_LS,
     ['Yes'],
@@ -1305,13 +1113,11 @@ test('markdown sends carry entities', async () => {
 test('a 400 on a formatted send retries once as plain', async () => {
   const log = vi.fn()
   const { bot, sendMessage } = createSendBot(createRejection(400, REJECTED_ENTITIES))
-  const reference = await createTelegramMessenger(bot, { id: 42 }, new Map(), log).sendRequest(
-    'id1',
-    RUN_LS,
-    ['Yes'],
-    false,
-    undefined,
-  )
+  const reference = await createTelegramMessenger(
+    bot,
+    new OwnerConversation('42'),
+    log,
+  ).sendRequest('id1', RUN_LS, ['Yes'], false, undefined)
   expect(reference).toEqual({ chatId: 42, messageId: 5, hasButtons: true })
   expect(sendMessage).toHaveBeenCalledTimes(2)
   expect(sendMessage.mock.calls[0]?.[2]).toHaveProperty('entities')
@@ -1327,7 +1133,7 @@ test('a 400 on a plain send does not retry', async () => {
   const log = vi.fn()
   const { bot, sendMessage } = createSendBot(createRejection(400, 'Bad Request: chat not found'))
   await expect(
-    createTelegramMessenger(bot, { id: 42 }, new Map(), log).sendRequest(
+    createTelegramMessenger(bot, new OwnerConversation('42'), log).sendRequest(
       'id1',
       plain('Q'),
       ['Yes'],
@@ -1345,7 +1151,7 @@ test('a failed retry throws', async () => {
     createRejection(400, 'Bad Request: still bad'),
   )
   await expect(
-    createTelegramMessenger(bot, { id: 42 }, new Map(), vi.fn()).sendRequest(
+    createTelegramMessenger(bot, new OwnerConversation('42'), vi.fn()).sendRequest(
       'id1',
       RUN_LS,
       ['Yes'],
@@ -1360,7 +1166,7 @@ test('a non-400 failure on a formatted send does not retry', async () => {
   const log = vi.fn()
   const { bot, sendMessage } = createSendBot(createRejection(429, 'Too Many Requests'))
   await expect(
-    createTelegramMessenger(bot, { id: 42 }, new Map(), log).sendRequest(
+    createTelegramMessenger(bot, new OwnerConversation('42'), log).sendRequest(
       'id1',
       RUN_LS,
       ['Yes'],
@@ -1376,15 +1182,19 @@ test('finalize carries entities and falls back the same way', async () => {
   const log = vi.fn()
   const reference = { chatId: 42, messageId: 5 }
   const ok = createSendBot()
-  await createTelegramMessenger(ok.bot, { id: 42 }, new Map(), log).finalize(reference, RUN_LS, {
-    kind: 'cancelled',
-  })
+  await createTelegramMessenger(ok.bot, new OwnerConversation('42'), log).finalize(
+    reference,
+    RUN_LS,
+    {
+      kind: 'cancelled',
+    },
+  )
   expect(ok.editMessageText).toHaveBeenCalledWith(42, 5, 'Run ls', {
     entities: [{ type: 'code', offset: 4, length: 2 }],
     reply_markup: { inline_keyboard: [] },
   })
   const rejected = createSendBot(createRejection(400, REJECTED_ENTITIES))
-  await createTelegramMessenger(rejected.bot, { id: 42 }, new Map(), log).finalize(
+  await createTelegramMessenger(rejected.bot, new OwnerConversation('42'), log).finalize(
     reference,
     RUN_LS,
     {
@@ -1401,7 +1211,7 @@ test('finalize carries entities and falls back the same way', async () => {
 test('notification falls back the same way', async () => {
   const log = vi.fn()
   const { bot, sendMessage } = createSendBot(createRejection(400, REJECTED_ENTITIES))
-  await createTelegramMessenger(bot, { id: 42 }, new Map(), log).sendNotification(
+  await createTelegramMessenger(bot, new OwnerConversation('42'), log).sendNotification(
     'id1',
     RUN_LS,
     { silent: true, dismissible: true },
@@ -1451,7 +1261,7 @@ function createAttachmentBot() {
     deleteMessages,
     editMessageText,
     log,
-    messenger: createTelegramMessenger(bot, { id: 42 }, new Map(), log),
+    messenger: createTelegramMessenger(bot, new OwnerConversation('42'), log),
   }
 }
 

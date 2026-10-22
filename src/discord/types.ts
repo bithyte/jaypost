@@ -1,4 +1,5 @@
 import type { Attachment } from '../approval/index.ts'
+import type { OwnerConversation } from '../conversation/index.ts'
 import type { RuntimeHandlers } from '../provider/index.ts'
 
 /**
@@ -11,38 +12,6 @@ export type RenderedContent = {
   readonly fallback: 'none' | 'unformatted' | 'raw'
 }
 
-/** Shared mutable cell: pairing sets `id`, and the messenger and handlers read it live. */
-export type Owner = {
-  id: string | undefined
-}
-
-/** What happened to a button tap: not from the owner, handled, or no longer valid. */
-export type TapRoute = 'ignored' | 'accepted' | 'expired'
-
-/** What `routeReply` decided; only 'accepted' settled a request. */
-export type ReplyRoute =
-  | 'ignored'
-  | 'accepted'
-  | 'expired'
-  | 'buttonsOnly'
-  | 'notOpen'
-  | 'ambiguous'
-  | 'notText'
-
-/**
- * Records an answer for request `id`; 'expired' when it is unknown, already settled, or the option
- * index is invalid.
- */
-export type Tap = (id: string, optionIndex: number) => 'accepted' | 'expired'
-
-/**
- * Settles request `id` with typed text; 'expired' when it is unknown or already settled.
- */
-export type Reply = (id: string, text: string) => 'accepted' | 'expired'
-
-/** Clears the expiry of notification `id`; false when it is unknown or already expired. */
-export type Dismiss = (id: string) => boolean
-
 /** The parts of a Discord message that routing needs; `text` is undefined when content is empty. */
 export type IncomingMessage = {
   readonly id: string
@@ -53,15 +22,6 @@ export type IncomingMessage = {
   readonly text: string | undefined
   readonly replyTo: { readonly messageId: string; readonly fromId: string | undefined } | undefined
 }
-
-/** A request awaiting an answer, keyed by message id in `OpenQuestions`. */
-export type OpenQuestion = {
-  readonly id: string
-  readonly allowText: boolean
-}
-
-/** Open questions by message id: set after send, deleted in `finalize`. */
-export type OpenQuestions = Map<string, OpenQuestion>
 
 /** One row of buttons; Discord allows five per row. */
 export type ButtonRow = readonly { readonly label: string; readonly customId: string }[]
@@ -177,15 +137,13 @@ export type DiscordMessageReference = {
 }
 
 /**
- * What the gateway event handlers read: `owner` and `openQuestions` are the runtime's live state,
- * `botId` is the bot's own user id, and `onPaired` runs after a successful pairing.
+ * What the gateway event handlers read: `conversation` is the runtime's live owner and open
+ * questions, and `botId` is the bot's own user id.
  */
 export type EventContext = {
   readonly client: DiscordClient
-  readonly owner: Owner
+  readonly conversation: OwnerConversation
   readonly botId: string
-  readonly openQuestions: OpenQuestions
   readonly handlers: RuntimeHandlers
-  readonly onPaired: (id: string) => void
   readonly log: (line: string) => void
 }

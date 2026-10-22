@@ -1,11 +1,11 @@
 import { MODE_ENV_VAR, PROVIDER_ENV_VAR } from '../config/index.ts'
 import { DIRECT_MODE } from '../direct/index.ts'
 import { formatCode, generateCode, Pairing } from '../pairing/index.ts'
-import { findOwnerSetting, findProvider, listSecretValues } from '../provider/index.ts'
+import { findOwnerSetting, findProvider } from '../provider/index.ts'
 import type { Provider, ProviderRuntime, SettingValues } from '../provider/index.ts'
 import { BLOCKED_PAIRING, INTERRUPTED_PAIRING, SETUP_CI_SECRETS_HINT } from './constants.ts'
 import { PromptAborted } from './prompts.ts'
-import { findDisplayName, isComplete, promptSettings, redact } from './settings-prompt.ts'
+import { redact, resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type { OwnerPairing, SetupCiArgs, SetupCiDeps } from './types.ts'
 
 /**
@@ -40,25 +40,18 @@ async function runSetupCiInner(
     print(`Unknown provider "${args.provider}".`)
     return 1
   }
-  const isPrompted = provider.settings.some((setting) => setting.prompt !== undefined)
-  let settings: SettingValues | undefined
-  while (settings === undefined) {
-    if (deps.signal?.aborted) {
-      throw new PromptAborted()
-    }
-    // Nothing to ask for, so asking again can't change the answer.
-    if (!isPrompted) {
-      print(provider.setup.text.rejected)
-      return 1
-    }
-    const candidate = await promptSettings(provider, deps.prompt, deps.signal)
-    seen.push(...listSecretValues(provider, candidate))
-    if (isComplete(provider, candidate) && (await findDisplayName(provider, candidate))) {
-      settings = candidate
-    } else {
-      print(provider.setup.text.rejected)
-    }
+  const resolved = await resolveProviderSettings({
+    provider,
+    saved: {},
+    prompt: deps.prompt,
+    print,
+    ...(deps.signal ? { signal: deps.signal } : {}),
+    seen,
+  })
+  if (resolved.kind === 'rejected') {
+    return 1
   }
+  const { settings } = resolved
   const runtime = provider.createRuntime(settings, deps.log ?? ((line) => console.error(line)))
   let paired: SettingValues
   try {
@@ -113,23 +106,10 @@ async function runSetupCiInner(
  * first). Undefined when `--provider` names an unregistered one.
  */
 async function chooseProvider(args: SetupCiArgs, deps: SetupCiDeps): Promise<Provider | undefined> {
-  const { providers } = deps
   if (args.provider !== undefined) {
-    return findProvider(providers, args.provider)
+    return findProvider(deps.providers, args.provider)
   }
-  const [first, second] = providers
-  if (first === undefined) {
-    throw new Error('no provider is registered')
-  }
-  if (second === undefined) {
-    return first
-  }
-  const chosen = await deps.prompt.select(
-    'Which chat app should the bot use?',
-    providers.map((provider) => ({ value: provider.name, label: provider.label })),
-    first.name,
-  )
-  return findProvider(providers, chosen)
+  return selectProvider(deps.providers, deps.prompt.select, undefined)
 }
 
 /**

@@ -1,5 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { statusInfoSchema } from '../server/index.ts'
+import { NO_CLIENT_TOKEN } from '../auth/index.ts'
+import { Caller } from '../client/index.ts'
 import {
   DEFAULT_START_TIMEOUT_MS,
   POLL_INTERVAL_MS,
@@ -15,22 +16,19 @@ import type { StatusFetch, WaitOptions, WaitResult } from './types.ts'
  * failure or unexpected body is `unreachable` (typically the service isn't up yet). Never throws.
  */
 export async function defaultFetchStatus(port: number, token?: string): Promise<StatusFetch> {
-  try {
-    const response = await fetch(`http://127.0.0.1:${port}/status`, {
-      ...(token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }),
-      signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
-    })
-    if (response.status === 401) {
-      return UNAUTHORIZED_STATUS
-    }
-    const body = statusInfoSchema.safeParse(await response.json())
-    if (body.success) {
-      return { kind: 'answered', status: body.data }
-    }
-  } catch {
-    // not up yet
+  const caller = new Caller({
+    port,
+    readToken: () =>
+      token === undefined ? NO_CLIENT_TOKEN : { kind: 'token', token, source: 'file' },
+  })
+  const result = await caller.status({
+    signal: new AbortController().signal,
+    timeoutMs: STATUS_TIMEOUT_MS,
+  })
+  if (result.kind === 'status') {
+    return { kind: 'answered', status: result.status }
   }
-  return UNREACHABLE_STATUS
+  return result.reason === 'unauthorized' ? UNAUTHORIZED_STATUS : UNREACHABLE_STATUS
 }
 
 function createAbortableSleep(signal?: AbortSignal): (delayMs: number) => Promise<void> {
