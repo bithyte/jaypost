@@ -24,6 +24,8 @@ Then give your agent the tools. For Claude Code:
 claude mcp add jaypost -- jaypost mcp
 ```
 
+Or install the [Claude Code plugin](#claude-code-plugin), which adds the MCP server and the permission hook in one go.
+
 Or try it from the shell:
 
 ```
@@ -50,6 +52,8 @@ A small service runs in the background on localhost. Callers POST a question wit
 It's single owner: one Telegram or Discord user, proven by a pairing code. The service can run as a Podman Quadlet, a Docker Compose project, a plain systemd user service or, on macOS, a launchd agent.
 
 ## Agents (MCP)
+
+If you use the [Claude Code plugin](#claude-code-plugin), it adds this server for you.
 
 `jaypost mcp [--port N]` is a stdio MCP server with four tools that forward to the [HTTP API](#scripts-and-tools-http-api). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking.
 
@@ -146,7 +150,28 @@ The service has to be running. A call made while it's down returns an error to t
 
 `project` needs a service at least as new as this release. An older service sends the message without the project line, and `notify_user` reports that the service is too old. Re-run `init` to upgrade. `format` needs a service at least as new as the release that added it; an older one shows the markdown as typed.
 
+## Claude Code plugin
+
+The plugin wires Claude Code to jaypost without editing settings. You need jaypost installed and `jaypost init` done first; the plugin doesn't install or pair anything.
+
+```
+/plugin marketplace add bithyte/claude-plugins
+/plugin install jaypost@bithyte
+```
+
+It adds the two hooks from [the next section](#claude-code-hook), the `jaypost` MCP server, and a check at session start that says what's missing: jaypost not installed, too old (run `jaypost update`), not running, a token problem, or not paired.
+
+When jaypost isn't usable, prompts stay in the terminal quietly. The session-start message is the only notice.
+
+Already set up by hand? Remove the `jaypost hook` entries from your settings and the `jaypost` MCP server (`claude mcp remove jaypost`), or every prompt reaches the phone twice. The session-start check warns about it.
+
+The MCP tools are now named `mcp__plugin_jaypost_jaypost__*`, so update any permission rules written for `mcp__jaypost__*`.
+
+The plugin has no `--port`, `--project` or `--timeout`, and no custom matcher. It ignores `PORT` and uses the installed port. For those, use the manual setup below.
+
 ## Claude Code hook
+
+If you use the plugin, skip this section.
 
 `jaypost hook` is a Claude Code hook command. It sends permission prompts to your phone and hands your tap back to Claude Code as the decision. It also forwards a few notifications (Claude is idle, needs input) as plain messages. Claude Code doesn't need to know about jaypost; it just runs the command.
 
