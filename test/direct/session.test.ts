@@ -198,3 +198,44 @@ test('stop never rejects', async () => {
   const session = await opened
   await expect(session.stop()).resolves.toBeUndefined()
 })
+
+test('vote resolves with the decision', async () => {
+  const { provider, opened } = createSession()
+  const session = await opened
+  const vote = {
+    request: createRequest(),
+    voters: ['a'],
+    rule: 'all',
+    retryCount: 0,
+  } as const
+  const pending = session.vote(vote, new AbortController().signal)
+  const runtime = requireRuntime(provider.runtimes)
+  const id = await waitForSent(runtime)
+  expect(runtime.handlers?.answer(id, 0)).toBe('accepted')
+  expect(await pending).toEqual({
+    kind: 'decided',
+    approved: true,
+    answer: 'Yes',
+    votes: [{ voter: 'a', answer: 'Yes' }],
+    roundCount: 1,
+    timedOut: false,
+  })
+  await session.stop()
+})
+
+test('a fatal provider error rejects a vote with its message', async () => {
+  const { provider, opened } = createSession()
+  const session = await opened
+  const vote = {
+    request: createRequest(),
+    voters: ['a'],
+    rule: 'all',
+    retryCount: 0,
+  } as const
+  const pending = session.vote(vote, new AbortController().signal)
+  const runtime = requireRuntime(provider.runtimes)
+  await waitForSent(runtime)
+  runtime.handlers?.fatal('bot stopped: boom')
+  await expect(pending).rejects.toThrow('bot stopped: boom')
+  await session.stop()
+})

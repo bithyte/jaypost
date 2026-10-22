@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { ApprovalService, SendError } from '../approval/index.ts'
+import { ApprovalService, askWithRetries, runVote, SendError } from '../approval/index.ts'
 import type { ProviderRuntime } from '../provider/index.ts'
 import { DIRECT_NOTIFICATION_OPTIONS } from './constants.ts'
 import type { DirectConfig, DirectSession } from './types.ts'
@@ -47,22 +47,35 @@ export async function openDirectSession(
       },
     })
   }
+  function rejectOnFatal<T extends { readonly kind: string }>(result: T): T {
+    if (result.kind === 'cancelled' && fatalMessage !== undefined) {
+      throw new Error(fatalMessage)
+    }
+    return result
+  }
   return {
     // Not async, like ApprovalService.request: an async function would pin the attachment bytes
     // for the whole wait.
-    request: (request, signal) => {
+    request: (request, signal, retryCount = 0) => {
       if (fatalMessage !== undefined) {
         return Promise.reject(new Error(fatalMessage))
       }
       start()
-      return service
-        .request(request, AbortSignal.any([signal, fatalController.signal]))
-        .then((result) => {
-          if (result.kind === 'cancelled' && fatalMessage !== undefined) {
-            throw new Error(fatalMessage)
-          }
-          return result
-        })
+      return askWithRetries(
+        service,
+        request,
+        retryCount,
+        AbortSignal.any([signal, fatalController.signal]),
+      ).then(rejectOnFatal)
+    },
+    vote: (vote, signal) => {
+      if (fatalMessage !== undefined) {
+        return Promise.reject(new Error(fatalMessage))
+      }
+      start()
+      return runVote(service, vote, AbortSignal.any([signal, fatalController.signal])).then(
+        rejectOnFatal,
+      )
     },
     notify: async (request) => {
       if (runtime.sendNotification === undefined) {

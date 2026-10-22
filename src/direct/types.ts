@@ -1,4 +1,4 @@
-import type { ApprovalRequest, RequestResult } from '../approval/index.ts'
+import type { ApprovalRequest, RequestResult, Vote, VoteResult } from '../approval/index.ts'
 import type { NotifyRequest } from '../notify/index.ts'
 import type { Provider, SettingValues } from '../provider/index.ts'
 
@@ -20,7 +20,16 @@ export type DirectSession = {
    * Starts the runtime on first use and resolves once settled. Rejects with `SendError` when the
    * message can't be sent, or with the provider's message on a fatal provider error.
    */
-  readonly request: (request: ApprovalRequest, signal: AbortSignal) => Promise<RequestResult>
+  readonly request: (
+    request: ApprovalRequest,
+    signal: AbortSignal,
+    retryCount?: number,
+  ) => Promise<RequestResult>
+  /**
+   * Runs a vote with the same rejections as `request`, except a failed send rejects with
+   * `VoterSendError`. `retryCount` is part of the vote.
+   */
+  readonly vote: (vote: Vote, signal: AbortSignal) => Promise<VoteResult>
   /** Sends without a dismiss button; rejects with `SendError` when the provider fails. */
   readonly notify: (request: NotifyRequest) => Promise<void>
   /** Stops the runtime; never rejects, safe when it never started. */

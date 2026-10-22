@@ -1,5 +1,6 @@
 import type { ClientToken } from '../auth/index.ts'
 import type { AttachmentSource } from '../client/index.ts'
+import type { VoteRule } from '../approval/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
 import type { Provider, SettingValues } from '../provider/index.ts'
@@ -198,6 +199,12 @@ export type SendRequestArgs = {
   readonly json?: boolean
   /** A file to send with the question. */
   readonly attachment?: AttachmentSource
+  /** Direct mode: user ids who vote; setting this or `rule` makes the question a vote. */
+  readonly voters?: readonly string[]
+  /** Direct mode: how the votes decide; defaults to `all`. */
+  readonly rule?: VoteRule
+  /** Direct mode: re-ask after a timeout up to this many times. */
+  readonly retryCount?: number
 }
 
 /** `send notify` input. */

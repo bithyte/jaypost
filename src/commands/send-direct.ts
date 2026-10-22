@@ -1,4 +1,5 @@
-import { parseApprovalRequest, SendError } from '../approval/index.ts'
+import type { ApprovalRequest } from '../approval/index.ts'
+import { parseApprovalRequest, SendError, VoterSendError } from '../approval/index.ts'
 import {
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   readAttachment,
@@ -9,13 +10,13 @@ import type { AttachmentBody, AttachmentSource } from '../client/index.ts'
 import { loadDirectConfig, openDirectSession } from '../direct/index.ts'
 import type { DirectConfig, DirectSession } from '../direct/index.ts'
 import { parseNotifyRequest } from '../notify/index.ts'
-import { resolveMaxAttachmentBytes } from '../provider/index.ts'
+import { findOwnerSetting, resolveMaxAttachmentBytes } from '../provider/index.ts'
 import {
   DECLINED_EXIT_CODE,
   DIRECT_CANCELLED_MESSAGE,
   DIRECT_SEND_FAILED_MESSAGE,
 } from './constants.ts'
-import { formatAnswer, toMessage, toQuestion } from './send.ts'
+import { formatAnswer, formatVoteResult, toMessage, toQuestion } from './send.ts'
 import type { DirectSendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
 
 type Prepared =
@@ -55,8 +56,11 @@ export async function runDirectSendRequest(
     deps.printError(`jaypost: ${parsed.error}`)
     return 1
   }
+  if (args.voters !== undefined || args.rule !== undefined) {
+    return runDirectVote(args, parsed.value, prepared.config, deps)
+  }
   const result = await withSession(prepared.config, deps, (session) =>
-    session.request(parsed.value, deps.signal),
+    session.request(parsed.value, deps.signal, args.retryCount),
   )
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
@@ -72,6 +76,47 @@ export async function runDirectSendRequest(
       return outcome.timedOut || outcome.answer === args.timeoutOption ? DECLINED_EXIT_CODE : 0
     }
   }
+}
+
+/** Runs the vote `args` asks for: voters default to the owner, the rule to `all`. */
+async function runDirectVote(
+  args: SendRequestArgs,
+  request: ApprovalRequest,
+  config: DirectConfig,
+  deps: DirectSendDeps,
+): Promise<number> {
+  const voters = args.voters === undefined ? [ownerVoter(config)] : [...new Set(args.voters)]
+  const parse = findOwnerSetting(config.provider)?.parse
+  for (const voter of voters) {
+    if (parse !== undefined && parse(voter) === undefined) {
+      deps.printError(`jaypost: invalid user id ${JSON.stringify(voter)}`)
+      return 1
+    }
+  }
+  const rule = args.rule ?? 'all'
+  const result = await withSession(config, deps, (session) =>
+    session.vote({ request, voters, rule, retryCount: args.retryCount ?? 0 }, deps.signal),
+  )
+  if (result.kind === 'failed') {
+    deps.printError(`jaypost: ${result.message}`)
+    return 1
+  }
+  if (result.value.kind === 'cancelled') {
+    deps.printError(`jaypost: ${DIRECT_CANCELLED_MESSAGE}`)
+    return 1
+  }
+  deps.print(formatVoteResult(result.value, rule, args.json))
+  return result.value.approved ? 0 : DECLINED_EXIT_CODE
+}
+
+/** The owner's id as a string; `loadDirectConfig` guarantees the setting is present. */
+function ownerVoter(config: DirectConfig): string {
+  const key = findOwnerSetting(config.provider)?.configKey
+  const value = key === undefined ? undefined : config.settings[key]
+  if (value === undefined) {
+    throw new Error('direct config has no owner')
+  }
+  return String(value)
 }
 
 /**
@@ -152,6 +197,9 @@ async function withSession<T>(
 
 // A SendError's cause can hold provider internals, even the token; the server hides it too.
 function describeError(error: unknown): string {
+  if (error instanceof VoterSendError) {
+    return `${DIRECT_SEND_FAILED_MESSAGE} to ${error.voter}`
+  }
   if (error instanceof SendError) {
     return DIRECT_SEND_FAILED_MESSAGE
   }

@@ -279,3 +279,149 @@ test('notify exits 1 with the parser message before anything is sent', async () 
   expect(errors).toEqual(['jaypost: text must be at most 100 characters'])
   expect(provider.runtimes).toEqual([])
 })
+
+async function answerVoter(
+  provider: TestProvider,
+  recipient: string,
+  optionIndex: number,
+): Promise<void> {
+  let found: { runtime: FakeRuntime; id: string } | undefined
+  await vi.waitFor(() => {
+    const runtime = provider.runtimes[0]
+    const sent = runtime?.sent.find((entry) => entry.recipient === recipient)
+    if (runtime === undefined || sent === undefined) {
+      throw new Error('nothing sent yet')
+    }
+    found = { runtime, id: sent.id }
+  })
+  expect(found?.runtime.handlers?.answer(found.id, optionIndex)).toBe('accepted')
+}
+
+function recipients(provider: TestProvider): (string | undefined)[] {
+  return (provider.runtimes[0]?.sent ?? []).map((entry) => entry.recipient)
+}
+
+test('a vote sends one message per voter', async () => {
+  const { provider } = createProvider()
+  const { deps } = createDeps(provider)
+  const answered = Promise.all([answerVoter(provider, 'a', 0), answerVoter(provider, 'b', 0)])
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'b'], rule: 'all' }, deps)).toBe(0)
+  await answered
+  expect(recipients(provider)).toEqual(['a', 'b'])
+})
+
+test('an approved vote exits 0 and prints the approve answer', async () => {
+  const { provider } = createProvider()
+  const { deps, printed } = createDeps(provider)
+  const answered = answerVoter(provider, 'a', 0)
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a'] }, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual(['Yes'])
+})
+
+test('a rejected vote exits 3 and prints the reject answer', async () => {
+  const { provider } = createProvider()
+  const { deps, printed } = createDeps(provider)
+  const answered = answerVoter(provider, 'a', 1)
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a'] }, deps)).toBe(3)
+  await answered
+  expect(printed).toEqual(['No'])
+})
+
+test('the vote tally is printed as json', async () => {
+  const { provider } = createProvider()
+  const { deps, printed } = createDeps(provider)
+  const answered = Promise.all([answerVoter(provider, 'a', 0), answerVoter(provider, 'b', 0)])
+  const args = {
+    ...REQUEST,
+    voters: ['a', 'b', 'c'],
+    rule: 'majority',
+    json: true,
+  } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual([
+    '{"answer":"Yes","timedOut":false,"approved":true,"require":"majority","votes":{"a":"Yes","b":"Yes","c":null},"rounds":1}',
+  ])
+})
+
+test('duplicate voter ids count once', async () => {
+  const { provider } = createProvider()
+  const { deps } = createDeps(provider)
+  const answered = answerVoter(provider, 'a', 0)
+  const args = { ...REQUEST, voters: ['a', 'a'], rule: 'majority' } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(recipients(provider)).toEqual(['a'])
+})
+
+test('require without voters asks the owner alone', async () => {
+  const { provider } = createProvider()
+  const { deps } = createDeps(provider)
+  const answered = answerVoter(provider, 'o', 0)
+  expect(await runDirectSendRequest({ ...REQUEST, rule: 'majority' }, deps)).toBe(0)
+  await answered
+  expect(recipients(provider)).toEqual(['o'])
+})
+
+test('voters without a rule require all', async () => {
+  const { provider } = createProvider()
+  const { deps } = createDeps(provider)
+  const answered = Promise.all([answerVoter(provider, 'a', 0), answerVoter(provider, 'b', 1)])
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'b'] }, deps)).toBe(3)
+  await answered
+})
+
+test("a voter id the provider can't parse exits 1 before anything is sent", async () => {
+  const base = createPairingFakeProvider()
+  const { provider } = createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              parse: (raw: unknown) => (raw === 'bad' ? undefined : setting.parse(raw)),
+            }
+          : setting,
+      ),
+    },
+  )
+  const { deps, errors } = createDeps(provider)
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'bad'] }, deps)).toBe(1)
+  expect(errors).toEqual(['jaypost: invalid user id "bad"'])
+  expect(provider.runtimes).toEqual([])
+})
+
+test('a failed send to one voter exits 1 naming them', async () => {
+  const { provider } = createProvider({
+    sendRequest: async (_id, _message, _options, _allowText, _attachment, recipient) => {
+      if (recipient === 'b') {
+        throw new Error('token leaked')
+      }
+      return { n: 1 }
+    },
+  })
+  const { deps, errors } = createDeps(provider)
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'b'] }, deps)).toBe(1)
+  expect(errors).toEqual(['jaypost: failed to send message to b'])
+})
+
+test('a plain question with retries is re-asked after a timeout', async () => {
+  let sendCount = 0
+  const { provider } = createProvider({
+    // Answer the second send right away; the 10 ms timeout is too short to poll for it.
+    sendRequest: async (id) => {
+      sendCount += 1
+      if (sendCount === 2) {
+        setTimeout(() => provider.runtimes[0]?.handlers?.answer(id, 0), 0)
+      }
+      return { n: sendCount }
+    },
+  })
+  const { deps, printed } = createDeps(provider)
+  const args = { ...REQUEST, timeout: 0.01, retryCount: 1 }
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  expect(sendCount).toBe(2)
+  expect(printed).toEqual(['Yes'])
+})
