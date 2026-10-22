@@ -97,7 +97,10 @@ export type ProviderRuntime = {
   readonly deleteMessage?: (reference: MessageReference) => Promise<void>
   /** Present iff the provider pairs; `code` is raw (no dash). */
   readonly pairingInstructions?: (code: string) => string
-  /** How an approver (not the owner) pairs, when that differs; `setup-ci` falls back to `pairingInstructions`. */
+  /**
+   * How an approver (not the owner) pairs, when that differs; `setup-ci` falls back to
+   * `pairingInstructions`.
+   */
   readonly approverPairingInstructions?: (code: string) => string
   /** Extra /status fields kept for old CLIs (Telegram: `bot`). */
   readonly statusFields?: () => Readonly<Record<string, string>>

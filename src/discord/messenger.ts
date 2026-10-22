@@ -26,11 +26,11 @@ export function toButtonRows(id: string, options: readonly string[]): readonly B
 }
 
 /**
- * Sends requests as direct messages with button rows to the owner or a given recipient; the final edit removes the
- * buttons. A request without options has no buttons, and `allowText` appends a hint on how to
- * reply. A sent request is tracked by the conversation only after Discord accepted it, and removed
- * again by `finalize`, even when the final edit fails. Notifications get a single Dismiss button
- * when `options.dismissible` is set.
+ * Sends requests as direct messages with button rows to the owner, or to `recipient` when given;
+ * the final edit removes the buttons. A request without options has no buttons, and `allowText`
+ * appends a hint on how to reply. A sent request is tracked by the conversation only after Discord
+ * accepted it, and removed again by `finalize`, even when the final edit fails. Notifications get
+ * a single Dismiss button when `options.dismissible` is set.
  * Sending throws when nobody is paired. A DM channel is opened once per user id.
  */
 export function createDiscordMessenger(

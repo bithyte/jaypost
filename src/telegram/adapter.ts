@@ -271,10 +271,10 @@ export function createTelegramMessenger(
 }
 
 /**
- * Lets the conversation decide what a button tap means; only the owner's taps in a private chat
- * count. A Dismiss tap deletes the tapped message (so it works without in-memory state, e.g. after
- * a restart) and the bot's document it replies to; a failed delete is logged. Always answers the
- * callback, once, so the button stops spinning.
+ * Lets the conversation decide what a button tap means; only taps in a private chat count, from
+ * the owner or from the voter a question was sent to. A Dismiss tap deletes the tapped message (so
+ * it works without in-memory state, e.g. after a restart) and the bot's document it replies to; a
+ * failed delete is logged. Always answers the callback, once, so the button stops spinning.
  */
 export function registerTapHandler(
   bot: Bot,

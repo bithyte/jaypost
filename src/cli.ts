@@ -580,7 +580,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         MESSAGE_FORMATS,
       ),
     )
-    .option('--json', 'print {"answer":...,"timedOut":...} instead of the answer')
+    .option(
+      '--json',
+      'print {"answer":...,"timedOut":...} instead of the answer; a vote adds the tally',
+    )
     .option('--attach <file>', 'attach a file; "-" reads stdin')
     .option(
       '--attach-name <name>',

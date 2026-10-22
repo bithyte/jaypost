@@ -209,6 +209,8 @@ git diff | jaypost send request 'Ship it?' -o Yes -d Stop --attach - --attach-na
 
 `send request` prints the answer on stdout (the `-d` default on timeout) and exits 0. `--json` prints `{"answer":"...","timedOut":false}` instead, if you need to tell a timeout from a tap. `-o` repeats once per button; `-d` adds the default as the last button unless an `-o` already names it. `--allow-text` also lets you answer by replying with text; then `-o` is optional and `-d` can be any short answer, not added as a button. `send notify` prints nothing and exits 0 once sent. `--format markdown` on either one reads the text as [markdown](#formatting). Errors go to stderr with exit 1, and bad arguments exit 2. Ctrl-C cancels a pending question, which edits the Telegram message to a "cancelled" line. `--attach FILE` sends a file along with the message (10 MiB at most; the service's limit applies); `--attach -` reads stdin, named `attachment.txt` unless `--attach-name NAME` says otherwise. `--attach-name` without `--attach` exits 2. The port is picked the same way as for [`mcp`](#agents-mcp).
 
+In [direct mode](#ci-github-actions), `-u ID` sends the question to an approver instead of the owner (repeat it for each one), `--require all|majority` decides the vote, and `--retry N` (0 to 100) asks again after a timeout; see [Several approvers](#several-approvers) for the exit codes and `--json` output. In service mode those three exit 2.
+
 ### From Node
 
 `npm i jaypost` and use the `Client`, which wraps the same two endpoints:
@@ -485,7 +487,7 @@ In direct mode, `-u ID` sends the question to a paired user instead of the owner
   env: # same four
 ```
 
-`--retry N` asks again after a timeout, up to N more times, and only the approvers who haven't answered. Votes already cast stand. Each round waits `--timeout` seconds. A vote that runs out of rounds is rejected, since a missing vote counts as `-d`. `--retry` alone re-asks a plain question, with no vote. `--require` without `-u` is a vote of one, the owner.
+`--retry N` asks again after a timeout, up to N more times (100 at most), and only the approvers who haven't answered. Votes already cast stand. Each round waits `--timeout` seconds. A vote that runs out of rounds is rejected, since a missing vote counts as `-d`. `--retry` alone re-asks a plain question, with no vote. `--require` without `-u` is a vote of one, the owner.
 
 A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
 
