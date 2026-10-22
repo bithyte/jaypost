@@ -1,0 +1,92 @@
+import { randomUUID } from 'node:crypto'
+import { ApprovalService, SendError } from '../approval/index.ts'
+import type { ProviderRuntime } from '../provider/index.ts'
+import { DIRECT_NOTIFICATION_OPTIONS } from './constants.ts'
+import type { DirectConfig, DirectSession } from './types.ts'
+
+/**
+ * Creates the provider runtime and checks its credentials. Throws the provider's reason when they
+ * are rejected, after stopping the runtime.
+ */
+export async function openDirectSession(
+  config: DirectConfig,
+  log: (line: string) => void,
+): Promise<DirectSession> {
+  const { provider, settings } = config
+  const runtime = provider.createRuntime(settings, log)
+  let check
+  try {
+    check = await runtime.checkCredentials()
+  } catch (error) {
+    await stopRuntime(runtime)
+    throw error
+  }
+  if (!check.ok) {
+    await stopRuntime(runtime)
+    throw new Error(check.reason)
+  }
+  // No store and no audit: timeout and cancel finalize exactly as the service does.
+  const service = new ApprovalService(runtime)
+  const fatalController = new AbortController()
+  let fatalMessage: string | undefined
+  let started = false
+  function start(): void {
+    if (started) {
+      return
+    }
+    started = true
+    runtime.start({
+      answer: (id, optionIndex) => service.tap(id, optionIndex),
+      reply: (id, text) => service.reply(id, text),
+      dismiss: () => false,
+      commands: [],
+      command: () => undefined,
+      fatal: (message) => {
+        fatalMessage ??= message
+        fatalController.abort()
+      },
+    })
+  }
+  return {
+    // Not async, like ApprovalService.request: an async function would pin the attachment bytes
+    // for the whole wait.
+    request: (request, signal) => {
+      if (fatalMessage !== undefined) {
+        return Promise.reject(new Error(fatalMessage))
+      }
+      start()
+      return service
+        .request(request, AbortSignal.any([signal, fatalController.signal]))
+        .then((result) => {
+          if (result.kind === 'cancelled' && fatalMessage !== undefined) {
+            throw new Error(fatalMessage)
+          }
+          return result
+        })
+    },
+    notify: async (request) => {
+      if (runtime.sendNotification === undefined) {
+        throw new Error(`${provider.label} can't send notifications`)
+      }
+      try {
+        await runtime.sendNotification(
+          randomUUID(),
+          request.message,
+          DIRECT_NOTIFICATION_OPTIONS,
+          request.attachment,
+        )
+      } catch (cause) {
+        throw new SendError('failed to send notification', { cause })
+      }
+    },
+    stop: () => stopRuntime(runtime),
+  }
+}
+
+async function stopRuntime(runtime: ProviderRuntime): Promise<void> {
+  try {
+    await runtime.stop()
+  } catch {
+    // Stopping is best effort, and the error could carry provider details we don't want logged.
+  }
+}
