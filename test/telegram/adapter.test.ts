@@ -289,6 +289,26 @@ test('handler: non-owner ignored, tap not called, no text', async () => {
   expect(answerCallbackQuery).toHaveBeenCalledWith()
 })
 
+test("a voter's tap on their message answers it and the owner's is ignored", async () => {
+  const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 222 } }))
+  const conversation = new OwnerConversation('42')
+  const messenger = createTelegramMessenger(
+    { api: { sendMessage } } as unknown as Bot,
+    conversation,
+  )
+  await messenger.sendRequest('id1', plain('Deploy?'), ['Yes', 'No'], false, undefined, '222')
+  expect(sendMessage).toHaveBeenCalledWith(222, 'Deploy?', expect.any(Object))
+  const { bot, run } = fakeBot()
+  const handlers = createTapHandlers()
+  registerTapHandler(bot, conversation, handlers)
+  const message = { message_id: 5, chat: { id: 222, type: 'private' } }
+  await run(42, 'id1:1', undefined, message).p
+  expect(handlers.answer).not.toHaveBeenCalled()
+  await run(222, 'id1:0', undefined, message).p
+  expect(handlers.answer).toHaveBeenCalledWith('id1', 0)
+  expect(handlers.answer).toHaveBeenCalledTimes(1)
+})
+
 test('handler: an owner tap on an inaccessible message still answers', async () => {
   const { bot, run } = fakeBot()
   const handlers = createTapHandlers()

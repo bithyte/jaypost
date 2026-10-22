@@ -11,6 +11,7 @@ import {
 } from '../../src/conversation/index.ts'
 import {
   NOT_OWNER_COMMAND_REPLY,
+  createDiscordMessenger,
   handleInteraction,
   handleMessage,
 } from '../../src/discord/index.ts'
@@ -147,6 +148,27 @@ test("someone else's tap is acknowledged and ignored", async () => {
   expect(answer).not.toHaveBeenCalled()
   expect(dismiss).not.toHaveBeenCalled()
   expect(fake.deleted).toEqual([])
+  expect(fake.responses.map((entry) => entry.response)).toEqual([ACKNOWLEDGE, ACKNOWLEDGE])
+})
+
+test("a voter's tap on their message answers it and the owner's is ignored", async () => {
+  const { fake, conversation, answer, log, context } = setup()
+  const messenger = createDiscordMessenger(fake.client, conversation, log)
+  const payload = formatChoicePayload('r1', 0)
+  await messenger.sendRequest(
+    'r1',
+    { text: 'Deploy?', spans: [] },
+    ['Yes', 'No'],
+    false,
+    undefined,
+    '222',
+  )
+  expect(fake.openedFor).toEqual(['222'])
+  await handleInteraction(tap(payload), context)
+  expect(answer).not.toHaveBeenCalled()
+  await handleInteraction(tap(payload, { userId: '222' }), context)
+  expect(answer).toHaveBeenCalledWith('r1', 0)
+  expect(answer).toHaveBeenCalledTimes(1)
   expect(fake.responses.map((entry) => entry.response)).toEqual([ACKNOWLEDGE, ACKNOWLEDGE])
 })
 
