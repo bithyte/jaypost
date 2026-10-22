@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { FormattedText } from '../../src/format/index.ts'
@@ -57,7 +57,11 @@ class RecordingNotifier implements Notifier {
 
 const servers: FastifyInstance[] = []
 const stubs: Server[] = []
+const temporaryDirectories: string[] = []
 afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
+  )
   await Promise.all(servers.splice(0).map((server) => server.close()))
   await Promise.all(
     stubs.splice(0).map((stub) => new Promise<void>((resolve) => stub.close(() => resolve()))),
@@ -629,7 +633,9 @@ const SESSION_START_EVENT = JSON.stringify({
 })
 
 async function createEmptyHome(): Promise<NodeJS.ProcessEnv> {
-  return { HOME: await mkdtemp(join(tmpdir(), 'jaypost-hook-home-')) }
+  const home = await mkdtemp(join(tmpdir(), 'jaypost-hook-home-'))
+  temporaryDirectories.push(home)
+  return { HOME: home }
 }
 
 function unreachableLine(port: number): string {
@@ -736,7 +742,9 @@ async function writeConfig(path: string, contents: unknown): Promise<void> {
 }
 
 async function createProjectDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'jaypost-hook-project-'))
+  const directory = await mkdtemp(join(tmpdir(), 'jaypost-hook-project-'))
+  temporaryDirectories.push(directory)
+  return directory
 }
 
 test('session start warns about jaypost hooks in user settings', async () => {
