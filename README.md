@@ -444,6 +444,8 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
+After the owner pairs and the env vars print, `setup-ci` asks `Pair an approver?`. Say yes and it shows a fresh code for that person to send to the bot; repeat for each approver. When you're done it prints their ids as `-u ID` flags to pass to `send request` (see [Several approvers](#several-approvers)). `jaypost setup-ci --approvers-only` skips the owner and the env vars, to add approvers later. On Discord, an approver must be in a server the bot is in before they DM the code.
+
 Workflow example:
 
 ```yaml
@@ -701,7 +703,7 @@ jaypost update
 jaypost start
 jaypost mcp [--port N]
 jaypost hook [--port N] [--project NAME] [--timeout S]
-jaypost setup-ci [--provider NAME]
+jaypost setup-ci [--provider NAME] [--approvers-only]
 jaypost openapi [FILE] [--port N]
 jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
 jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
@@ -718,7 +720,7 @@ jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FI
 - `mcp`: runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents (MCP)](#agents-mcp).
 - `hook`: a Claude Code hook that sends permission prompts to your chat app. See [Claude Code hook](#claude-code-hook).
 - `openapi`: prints the API's OpenAPI spec, or writes it to `FILE`. See [OpenAPI spec](#openapi-spec).
-- `setup-ci`: pairs an owner and prints the env vars for CI. See [CI (GitHub Actions)](#ci-github-actions).
+- `setup-ci`: pairs an owner (and optionally approvers) and prints the env vars for CI. See [CI (GitHub Actions)](#ci-github-actions).
 - `send request` / `send notify`: the HTTP API from a shell. See [From the shell](#from-the-shell).
 
 ### One instance per token

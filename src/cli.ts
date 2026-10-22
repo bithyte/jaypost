@@ -432,16 +432,18 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
   program
     .command('setup-ci')
-    .description('pair an owner for CI and print the env vars for direct mode')
+    .description('pair an owner and approvers for CI and print the env vars for direct mode')
     .addOption(
       new Option('--provider <name>', 'chat app to use').choices(
         PROVIDERS.map((provider) => provider.name),
       ),
     )
-    .action(async (options: { readonly provider?: string }) => {
-      code = await runSetupCiCommand(
-        options.provider === undefined ? {} : { provider: options.provider },
-      )
+    .option('--approvers-only', 'skip the owner and only pair approvers for send request -u')
+    .action(async (options: { readonly provider?: string; readonly approversOnly?: boolean }) => {
+      code = await runSetupCiCommand({
+        ...(options.provider === undefined ? {} : { provider: options.provider }),
+        ...(options.approversOnly === true ? { approversOnly: true } : {}),
+      })
     })
   program
     .command('start')

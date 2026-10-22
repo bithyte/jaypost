@@ -61,6 +61,10 @@ export function createDiscordRuntime(
       const { applicationId, username } = requireIdentity()
       return `Invite the bot to a server you're in with https://discord.com/oauth2/authorize?client_id=${applicationId}&scope=bot+applications.commands&permissions=0 then DM "${formatCode(code)}" to @${username}`
     },
+    approverPairingInstructions(code: string): string {
+      const { username } = requireIdentity()
+      return `Invite them to the server the bot is in, then have them DM "${formatCode(code)}" to @${username}`
+    },
     start(handlers: RuntimeHandlers): void {
       const { userId, applicationId } = requireIdentity()
       const context: EventContext = {
