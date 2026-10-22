@@ -1,5 +1,12 @@
 # jaypost
 
+## 0.9.0
+
+### Minor Changes
+
+- 8e75c11: Claude Code plugin in `claude-plugin/`; `jaypost hook` also handles `SessionStart` with a setup check.
+- 04e21b3: Several approvers for direct mode. `jaypost send request` takes `-u ID` once per approver, `--require all|majority` to say how the votes decide, and `--retry N` to ask again after a timeout. A vote exits 0 when approved and 3 when rejected, and `--json` adds the tally. The flags exit 2 outside direct mode. `jaypost setup-ci` can pair the approvers and prints their `-u` flags, and `--approvers-only` pairs more of them later without the owner.
+
 ## 0.8.0
 
 ### Minor Changes
