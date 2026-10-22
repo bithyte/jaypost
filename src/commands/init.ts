@@ -10,7 +10,8 @@ import type { ApiAuth } from '../auth/index.ts'
 import { describeUnauthorized } from '../client/index.ts'
 import { DEFAULT_PORT } from '../config/index.ts'
 import {
-  detectTargets,
+  detectTargets, 
+  
   findDefaultTarget,
   findExistingInstall,
   findLeftoverSecrets,
@@ -20,22 +21,11 @@ import {
 } from '../install/index.ts'
 import type { InstallRecord, Secrets, TargetName } from '../install/index.ts'
 import { findOwnerSetting, findProvider, listSecretValues } from '../provider/index.ts'
-import type { Provider, SettingValues } from '../provider/index.ts'
+import type { Provider } from '../provider/index.ts'
 import { TARGET_LABELS } from './constants.ts'
 import { PromptAborted } from './prompts.ts'
+import { resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type { InitArgs, InitDeps } from './types.ts'
-
-async function findDisplayName(
-  provider: Provider,
-  settings: SettingValues,
-): Promise<string | undefined> {
-  try {
-    const check = await provider.setup.checkCredentials(settings)
-    return check.ok ? check.displayName : undefined
-  } catch {
-    return undefined
-  }
-}
 
 /** Secret values of `secrets` when its provider is registered; [] otherwise. */
 function listKnownSecretValues(deps: InitDeps, secrets: Secrets | undefined): readonly string[] {
@@ -46,8 +36,6 @@ function listKnownSecretValues(deps: InitDeps, secrets: Secrets | undefined): re
     : listSecretValues(provider, secrets.settings)
 }
 
-class Aborted extends Error {}
-
 /**
  * The provider from `--provider`, the only registered one, or the user's pick (defaulting to the
  * existing install's). Undefined when `--provider` names an unregistered one.
@@ -57,49 +45,14 @@ async function chooseProvider(
   deps: InitDeps,
   record: InstallRecord | undefined,
 ): Promise<Provider | undefined> {
-  const { providers } = deps
   if (args.provider !== undefined) {
-    return findProvider(providers, args.provider)
+    return findProvider(deps.providers, args.provider)
   }
-  const [first, second] = providers
-  if (first === undefined) {
-    throw new Error('no provider is registered')
-  }
-  if (second === undefined) {
-    return first
-  }
-  const current =
-    record === undefined ? undefined : findProvider(providers, resolveRecordProvider(record))
-  const chosen = await deps.prompt.select(
-    'Which chat app should the bot use?',
-    providers.map((provider) => ({ value: provider.name, label: provider.label })),
-    current?.name ?? first.name,
+  return selectProvider(
+    deps.providers,
+    deps.prompt.select,
+    record === undefined ? undefined : resolveRecordProvider(record),
   )
-  return findProvider(providers, chosen)
-}
-
-/** Asks for every prompted setting; empty answers are left out. */
-async function promptSettings(provider: Provider, deps: InitDeps): Promise<SettingValues> {
-  const values: Record<string, string> = {}
-  for (const setting of provider.settings) {
-    if (setting.prompt === undefined) {
-      continue
-    }
-    if (deps.signal?.aborted) {
-      throw new Aborted()
-    }
-    const answer = await (setting.secret ? deps.prompt.password : deps.prompt.text)(setting.prompt)
-    if (answer !== '') {
-      values[setting.configKey] = answer
-    }
-  }
-  return values
-}
-
-function isComplete(provider: Provider, settings: SettingValues): boolean {
-  return provider.settings
-    .filter((setting) => setting.required)
-    .every((setting) => Object.hasOwn(settings, setting.configKey))
 }
 
 /**
@@ -156,7 +109,7 @@ export async function runInit(args: InitArgs, deps: InitDeps): Promise<number> {
   try {
     return await runInitInner(args, deps, seen)
   } catch (error) {
-    if (error instanceof Aborted || error instanceof PromptAborted || deps.signal?.aborted) {
+    if (error instanceof PromptAborted || deps.signal?.aborted) {
       deps.print('')
       return 130
     }
@@ -262,38 +215,18 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
       print(text.leftoverFound)
     }
   }
-  const saved = secrets?.provider === provider.name ? secrets.settings : {}
-  let settings: SettingValues | undefined
-  // The `some` check stops a provider with no required settings from reusing an empty bag.
-  if (
-    isComplete(provider, saved) &&
-    provider.settings.some((setting) => Object.hasOwn(saved, setting.configKey))
-  ) {
-    const displayName = await findDisplayName(provider, saved)
-    if (displayName) {
-      settings = saved
-      print(text.reusing(displayName))
-    }
+  const resolved = await resolveProviderSettings({
+    provider,
+    saved: secrets?.provider === provider.name ? secrets.settings : {},
+    prompt,
+    print,
+    ...(deps.signal ? { signal: deps.signal } : {}),
+    seen,
+  })
+  if (resolved.kind === 'rejected') {
+    return 1
   }
-  const isPrompted = provider.settings.some((setting) => setting.prompt !== undefined)
-  while (settings === undefined) {
-    if (deps.signal?.aborted) {
-      throw new Aborted()
-    }
-    // Nothing to ask for, so asking again can't change the answer.
-    if (!isPrompted) {
-      print(text.rejected)
-      return 1
-    }
-    const candidate = await promptSettings(provider, deps)
-    seen.push(...listSecretValues(provider, candidate))
-    const merged = { ...saved, ...candidate }
-    if (isComplete(provider, merged) && (await findDisplayName(provider, merged))) {
-      settings = merged
-    } else {
-      print(text.rejected)
-    }
-  }
+  const { settings } = resolved
   const port = args.port ?? record?.port ?? DEFAULT_PORT
   if (!(await deps.isPortFree(port))) {
     print(`Port ${port} is in use. Pick another with --port.`)

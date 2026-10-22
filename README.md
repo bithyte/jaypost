@@ -629,7 +629,7 @@ A notification sent while quiet is deleted 8 hours after the quiet period ends, 
 jaypost init [launchd|systemd|compose|quadlet] [--port N] [--provider NAME] [--token|--no-token]
 jaypost status
 jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--json]
-jaypost test
+jaypost test [--port N]
 jaypost reset-owner
 jaypost uninstall
 jaypost update
@@ -682,6 +682,21 @@ On top of that, `init` makes an API token and the service answers 401 without it
 To rotate it, delete the token file and re-run `init`.
 
 The [question log](#question-log) keeps question text and answers on disk (mode 0600, or inside the data volume). Agents sometimes put secrets in their questions, so treat the file like the other secrets under `~/.config/jaypost/`.
+
+## Contributing
+
+You need Node 24+ and pnpm (any recent version; it switches itself to the one this repo pins).
+
+```
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` runs the service from source and restarts it on every save. It first asks which chat app to use, with your last pick selected. Terminal needs nothing: questions print in that same terminal and you answer by typing an option number or a reply. Telegram or Discord asks for your bot's token once, reuses it after that, and the service prints a pairing code the first time. Use your own bot, not one a running install already uses. Then try it from a second terminal with `pnpm cli test --port 8788`; `pnpm cli` runs any CLI command from source. It keeps clear of a real install: it listens on port 8788 and keeps each chat app's config, state and question log in `.dev/<app>/`.
+
+To skip the questions, `cp .env.example .env` and fill in `BOT_TOKEN` (and `PROVIDER=discord` for Discord). If `JAYPOST_CONFIG` is set, `pnpm dev` uses that file as is and never writes to it.
+
+Before a PR, run `pnpm test` and `pnpm check`. If the change matters to users, add a changeset (see [Releasing](#releasing)).
 
 ## Releasing
 

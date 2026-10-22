@@ -2,7 +2,7 @@ import type { ClientToken } from '../auth/index.ts'
 import type { AttachmentSource } from '../client/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
-import type { Provider } from '../provider/index.ts'
+import type { Provider, SettingValues } from '../provider/index.ts'
 import type { StatusInfo } from '../server/index.ts'
 import type { Exec } from '../system/index.ts'
 
@@ -24,6 +24,23 @@ export type Prompts = {
     initialValue: T,
   ) => Promise<T>
 }
+
+/** Inputs to `resolveProviderSettings`. */
+export type ProviderSettingsOptions = {
+  readonly provider: Provider
+  /** Settings saved earlier for this provider; {} when there are none. */
+  readonly saved: SettingValues
+  readonly prompt: Prompts
+  readonly print: (text: string) => void
+  readonly signal?: AbortSignal
+  /** Every secret value typed in is pushed here, so callers can mask it in errors. */
+  readonly seen: string[]
+}
+
+/** The settings to use, or rejected: nothing to ask for and the saved ones failed the check. */
+export type ProviderSettingsResult =
+  | { readonly kind: 'accepted'; readonly settings: SettingValues }
+  | { readonly kind: 'rejected' }
 
 /** Result of one /status call: a parsed answer, a 401, or no usable answer. */
 export type StatusFetch =
