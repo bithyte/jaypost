@@ -11,8 +11,9 @@ import type { OwnerPairing, SetupCiArgs, SetupCiDeps } from './types.ts'
 /**
  * Asks for the provider and its settings, pairs the owner against an in-process bot, prints the
  * `JAYPOST_*` env vars for direct mode, then pairs as many approvers as asked for and prints their
- * `-u` flags. `approversOnly` skips the owner and the env vars. Writes no files. Returns 0 once the env vars are
- * printed, 1 on failure, 130 on interrupt; error text is shown with known secrets masked.
+ * `-u` flags. `approversOnly` skips the owner and the env vars. Writes no files. Returns 0 once
+ * done, 1 on failure, 130 on interrupt (after printing what paired so far); error text is shown
+ * with known secrets masked.
  */
 export async function runSetupCi(args: SetupCiArgs, deps: SetupCiDeps): Promise<number> {
   // Every secret value setup-ci has seen, so error messages can be shown with them masked.
@@ -135,6 +136,9 @@ async function pairApprovers(
       if (!(error instanceof PromptAborted)) {
         throw error
       }
+      return interruptApprovers(approvers, print)
+    }
+    if (deps.signal?.aborted) {
       return interruptApprovers(approvers, print)
     }
     if (!wanted) {

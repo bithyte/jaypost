@@ -398,6 +398,48 @@ test('an interrupted approver prompt counts as an interrupt', async () => {
   expect(printed).toContain('FAKE_OWNER=o')
 })
 
+test('an interrupt before the approver prompt returns 130', async () => {
+  const controller = new AbortController()
+  const { provider, stop } = createProvider({
+    runtime: {
+      checkCredentials: async () => {
+        controller.abort()
+        return ACCEPTED
+      },
+    },
+  })
+  const printed: string[] = []
+  const prompt = createPrompts()
+  const running = runSetupCi(
+    { approversOnly: true },
+    createDeps(provider, printed, { prompt, signal: controller.signal }),
+  )
+  expect(await running).toBe(130)
+  expect(printed).toEqual([''])
+  expect(prompt.confirm).not.toHaveBeenCalled()
+  expect(stop).toHaveBeenCalledTimes(1)
+})
+
+test('an interrupt during the approver prompt prints those paired so far and returns 130', async () => {
+  const { provider } = createProvider()
+  const printed: string[] = []
+  const controller = new AbortController()
+  const prompt = createPrompts()
+  vi.mocked(prompt.confirm)
+    .mockImplementationOnce(async () => true)
+    .mockImplementationOnce(async () => {
+      controller.abort()
+      return false
+    })
+  const running = runSetupCi(
+    { approversOnly: true },
+    createDeps(provider, printed, { prompt, signal: controller.signal }),
+  )
+  await pairWhenShown(provider.runtimes, printed, CODE, 'a')
+  expect(await running).toBe(130)
+  expect(printed.slice(-3)).toEqual(['', APPROVERS_HEADING, '-u a'])
+})
+
 test('a provider failure while waiting for an approver prints the block and the reason', async () => {
   const { provider } = createProvider()
   const printed: string[] = []
