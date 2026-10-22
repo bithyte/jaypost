@@ -34,6 +34,7 @@ export {
 export { PendingRequests } from './pending.ts'
 export { ApprovalService, SendError } from './service.ts'
 export { decideVote } from './vote.ts'
+export { askWithRetries, runVote, VoterSendError } from './voting.ts'
 export type {
   ApprovalRequest,
   ApprovalServiceOptions,
@@ -55,8 +56,11 @@ export type {
   SentQuestion,
   Settlement,
   StartedRequest,
+  Vote,
   VoteCounts,
   VoteDecision,
+  VoteResult,
   VoteRule,
+  VoterAnswer,
   WaitParseResult,
 } from './types.ts'

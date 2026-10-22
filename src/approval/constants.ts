@@ -3,7 +3,9 @@ import type {
   OwnerCommand,
   RequestResult,
   RequestState,
+  RoundEnd,
   Settlement,
+  VoteResult,
   VoteRule,
 } from './types.ts'
 
@@ -41,6 +43,12 @@ export const EXPIRED_ENDING = { kind: 'expired' } as const satisfies MessageEndi
 export const REASKED_ENDING = { kind: 'reasked' } as const satisfies MessageEnding
 /** Shared result for `ApprovalService.request` when its signal aborted. */
 export const CANCELLED_RESULT = { kind: 'cancelled' } as const satisfies RequestResult
+/** Shared result for `runVote` when its signal aborted. */
+export const CANCELLED_VOTE = { kind: 'cancelled' } as const satisfies VoteResult
+/** A vote round that ended with a message cancelled. */
+export const CANCELLED_ROUND = { kind: 'cancelled' } as const satisfies RoundEnd
+/** A vote round whose open messages all timed out undecided. */
+export const TIMED_OUT_ROUND = { kind: 'timedOut' } as const satisfies RoundEnd
 /** Shared state for a background question that was cancelled. */
 export const CANCELLED_STATE = { kind: 'cancelled' } as const satisfies RequestState
 /** How many settled requests the service remembers; the oldest drop first. */

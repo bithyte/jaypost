@@ -209,3 +209,45 @@ export type VoteCounts = {
 }
 
 export type VoteDecision = 'approved' | 'rejected' | 'undecided'
+
+/**
+ * A vote over a two-way question: `request.options` is `[approve, reject]` and
+ * `request.timeoutOption` is the reject answer. `voters` is non-empty and duplicate-free.
+ */
+export type Vote = {
+  readonly request: ApprovalRequest
+  readonly voters: readonly string[]
+  readonly rule: VoteRule
+  /** Rounds after the first; only voters who haven't voted are asked again. */
+  readonly retryCount: number
+}
+
+/** One voter's answer; `undefined` when they never voted. */
+export type VoterAnswer = {
+  readonly voter: string
+  readonly answer: string | undefined
+}
+
+/**
+ * What `runVote` resolves to; `cancelled` when its signal aborted. `votes` is in `voters` order and
+ * `timedOut` means the rounds ran out, which always rejects.
+ */
+export type VoteResult =
+  | {
+      readonly kind: 'decided'
+      readonly approved: boolean
+      readonly answer: string
+      readonly votes: readonly VoterAnswer[]
+      readonly roundCount: number
+      readonly timedOut: boolean
+    }
+  | { readonly kind: 'cancelled' }
+
+/** How one round of a vote ended; `timedOut` means every open message timed out undecided. */
+export type RoundEnd =
+  | { readonly kind: 'decided'; readonly approved: boolean }
+  | { readonly kind: 'timedOut' }
+  | { readonly kind: 'cancelled' }
+
+/** A vote message sent to `voter` in the current round. */
+export type VoterQuestion = SentQuestion & { readonly voter: string }
