@@ -419,25 +419,44 @@ test("each vote updates every voter's message with the tally", async () => {
   await result
 })
 
-test('no update once the vote is decided', async () => {
+test("once decided, every answered voter's message shows the final tally", async () => {
   const { service, messenger, idOf } = setup()
   const result = runVote(service, createVote('majority'), new AbortController().signal)
   await flush()
   service.tap(idOf('1'), 0)
   await flush()
   messenger.updates = []
+  messenger.edits = []
   service.tap(idOf('3'), 0)
   await result
-  expect(messenger.updates).toEqual([])
+  expect(messenger.updates).toEqual([
+    {
+      reference: 'id1',
+      text: 'Deploy?\n\n✅ Yes, 09:05\n\nVotes: 1 Yes, 2 …, 3 Yes',
+      buttons: undefined,
+    },
+    {
+      reference: 'id3',
+      text: 'Deploy?\n\n✅ Yes, 09:05\n\nVotes: 1 Yes, 2 …, 3 Yes',
+      buttons: undefined,
+    },
+  ])
+  expect(messenger.edits.filter((edit) => edit.endsWith('id2'))).toEqual(['finalize id2'])
 })
 
-test('a deciding vote on the first tap sends no update', async () => {
+test('a deciding vote on the first tap shows the tally on that voter alone', async () => {
   const { service, messenger, idOf } = setup()
   const result = runVote(service, createVote('all'), new AbortController().signal)
   await flush()
   service.tap(idOf('2'), 1)
   await result
-  expect(messenger.updates).toEqual([])
+  expect(messenger.updates).toEqual([
+    {
+      reference: 'id2',
+      text: 'Deploy?\n\n✅ No, 09:05\n\nVotes: 1 …, 2 No, 3 …',
+      buttons: undefined,
+    },
+  ])
 })
 
 test("an update in flight lands before the message's close", async () => {
@@ -484,7 +503,11 @@ test('a decided vote resolves only once the updates in flight landed', async () 
   expect(messenger.edits.filter((edit) => edit.endsWith('id1'))).toEqual([
     'finalize id1',
     'update id1',
+    'update id1',
   ])
+  expect(messenger.updates.findLast((update) => update.reference === 'id1')?.text).toBe(
+    'Deploy?\n\n✅ Yes, 09:05\n\nVotes: 1 Yes, 2 …, 3 Yes',
+  )
 })
 
 test('a queued update for a message that settled is dropped', async () => {

@@ -55,7 +55,8 @@ export async function askWithRetries(
 /**
  * Asks every voter in parallel, one message each, for up to `retryCount + 1` rounds; each round
  * asks only voters who haven't voted. Each vote that doesn't decide shows the tally under every
- * voter's latest message. Once decided, every open message is closed with the vote's answer.
+ * voter's latest message. Once decided, every open message is closed with the vote's answer and
+ * every answered voter's message shows the complete tally.
  * Rounds running out reject, counting missing votes as rejections. Throws `VoterSendError` when a
  * send fails, after cancelling the messages that were sent. An aborted `signal` cancels every open
  * message and resolves as cancelled. Settles only once every update it sent has landed.
@@ -183,6 +184,8 @@ async function collectRound(
           service.close(question.id, answer)
         }
       }
+      // No message is open now: answered voters, the deciding one too, get the complete tally.
+      state.updates.push(...updateProgress(service, vote, state, new Map()))
       // So every closed message is finalized before the caller exits.
       await Promise.all(waiting.values())
       return { kind: 'decided', approved }
