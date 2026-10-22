@@ -401,14 +401,15 @@ test('a tap on a settled request is expired', () => {
 
 test('a tap from someone else is ignored', () => {
   const handlers = handlersOf()
-  expect(new OwnerConversation(OWNER).tap(tapOf('abc:0', { senderId: '7' }), handlers)).toEqual(
-    IGNORED,
-  )
+  const conversation = conversationWith(['5', false])
+  expect(conversation.tap(tapOf('q5:0', { senderId: '7' }), handlers)).toEqual(IGNORED)
   expect(handlers.answer).not.toHaveBeenCalled()
 })
 
 test('a tap while unpaired is ignored', () => {
-  expect(new OwnerConversation(undefined).tap(tapOf('abc:0'), handlersOf())).toEqual(IGNORED)
+  const conversation = new OwnerConversation(undefined)
+  conversation.track('5', 'abc', false)
+  expect(conversation.tap(tapOf('abc:0'), handlersOf())).toEqual(IGNORED)
 })
 
 test('a tap without a sender is ignored', () => {
@@ -539,4 +540,51 @@ test('helpers: receiveReplyTo and pairOwner', () => {
   const unpaired = new OwnerConversation(undefined)
   pairOwner(unpaired, '4')
   expect(unpaired.ownerId).toBe('4')
+})
+
+function voterConversation(): OwnerConversation {
+  const conversation = new OwnerConversation(OWNER)
+  conversation.track('k', 'r1', false, '222')
+  return conversation
+}
+
+test("a voter's tap on their own question answers", () => {
+  const handlers = handlersOf()
+  const tap = tapOf(formatChoicePayload('r1', 0), { senderId: '222' })
+  expect(voterConversation().tap(tap, handlers)).toEqual(ANSWERED)
+  expect(handlers.answer).toHaveBeenCalledWith('r1', 0)
+})
+
+test("the owner's tap on a voter's question is ignored", () => {
+  const handlers = handlersOf()
+  expect(voterConversation().tap(tapOf(formatChoicePayload('r1', 0)), handlers)).toEqual(IGNORED)
+  expect(handlers.answer).not.toHaveBeenCalled()
+})
+
+test("a stranger's tap on a voter's question is ignored", () => {
+  const handlers = handlersOf()
+  const tap = tapOf(formatChoicePayload('r1', 0), { senderId: '333' })
+  expect(voterConversation().tap(tap, handlers)).toEqual(IGNORED)
+  expect(handlers.answer).not.toHaveBeenCalled()
+})
+
+test("a voter's tap outside a dm is ignored", () => {
+  const handlers = handlersOf()
+  const tap = tapOf(formatChoicePayload('r1', 0), { senderId: '222', isDirect: false })
+  expect(voterConversation().tap(tap, handlers)).toEqual(IGNORED)
+  expect(handlers.answer).not.toHaveBeenCalled()
+})
+
+test('a tap on an unknown request id is expired for anyone in a dm', () => {
+  const handlers = handlersOf()
+  const tap = tapOf(formatChoicePayload('r9', 0), { senderId: '333' })
+  expect(voterConversation().tap(tap, handlers)).toEqual({ kind: 'expired', text: EXPIRED_REPLY })
+  expect(handlers.answer).not.toHaveBeenCalled()
+})
+
+test("a voter can't dismiss", () => {
+  const handlers = handlersOf()
+  const tap = tapOf(formatDismissPayload('r1'), { senderId: '222' })
+  expect(voterConversation().tap(tap, handlers)).toEqual(IGNORED)
+  expect(handlers.dismiss).not.toHaveBeenCalled()
 })

@@ -115,11 +115,14 @@ function describeError(error: unknown): string {
 
 // The conversation keeps ids as strings; grammY wants the numeric chat id.
 function requireOwnerChatId(conversation: OwnerConversation): number {
-  const ownerId = conversation.ownerId
-  if (ownerId === undefined) {
+  return requireChatId(conversation.ownerId)
+}
+
+function requireChatId(userId: string | undefined): number {
+  if (userId === undefined) {
     throw new Error('bot is not paired yet')
   }
-  return Number(ownerId)
+  return Number(userId)
 }
 
 /**
@@ -163,8 +166,15 @@ export function createTelegramMessenger(
     }
   }
   return {
-    async sendRequest(id, message, options, allowText, attachment): Promise<MessageReference> {
-      const ownerId = requireOwnerChatId(conversation)
+    async sendRequest(
+      id,
+      message,
+      options,
+      allowText,
+      attachment,
+      recipient,
+    ): Promise<MessageReference> {
+      const ownerId = requireChatId(recipient ?? conversation.ownerId)
       const hasButtons = options.length > 0
       const shown = withTextHint(message, hasButtons, allowText)
       const documentMessageId =
@@ -186,7 +196,7 @@ export function createTelegramMessenger(
           }),
         ),
       )
-      conversation.track(formatMessageKey(sent.chat.id, sent.message_id), id, allowText)
+      conversation.track(formatMessageKey(sent.chat.id, sent.message_id), id, allowText, recipient)
       return {
         chatId: sent.chat.id,
         messageId: sent.message_id,

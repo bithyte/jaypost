@@ -119,6 +119,7 @@ export function createTerminalRuntime(io: TerminalIo): ProviderRuntime {
       options: readonly string[],
       allowText: boolean,
       attachment: Attachment | undefined,
+      _recipient?: string,
     ): Promise<MessageReference> {
       lastNumber += 1
       const number = lastNumber

@@ -247,7 +247,9 @@ test('handler: expired shows Expired', async () => {
 test('handler: non-owner ignored, tap not called, no text', async () => {
   const { bot, run } = fakeBot()
   const handlers = createTapHandlers()
-  registerTapHandler(bot, new OwnerConversation('42'), handlers)
+  const conversation = new OwnerConversation('42')
+  conversation.track('42:5', 'abc', false)
+  registerTapHandler(bot, conversation, handlers)
   const { answerCallbackQuery, p } = run(7, 'abc:0')
   await p
   expect(handlers.answer).not.toHaveBeenCalled()
@@ -1450,4 +1452,19 @@ test('a restored overdue notification saved before attachments deletes one messa
   await service.deleteOverdue()
   expect(deleteMessage).toHaveBeenCalledWith(42, 11)
   expect(deleteMessages).not.toHaveBeenCalled()
+})
+
+test("sendRequest sends to the recipient's chat", async () => {
+  const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 222 } }))
+  const bot = { api: { sendMessage } } as unknown as Bot
+  const ref = await createTelegramMessenger(bot, new OwnerConversation('42')).sendRequest(
+    'id1',
+    plain('Deploy?'),
+    ['Yes'],
+    false,
+    undefined,
+    '222',
+  )
+  expect(ref).toEqual({ chatId: 222, messageId: 5, hasButtons: true })
+  expect(sendMessage).toHaveBeenCalledWith(222, 'Deploy?', expect.anything())
 })

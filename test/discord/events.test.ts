@@ -141,6 +141,7 @@ test('a tap on a settled request gets an ephemeral Expired', async () => {
 
 test("someone else's tap is acknowledged and ignored", async () => {
   const { fake, answer, dismiss, context } = setup()
+  context.conversation.track('m1', 'r1', false)
   await handleInteraction(tap(formatChoicePayload('r1', 0), { userId: '2' }), context)
   await handleInteraction(tap(formatDismissPayload('n1'), { userId: '2' }), context)
   expect(answer).not.toHaveBeenCalled()

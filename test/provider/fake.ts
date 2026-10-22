@@ -14,6 +14,7 @@ export type FakeRuntime = ProviderRuntime & {
     options: readonly string[]
     allowText: boolean
     attachment: Attachment | undefined
+    recipient: string | undefined
   }[]
   handlers: RuntimeHandlers | undefined
 }
@@ -55,8 +56,8 @@ export function createFakeProvider(
         sent: [],
         handlers: undefined,
         checkCredentials: async () => ({ ok: true, displayName: 'fake' }),
-        sendRequest: async (id, message, options, allowText, attachment) => {
-          runtime.sent.push({ id, message, options, allowText, attachment })
+        sendRequest: async (id, message, options, allowText, attachment, recipient) => {
+          runtime.sent.push({ id, message, options, allowText, attachment, recipient })
           counter += 1
           return { n: counter }
         },

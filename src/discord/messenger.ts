@@ -26,29 +26,30 @@ export function toButtonRows(id: string, options: readonly string[]): readonly B
 }
 
 /**
- * Sends requests as direct messages with button rows to the owner; the final edit removes the
+ * Sends requests as direct messages with button rows to the owner or a given recipient; the final edit removes the
  * buttons. A request without options has no buttons, and `allowText` appends a hint on how to
  * reply. A sent request is tracked by the conversation only after Discord accepted it, and removed
  * again by `finalize`, even when the final edit fails. Notifications get a single Dismiss button
  * when `options.dismissible` is set.
- * Sending throws when nobody is paired. The owner's DM channel is opened once per owner id.
+ * Sending throws when nobody is paired. A DM channel is opened once per user id.
  */
 export function createDiscordMessenger(
   client: DiscordClient,
   conversation: OwnerConversation,
   log: (line: string) => void,
 ): Required<Messenger> & Required<Notifier> {
-  let channel: { readonly ownerId: string; readonly channelId: string } | undefined
-  async function resolveChannel(): Promise<string> {
-    const ownerId = conversation.ownerId
-    if (ownerId === undefined) {
+  const channelIdsByUser = new Map<string, string>()
+  async function resolveChannel(recipient?: string): Promise<string> {
+    const userId = recipient ?? conversation.ownerId
+    if (userId === undefined) {
       throw new Error('bot is not paired yet')
     }
-    if (channel?.ownerId === ownerId) {
-      return channel.channelId
+    const known = channelIdsByUser.get(userId)
+    if (known !== undefined) {
+      return known
     }
-    const channelId = await client.openDirectChannel(ownerId)
-    channel = { ownerId, channelId }
+    const channelId = await client.openDirectChannel(userId)
+    channelIdsByUser.set(userId, channelId)
     return channelId
   }
   function render(message: FormattedText): string {
@@ -72,8 +73,9 @@ export function createDiscordMessenger(
       options: readonly string[],
       allowText: boolean,
       attachment: Attachment | undefined,
+      recipient: string | undefined,
     ): Promise<MessageReference> {
-      const channelId = await resolveChannel()
+      const channelId = await resolveChannel(recipient)
       const rows = toButtonRows(id, options)
       const hasButtons = options.length > 0
       const shown = withTextHint(message, hasButtons, allowText)
@@ -83,7 +85,7 @@ export function createDiscordMessenger(
         silent: false,
         file: attachment,
       })
-      conversation.track(sent.id, id, allowText)
+      conversation.track(sent.id, id, allowText, recipient)
       return {
         channelId: sent.channelId,
         messageId: sent.id,

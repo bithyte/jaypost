@@ -296,3 +296,12 @@ test('seven options make rows of five and two', () => {
 test('no options make no rows', () => {
   expect(toButtonRows('r', [])).toEqual([])
 })
+
+test('sendRequest opens a dm per recipient and reuses it', async () => {
+  const { fake, messenger } = setup()
+  await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, '222')
+  await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, '222')
+  await messenger.sendRequest('r3', plain('three'), ['a'], false, undefined, undefined)
+  expect(fake.openedFor).toEqual(['222', '1'])
+  expect(fake.created.map((call) => call.channelId)).toEqual(['dm1', 'dm1', 'dm2'])
+})

@@ -41,10 +41,11 @@ export class OwnerConversation {
 
   /**
    * Opens a question under the adapter's message `key`. Call after the platform accepted the send;
-   * `forget` in finalize, even if the edit fails.
+   * `forget` in finalize, even if the edit fails. A `recipient` means the question went to that
+   * user instead of the owner, and only their taps count.
    */
-  track(key: string, id: string, allowText: boolean): void {
-    this.#questions.set(key, { id, allowText })
+  track(key: string, id: string, allowText: boolean, recipient?: string): void {
+    this.#questions.set(key, { id, allowText, recipient })
   }
 
   /** Closes the question under `key`; unknown keys are fine. */
@@ -69,19 +70,35 @@ export class OwnerConversation {
     return this.#pair(message, handlers)
   }
 
-  /** Decides what a button tap means; only the owner's taps count. */
+  /**
+   * Decides what a button tap means. A choice on a voter's question counts only from that voter;
+   * other choices and dismissals only from the owner. A choice on a request nobody has open is
+   * expired for anyone in a direct chat.
+   */
   tap(tap: ConversationTap, handlers: ConversationHandlers): TapOutcome {
-    if (!this.isOwner(tap.senderId, tap.isDirect)) {
+    if (!tap.isDirect || tap.senderId === undefined) {
       return { kind: 'ignored' }
     }
+    const isOwner = this.isOwner(tap.senderId, true)
     const dismissId = parseDismissPayload(tap.payload)
     if (dismissId !== undefined) {
+      if (!isOwner) {
+        return { kind: 'ignored' }
+      }
       handlers.dismiss(dismissId)
       return { kind: 'dismissed' }
     }
     const choice = parseChoicePayload(tap.payload)
     if (choice === undefined) {
+      return isOwner ? { kind: 'expired', text: EXPIRED_REPLY } : { kind: 'ignored' }
+    }
+    const question = [...this.#questions.values()].find((open) => open.id === choice.id)
+    if (question === undefined && !isOwner) {
       return { kind: 'expired', text: EXPIRED_REPLY }
+    }
+    // The owner's tap on an untracked id still goes to the handler, which knows if it is settled.
+    if (question !== undefined && (question.recipient ?? this.#ownerId) !== tap.senderId) {
+      return { kind: 'ignored' }
     }
     return handlers.answer(choice.id, choice.optionIndex) === 'accepted'
       ? { kind: 'answered' }
