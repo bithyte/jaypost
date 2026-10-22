@@ -4,6 +4,7 @@ import {
   CANCELLED_STATE,
   EXPIRED_ENDING,
   HISTORY_LIMIT,
+  REASKED_ENDING,
   RESULT_TTL_MS,
 } from './constants.ts'
 import { formatFinalText } from './formatter.ts'
@@ -23,6 +24,7 @@ import type {
   RequestResult,
   RequestState,
   RequestStore,
+  SentQuestion,
   SentRequest,
   Settlement,
   StartedRequest,
@@ -66,7 +68,28 @@ export class ApprovalService {
   request(request: ApprovalRequest, signal?: AbortSignal): Promise<RequestResult> {
     // Not async on purpose: V8 keeps an async function's params alive across every await, which
     // would pin the attachment bytes for the whole wait. #wait only sees the SentRequest.
-    return this.#open(request).then((opened) => this.#wait(opened, signal))
+    return this.send(request, signal).then((sent) => sent.result)
+  }
+
+  /**
+   * Resolves once the message is sent, with its id and a `result` that settles like `request`.
+   * Throws `SendError` like `request`.
+   */
+  send(request: ApprovalRequest, signal?: AbortSignal): Promise<SentQuestion> {
+    // Not async on purpose: V8 keeps an async function's params alive across every await, which
+    // would pin the attachment bytes for the whole wait. #wait only sees the SentRequest.
+    return this.#open(request).then((opened) => ({
+      id: opened.id,
+      result: this.#wait(opened, signal),
+    }))
+  }
+
+  /**
+   * Settles an open request as closed by a vote decided with `answer`; 'expired' when the id is
+   * unknown or already settled.
+   */
+  close(id: string, answer: string): 'closed' | 'expired' {
+    return this.#pending.close(id, answer) ? 'closed' : 'expired'
   }
 
   /**
@@ -192,6 +215,7 @@ export class ApprovalService {
         request.options,
         request.allowText,
         request.attachment,
+        request.recipient,
       )
     } catch (cause) {
       throw new SendError('failed to send approval request', { cause })
@@ -245,7 +269,11 @@ export class ApprovalService {
     if (this.#history.length > HISTORY_LIMIT) {
       this.#history.shift()
     }
-    await this.#finalize(reference, request.message, settlement, settledAt)
+    const ending =
+      settlement.kind === 'timedOut' && request.reaskOnTimeout === true
+        ? REASKED_ENDING
+        : settlement
+    await this.#finalize(reference, request.message, ending, settledAt)
     this.#store?.removeRequest(id)
   }
 

@@ -56,6 +56,11 @@ export class PendingRequests {
     return this.#settle(id, CANCELLED_SETTLEMENT)
   }
 
+  /** Settles as closed by a vote decided without it; false when the id is unknown or settled. */
+  close(id: string, answer: string): boolean {
+    return this.#settle(id, { kind: 'closed', answer })
+  }
+
   /** Open requests, oldest first. */
   list(): readonly PendingSummary[] {
     return [...this.#entries].map(([id, { request, openedAt }]) => ({ id, request, openedAt }))

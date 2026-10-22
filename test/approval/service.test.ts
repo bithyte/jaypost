@@ -34,6 +34,7 @@ class FakeMessenger implements Messenger {
     options: readonly string[]
     allowText: boolean
     attachment: Attachment | undefined
+    recipient: string | undefined
   }[] = []
   finalized: { ref: MessageReference; text: string; settlement: MessageEnding }[] = []
   finalizedMessages: FormattedText[] = []
@@ -47,11 +48,12 @@ class FakeMessenger implements Messenger {
     options: readonly string[],
     allowText: boolean,
     attachment: Attachment | undefined,
+    recipient: string | undefined,
   ): Promise<MessageReference> {
     if (this.sendError) {
       throw this.sendError
     }
-    this.sent.push({ id, text: message.text, options, allowText, attachment })
+    this.sent.push({ id, text: message.text, options, allowText, attachment, recipient })
     return this.ref
   }
 
@@ -931,4 +933,53 @@ test('the audit sink gets the request without its attachment', async () => {
   expect(asked !== undefined && Object.hasOwn(asked[2] as object, 'attachment')).toBe(false)
   svc.tap('id1', 0)
   await pending
+})
+
+test('the recipient is passed to the messenger', async () => {
+  const { m, svc } = setup()
+  void svc.request({ ...req, recipient: '222' })
+  await flush()
+  expect(m.sent[0]?.recipient).toBe('222')
+  const other = setup()
+  void other.svc.request(req)
+  await flush()
+  expect(other.m.sent[0]?.recipient).toBeUndefined()
+})
+
+test('send resolves with the id once sent, before an answer', async () => {
+  const { svc } = setup()
+  const sent = await svc.send(req)
+  expect(sent.id).toBe('id1')
+  expect(svc.tap(sent.id, 0)).toBe('accepted')
+  expect(await sent.result).toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  })
+})
+
+test('close settles with the vote answer and finalizes as closed', async () => {
+  const { m, svc } = setup()
+  const sent = await svc.send(req)
+  expect(svc.close(sent.id, 'Approve')).toBe('closed')
+  expect(await sent.result).toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  })
+  expect(m.finalized[0]?.settlement).toEqual({ kind: 'closed', answer: 'Approve' })
+  expect(m.finalized[0]?.text).toBe('Deploy?\n\n🗳 Decided: Approve, 09:05')
+  expect(svc.close(sent.id, 'Approve')).toBe('expired')
+  expect(svc.tap(sent.id, 0)).toBe('expired')
+})
+
+test('a re-asked request finalizes as reasked but reports a timeout', async () => {
+  const { m, svc } = setup()
+  const r = svc.request({ ...req, reaskOnTimeout: true })
+  await flush()
+  await vi.advanceTimersByTimeAsync(30_000)
+  await expect(r).resolves.toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Decline', timedOut: true },
+  })
+  expect(m.finalized[0]?.settlement).toEqual({ kind: 'reasked' })
+  expect(m.finalized[0]?.text).toBe('Deploy?\n\n🔁 Re-asked, 09:05')
 })

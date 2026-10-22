@@ -39,6 +39,10 @@ test('final text keeps spans and appends a plain result line', () =>
 test('expired', () =>
   expect(formatResultLine({ kind: 'expired' }, at)).toBe('⌛ Expired (service restarted), 09:05'))
 
+test('closed', () =>
+  expect(formatResultLine({ kind: 'closed', answer: 'Yes' }, at)).toBe('🗳 Decided: Yes, 09:05'))
+test('reasked', () => expect(formatResultLine({ kind: 'reasked' }, at)).toBe('🔁 Re-asked, 09:05'))
+
 const OPENED_AT = new Date(2026, 9, 18, 9, 0, 0)
 const pendingOf = (
   text: string,

@@ -72,6 +72,7 @@ export type ProviderRuntime = {
     options: readonly string[],
     allowText: boolean,
     attachment: Attachment | undefined,
+    recipient: string | undefined,
   ) => Promise<MessageReference>
   /** Request ended; called once per ended request, `expired` included. Absent means skipped. */
   readonly finalize?: (

@@ -52,6 +52,7 @@ export type {
   RequestState,
   RequestStore,
   SentRequest,
+  SentQuestion,
   Settlement,
   StartedRequest,
   VoteCounts,

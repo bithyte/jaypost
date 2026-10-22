@@ -37,6 +37,8 @@ export const ASCII_WHITESPACE_PATTERN = /[\t\n\f\r ]+/g
 export const CANCELLED_SETTLEMENT = { kind: 'cancelled' } as const satisfies Settlement
 /** Ending for a request message whose service restarted before it was answered. */
 export const EXPIRED_ENDING = { kind: 'expired' } as const satisfies MessageEnding
+/** Ending for a request message whose question was asked again after a timeout. */
+export const REASKED_ENDING = { kind: 'reasked' } as const satisfies MessageEnding
 /** Shared result for `ApprovalService.request` when its signal aborted. */
 export const CANCELLED_RESULT = { kind: 'cancelled' } as const satisfies RequestResult
 /** Shared state for a background question that was cancelled. */

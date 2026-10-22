@@ -26,6 +26,10 @@ export function formatResultLine(ending: MessageEnding, at: Date): string {
       return `💬 ${truncate(ending.answer, MAX_REPLY_ANSWER_LENGTH)}, ${time}`
     case 'cancelled':
       return `🚫 Cancelled, ${time}`
+    case 'closed':
+      return `🗳 Decided: ${ending.answer}, ${time}`
+    case 'reasked':
+      return `🔁 Re-asked, ${time}`
     case 'expired':
       return `⌛ Expired (service restarted), ${time}`
   }

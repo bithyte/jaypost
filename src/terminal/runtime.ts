@@ -30,6 +30,10 @@ function describeEnding(ending: MessageEnding): string {
       return 'cancelled'
     case 'expired':
       return 'expired'
+    case 'closed':
+      return `decided: ${ending.answer}`
+    case 'reasked':
+      return 're-asked'
   }
 }
 

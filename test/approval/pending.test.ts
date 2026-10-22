@@ -145,3 +145,13 @@ test('reply to a buttons-only request or an unknown id is false and leaves it op
   expect(p.reply('nope', 'x')).toBe(false)
   expect(p.size).toBe(1)
 })
+
+test('close settles as closed once', async () => {
+  const p = new PendingRequests()
+  const s = p.open('a', req, OPENED_AT)
+  expect(p.close('a', 'Approve')).toBe(true)
+  await expect(s).resolves.toEqual({ kind: 'closed', answer: 'Approve' })
+  expect(p.close('a', 'Approve')).toBe(false)
+  expect(p.close('nope', 'Approve')).toBe(false)
+  expect(p.size).toBe(0)
+})

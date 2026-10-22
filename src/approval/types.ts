@@ -24,6 +24,13 @@ export type ApprovalRequest = {
   readonly timeoutSeconds: number
   /** The decoded file to send with the question; `undefined` when the caller sent none. */
   readonly attachment: Attachment | undefined
+  /** User id to send to; omitted means the owner. Never set by `parseApprovalRequest`. */
+  readonly recipient?: string
+  /**
+   * On timeout the message is finalized as `reasked` instead of `timedOut`; the result is still
+   * `timedOut: true`. Never set by `parseApprovalRequest`.
+   */
+  readonly reaskOnTimeout?: boolean
 }
 
 /**
@@ -52,11 +59,14 @@ export type Settlement =
   | { readonly kind: 'rejected'; readonly answer: string }
   | { readonly kind: 'replied'; readonly answer: string }
   | { readonly kind: 'cancelled' }
+  /** A vote was decided without this voter; `answer` is the vote's answer. */
+  | { readonly kind: 'closed'; readonly answer: string }
 
 /**
- * How a request message ends; `expired` is only used by startup recovery, never by `PendingRequests`.
+ * How a request message ends; `expired` is only used by startup recovery, never by `PendingRequests`,
+ * and `reasked` replaces `timedOut` for a request that is asked again.
  */
-export type MessageEnding = Settlement | { readonly kind: 'expired' }
+export type MessageEnding = Settlement | { readonly kind: 'expired' } | { readonly kind: 'reasked' }
 
 /**
  * State of a background question as `ApprovalService.get` reports it; `done` covers a tap, the
@@ -66,6 +76,12 @@ export type RequestState =
   | { readonly kind: 'pending'; readonly expiresAt: Date }
   | { readonly kind: 'done'; readonly outcome: Outcome }
   | { readonly kind: 'cancelled' }
+
+/** What `ApprovalService.send` resolves to once the message is sent; `result` settles later. */
+export type SentQuestion = {
+  readonly id: string
+  readonly result: Promise<RequestResult>
+}
 
 /** What `ApprovalService.start` resolves to; `expiresAt` is when the timeout fires. */
 export type StartedRequest = {
@@ -100,6 +116,8 @@ export type Messenger = {
     allowText: boolean,
     /** The file to send with the message; `undefined` when there is none. */
     attachment: Attachment | undefined,
+    /** The user id to send to; `undefined` means the owner. */
+    recipient: string | undefined,
   ) => Promise<MessageReference>
   /** Request ended: show the final text and stop accepting answers. Absent means skipped. */
   readonly finalize?: (
