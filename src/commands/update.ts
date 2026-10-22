@@ -9,8 +9,9 @@ import {
   resolveRecordProvider,
   writeInstall,
 } from '../install/index.ts'
-import type { ExistingInstall } from '../install/index.ts'
+import type { ExistingInstall, InstallPaths, TargetName } from '../install/index.ts'
 import { requireProvider } from '../provider/index.ts'
+import type { Provider, SettingValues } from '../provider/index.ts'
 import {
   compareVersions,
   fetchLatestNpmVersion,
@@ -291,11 +292,49 @@ function readAuth(tokenFile: string): ApiAuth {
   return token === undefined ? NO_AUTH : { kind: 'token', token }
 }
 
+/** The `.env` a container target rewrites on upgrade; undefined for the native targets. */
+function findContainerEnvFile(paths: InstallPaths, target: TargetName): string | undefined {
+  switch (target) {
+    case 'quadlet':
+      return join(paths.quadletDirectory, '.env')
+    case 'compose':
+      return join(paths.composeDirectory, '.env')
+    case 'systemd':
+    case 'launchd':
+      return undefined
+  }
+}
+
+/**
+ * Throws when a container's `.env` lacks a setting the provider requires: upgrading rewrites the
+ * file from what was read back, so a variable under a name jaypost doesn't read would be dropped.
+ */
+function requireContainerSettings(
+  paths: InstallPaths,
+  target: TargetName,
+  provider: Provider,
+  settings: SettingValues,
+): void {
+  const envFile = findContainerEnvFile(paths, target)
+  if (envFile === undefined) {
+    return
+  }
+  const missing = provider.settings.find(
+    (setting) => setting.required && !Object.hasOwn(settings, setting.configKey),
+  )
+  if (missing === undefined) {
+    return
+  }
+  throw new Error(
+    `missing ${missing.envVar} in ${JSON.stringify(envFile)}; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
+  )
+}
+
 /**
  * The `update --finish` step run by the new CLI: rewrites the install's files from this version's
  * templates with the saved port, provider, secrets and API token, restarts the service and records
- * this version in install.json. Returns 0 on success, 1 when not installed or on failure, 130 on
- * interrupt.
+ * this version in install.json. A container `.env` missing a required setting is refused before
+ * any file is written. Returns 0 on success, 1 when not installed or on failure, 130 on interrupt.
  */
 export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
   const { print } = deps
@@ -309,6 +348,7 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
   try {
     const provider = requireProvider(deps.providers, resolveRecordProvider(record))
     const { settings } = await target.readSecrets(record)
+    requireContainerSettings(deps.paths, record.target, provider, settings)
     const auth = readAuth(deps.paths.tokenFile)
     // install.json doesn't record whether the old service required a token, so always say so.
     if (auth.kind === 'none') {

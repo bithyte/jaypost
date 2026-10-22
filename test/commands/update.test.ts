@@ -10,6 +10,7 @@ import { writeTokenFile } from '../../src/auth/index.ts'
 import { runFinishUpdate, runUpdate } from '../../src/commands/index.ts'
 import type { UpdateDeps } from '../../src/commands/index.ts'
 import {
+  createQuadletTarget,
   formatLaunchdPlist,
   readInstall,
   resolveInstallPaths,
@@ -508,6 +509,45 @@ test('runFinishUpdate failure keeps install.json and exits 1', async () => {
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)
   expect(out).toEqual(['Update failed: build failed'])
+  expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
+})
+
+test('runFinishUpdate refuses a container .env with the old names and leaves it as is', async () => {
+  writeInstall(paths.installFile, { target: 'quadlet', port: 9000, version: '0.4.0' })
+  writeTokenFile(paths.tokenFile, TOKEN)
+  const envPath = join(paths.quadletDirectory, '.env')
+  const oldEnv = 'PROVIDER=telegram\nBOT_TOKEN=123:old-secret\nPORT=9000\nOWNER_ID=42\n'
+  mkdirSync(paths.quadletDirectory, { recursive: true })
+  writeFileSync(envPath, oldEnv)
+  const exec: Exec = async (command, args) => {
+    calls.push([command, args, undefined])
+    return { code: 0, stdout: args.includes('owner') ? '42\n' : '', stderr: '' }
+  }
+  const quadlet = createQuadletTarget({
+    exec,
+    paths,
+    env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
+    user: 'u',
+    providers: [telegramProvider],
+    platform: 'linux',
+    uid: 1000,
+  })
+  const d = deps({
+    version: '0.5.0',
+    exec,
+    targets: {
+      systemd: fake('systemd'),
+      quadlet,
+      compose: fake('compose'),
+      launchd: fake('launchd'),
+    },
+  })
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(readFileSync(envPath, 'utf8')).toBe(oldEnv)
+  expect(out).toEqual([
+    `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
+  ])
+  expect(out.join('\n')).not.toContain('old-secret')
   expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
 })
 
