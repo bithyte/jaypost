@@ -39,7 +39,8 @@ runs:
   steps:
     - id: send
       shell: bash
-      run: bash "$GITHUB_ACTION_PATH/action/run.sh"
+      # exec: the runner signals only the step's shell, so run.sh must be that process
+      run: exec bash "$GITHUB_ACTION_PATH/action/run.sh"
       env:
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_TEXT: ${{ inputs.text }}

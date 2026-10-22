@@ -16,6 +16,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
+import { parse } from 'yaml'
 import { afterEach, expect, test } from 'vite-plus/test'
 
 const ROOT = join(import.meta.dirname, '..')
@@ -135,8 +136,23 @@ function createRunner(releaseUrl: string, inputs: Record<string, string> = {}): 
   return { directory, output, argsFile, envFile, env }
 }
 
+// The runner runs the step's `run` text in `bash --noprofile --norc -e -o pipefail FILE` and signals
+// only that shell, so cancel tests go through it instead of spawning the script directly.
+function runStep(env: Record<string, string>): Running {
+  const action = parse(readFileSync(join(ROOT, 'action.yml'), 'utf8')) as {
+    runs: { steps: { run: string }[] }
+  }
+  const stepFile = join(env.RUNNER_TEMP ?? '', 'step.sh')
+  writeFileSync(stepFile, `${action.runs.steps[0]?.run ?? ''}\n`)
+  return spawnRunning('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', stepFile], env)
+}
+
 function runAction(env: Record<string, string>): Running {
-  const child = spawn('bash', [SCRIPT], { env })
+  return spawnRunning('bash', [SCRIPT], env)
+}
+
+function spawnRunning(command: string, args: string[], env: Record<string, string>): Running {
+  const child = spawn(command, args, { env })
   let stdout = ''
   let stderr = ''
   let markReady = (): void => {}
@@ -306,7 +322,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
       INPUT_DEFAULT: 'No',
       FAKE_WAIT: '1',
     })
-    const running = runAction(runner.env)
+    const running = runStep(runner.env)
     await running.ready
     running.child.kill(signal)
     const result = await running.result
@@ -314,6 +330,19 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     expect(readFileSync(runner.env.FAKE_SIGNAL_FILE ?? '', 'utf8').trim()).toBe('TERM')
   })
 }
+
+test('keeps an answer that looks like an echo flag', async () => {
+  const runner = await setUp({
+    INPUT_TEXT: 'Why?',
+    INPUT_ALLOW_TEXT: 'true',
+    INPUT_DEFAULT: 'No',
+    FAKE_ANSWER: '-n',
+  })
+  const result = await runAction(runner.env).result
+  expect(result.status, result.stderr).toBe(0)
+  expect(result.stdout).toContain('-n')
+  expect(readFileSync(runner.output, 'utf8')).toMatch(/^answer<<(jaypost_[0-9a-f]{32})\n-n\n\1\n$/)
+})
 
 test('passes the binary exit code through on an error', async () => {
   const runner = await setUp({ INPUT_COMMAND: 'notify', INPUT_TEXT: 'Hi', FAKE_EXIT: '1' })

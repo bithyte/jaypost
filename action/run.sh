@@ -90,7 +90,7 @@ if [ "$allow_text" = true ]; then
 fi
 args+=(-- "$text"$'\n\n'"Workflow run: $run_link")
 
-# The runner signals this shell, not the binary, so forward a cancel as SIGTERM: the binary then
+# The runner signals the step's shell (action.yml execs this script into it), not the binary, so forward a cancel as SIGTERM: the binary then
 # edits the question to the cancelled line. Background children of a non-interactive shell ignore SIGINT.
 output_file=$(mktemp "$RUNNER_TEMP/jaypost-output.XXXXXX")
 "$install_dir/jaypost" "${args[@]}" >"$output_file" &
@@ -110,13 +110,11 @@ trap - INT TERM
 answer=$(cat "$output_file")
 rm -f "$output_file"
 if [ -n "$answer" ]; then
-  echo "$answer"
+  printf '%s\n' "$answer"
 fi
 delimiter="jaypost_$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 {
-  echo "answer<<$delimiter"
-  echo "$answer"
-  echo "$delimiter"
+  printf '%s\n' "answer<<$delimiter" "$answer" "$delimiter"
 } >>"$GITHUB_OUTPUT"
 if [ "$status" -eq 3 ]; then
   echo "jaypost action: declined (the answer was the default, or the question timed out)" >&2
