@@ -1,5 +1,19 @@
 # jaypost
 
+## 0.8.0
+
+### Minor Changes
+
+- 469415d: Direct mode for CI. With `JAYPOST_MODE=direct`, `jaypost send` talks to the chat app itself instead of a running service, using `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN` and `JAYPOST_OWNER_ID`. Direct `send request` exits 3 when the answer is the `-d` value or the timeout fired, so a CI step can gate on it; service mode still exits 0 for any answer. New `jaypost setup-ci` pairs an owner and prints the env vars to store as GitHub secrets. The env var rename it relies on is in the `JAYPOST_` prefix changeset.
+- 469415d: Every environment variable jaypost reads now starts with `JAYPOST_`: `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST`. The old names (`PROVIDER`, `BOT_TOKEN`, `OWNER_ID`, `PORT`, `HOST`) are no longer read, so this breaks existing installs. For Quadlet and Compose, rename `PROVIDER`, `BOT_TOKEN`, `OWNER_ID` and `PORT` in the `.env` file to the `JAYPOST_` names before running `jaypost update`, since the new CLI reads that file (`~/.config/jaypost/quadlet/.env` for Quadlet, `~/.config/jaypost/compose/.env` for Compose; the directory moves if you set `JAYPOST_CONFIG` or `XDG_CONFIG_HOME`). If you set `PORT` or `HOST` for `jaypost start`, `mcp`, `hook` or `send`, rename those too. `jaypost update` refuses to update a Quadlet or Compose install until its `.env` is renamed.
+- 40294f4: A GitHub Action: `uses: bithyte/jaypost@v0` runs `send request` or `send notify` in direct mode from the release binary, fails the step on a No or a timeout, and sets the `answer` output. `install.sh` reads `JAYPOST_INSTALL_DIR` and `JAYPOST_NO_INIT`.
+
+### Patch Changes
+
+- 68d2d21: On Discord, a DM of `/start ABCD-EFGH` now pairs the bot, the same as on Telegram. It used to count as a wrong guess.
+- 68d2d21: `jaypost test` now prints the answer, the way `jaypost send request` does, instead of the HTTP status and raw body. It no longer goes through `fetch`, so a test left unanswered for the full 300 s doesn't hit fetch's headers timeout.
+- da756f9: `jaypost test --port N` sends the test question to that port instead of the installed one.
+
 ## 0.7.0
 
 ### Minor Changes
