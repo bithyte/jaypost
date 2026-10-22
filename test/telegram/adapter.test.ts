@@ -39,6 +39,7 @@ test('sendRequest sends plain text with one button per row', async () => {
     ['Yes', 'No'],
     false,
     undefined,
+    undefined,
   )
   expect(ref).toEqual({ chatId: 42, messageId: 5, hasButtons: true })
   expect(sendMessage).toHaveBeenCalledWith(42, 'Deploy?', {
@@ -63,6 +64,7 @@ test('allowText with buttons appends the tap-or-reply hint', async () => {
     ['main'],
     true,
     undefined,
+    undefined,
   )
   expect(sendMessage).toHaveBeenCalledWith(
     42,
@@ -84,6 +86,7 @@ test('text-only question has the reply hint and no reply_markup', async () => {
     [],
     true,
     undefined,
+    undefined,
   )
   expect(ref).toEqual({ chatId: 42, messageId: 5, hasButtons: false })
   expect(sendMessage).toHaveBeenCalledWith(
@@ -102,7 +105,7 @@ test('send tracks the question and finalize forgets it', async () => {
     },
   } as unknown as Bot
   const messenger = createTelegramMessenger(bot, conversation)
-  const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined)
+  const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined, undefined)
   const tracked = receiveReplyTo(conversation, '42:5')
   expect(tracked.outcome).toEqual({ kind: 'answered' })
   expect(tracked.reply).toHaveBeenCalledWith('id1', 'x')
@@ -127,7 +130,7 @@ test('a failed final edit still forgets the question', async () => {
     },
   } as unknown as Bot
   const messenger = createTelegramMessenger(bot, conversation)
-  const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined)
+  const ref = await messenger.sendRequest('id1', plain('Branch?'), [], true, undefined, undefined)
   expect(receiveReplyTo(conversation, '42:5').outcome).toEqual({ kind: 'answered' })
   await expect(messenger.finalize(ref, plain('done'), { kind: 'cancelled' })).rejects.toThrow(
     'message is not modified',
@@ -487,6 +490,7 @@ test('sendRequest never sets disable_notification', async () => {
     ['Yes', 'No'],
     false,
     undefined,
+    undefined,
   )
   expect(Object.hasOwn(sendMessage.mock.calls[0]?.[2] ?? {}, 'disable_notification')).toBe(false)
 })
@@ -520,10 +524,12 @@ test('messenger sends to the owner id at call time', async () => {
   const bot = { api: { sendMessage } } as unknown as Bot
   const conversation = new OwnerConversation(undefined)
   const m = createTelegramMessenger(bot, conversation)
-  await expect(m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)).rejects.toThrow()
+  await expect(
+    m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined, undefined),
+  ).rejects.toThrow()
   expect(sendMessage).not.toHaveBeenCalled()
   pairOwner(conversation, '9')
-  await m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)
+  await m.sendRequest('id1', plain('Q'), ['Yes'], false, undefined, undefined)
   expect(sendMessage).toHaveBeenCalledWith(9, 'Q', expect.anything())
 })
 
@@ -1071,7 +1077,7 @@ test('toEntities drops a blockquote holding code', () => {
 test('plain sends have no entities key', async () => {
   const { bot, sendMessage, editMessageText } = createSendBot()
   const messenger = createTelegramMessenger(bot, new OwnerConversation('42'))
-  await messenger.sendRequest('id1', plain('Q'), ['Yes'], false, undefined)
+  await messenger.sendRequest('id1', plain('Q'), ['Yes'], false, undefined, undefined)
   await messenger.sendNotification(
     'id1',
     plain('hi'),
@@ -1100,6 +1106,7 @@ test('markdown sends carry entities', async () => {
     ['Yes'],
     false,
     undefined,
+    undefined,
   )
   expect(sendMessage).toHaveBeenCalledWith(42, 'Run ls', {
     entities: [{ type: 'code', offset: 4, length: 2 }],
@@ -1117,7 +1124,7 @@ test('a 400 on a formatted send retries once as plain', async () => {
     bot,
     new OwnerConversation('42'),
     log,
-  ).sendRequest('id1', RUN_LS, ['Yes'], false, undefined)
+  ).sendRequest('id1', RUN_LS, ['Yes'], false, undefined, undefined)
   expect(reference).toEqual({ chatId: 42, messageId: 5, hasButtons: true })
   expect(sendMessage).toHaveBeenCalledTimes(2)
   expect(sendMessage.mock.calls[0]?.[2]).toHaveProperty('entities')
@@ -1139,6 +1146,7 @@ test('a 400 on a plain send does not retry', async () => {
       ['Yes'],
       false,
       undefined,
+      undefined,
     ),
   ).rejects.toThrow('chat not found')
   expect(sendMessage).toHaveBeenCalledTimes(1)
@@ -1157,6 +1165,7 @@ test('a failed retry throws', async () => {
       ['Yes'],
       false,
       undefined,
+      undefined,
     ),
   ).rejects.toThrow('still bad')
   expect(sendMessage).toHaveBeenCalledTimes(2)
@@ -1171,6 +1180,7 @@ test('a non-400 failure on a formatted send does not retry', async () => {
       RUN_LS,
       ['Yes'],
       false,
+      undefined,
       undefined,
     ),
   ).rejects.toThrow('Too Many Requests')
@@ -1273,6 +1283,7 @@ test('a request with an attachment sends the document first, silently, then the 
     ['Push', 'Stop'],
     false,
     ATTACHMENT,
+    undefined,
   )
   expect(sendDocument).toHaveBeenCalledWith(42, expect.any(InputFile), {
     disable_notification: true,
@@ -1302,7 +1313,7 @@ test('a failed document send sends nothing else and throws', async () => {
   const { messenger, sendDocument, sendMessage, deleteMessage } = createAttachmentBot()
   sendDocument.mockRejectedValueOnce(SEND_ERROR)
   await expect(
-    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT),
+    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT, undefined),
   ).rejects.toBe(SEND_ERROR)
   expect(sendMessage).not.toHaveBeenCalled()
   expect(deleteMessage).not.toHaveBeenCalled()
@@ -1312,7 +1323,7 @@ test('a failed question send deletes the document and throws the send error', as
   const { messenger, sendMessage, deleteMessage } = createAttachmentBot()
   sendMessage.mockRejectedValueOnce(SEND_ERROR)
   await expect(
-    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT),
+    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT, undefined),
   ).rejects.toBe(SEND_ERROR)
   expect(deleteMessage).toHaveBeenCalledWith(42, 10)
 })
@@ -1322,7 +1333,7 @@ test('a failed cleanup delete is logged without the file name', async () => {
   sendMessage.mockRejectedValueOnce(SEND_ERROR)
   deleteMessage.mockRejectedValueOnce(new Error('cannot delete'))
   await expect(
-    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT),
+    messenger.sendRequest('id1', plain('Push?'), ['Push'], false, ATTACHMENT, undefined),
   ).rejects.toBe(SEND_ERROR)
   expect(log).toHaveBeenCalledTimes(1)
   expect(log).toHaveBeenCalledWith('failed to delete attachment: cannot delete')
@@ -1368,7 +1379,14 @@ test('a quiet notification with an attachment does not ping', async () => {
 
 test('without an attachment nothing changes', async () => {
   const { messenger, sendDocument, sendMessage } = createAttachmentBot()
-  const ref = await messenger.sendRequest('id1', plain('Push?'), ['Push'], false, undefined)
+  const ref = await messenger.sendRequest(
+    'id1',
+    plain('Push?'),
+    ['Push'],
+    false,
+    undefined,
+    undefined,
+  )
   expect(sendDocument).not.toHaveBeenCalled()
   expect(sendMessage).toHaveBeenCalledWith(42, 'Push?', {
     reply_markup: {

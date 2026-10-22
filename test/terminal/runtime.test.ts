@@ -59,14 +59,21 @@ test('start prints how to answer', () => {
 test('a request prints its number, text and numbered options', async () => {
   const { runtime, output, clear } = setup()
   clear()
-  await runtime.sendRequest('r1', plain('[demo]\nShip it?'), ['Yes', 'No'], false, undefined)
+  await runtime.sendRequest(
+    'r1',
+    plain('[demo]\nShip it?'),
+    ['Yes', 'No'],
+    false,
+    undefined,
+    undefined,
+  )
   expect(output()).toBe('\n#1 [demo]\nShip it?\n   1) Yes   2) No\n')
 })
 
 test('a request that allows text says so', async () => {
   const { runtime, output, clear } = setup()
   clear()
-  await runtime.sendRequest('r1', plain('Name?'), ['Skip'], true, undefined)
+  await runtime.sendRequest('r1', plain('Name?'), ['Skip'], true, undefined, undefined)
   expect(output()).toContain('1) Skip   (or type a reply)')
 })
 
@@ -74,20 +81,20 @@ test('an attachment prints its name and size', async () => {
   const { runtime, output, clear } = setup()
   clear()
   const attachment = { name: 'log.txt', content: new Uint8Array(12) }
-  await runtime.sendRequest('r1', plain('See log'), ['Ok'], false, attachment)
+  await runtime.sendRequest('r1', plain('See log'), ['Ok'], false, attachment, undefined)
   expect(output()).toContain('   attached: log.txt (12 bytes)\n')
 })
 
 test('typing an option number answers the only open question', async () => {
   const { runtime, type, handlers } = setup()
-  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes', 'No'], false, undefined)
+  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes', 'No'], false, undefined, undefined)
   await type('2')
   expect(handlers.answer.mock.calls).toEqual([['r1', 1]])
 })
 
 test('typed text is a reply when the question allows it', async () => {
   const { runtime, type, handlers } = setup()
-  await runtime.sendRequest('r1', plain('Name?'), ['Skip'], true, undefined)
+  await runtime.sendRequest('r1', plain('Name?'), ['Skip'], true, undefined, undefined)
   await type('  Alice  ')
   expect(handlers.reply.mock.calls).toEqual([['r1', 'Alice']])
   expect(handlers.answer).not.toHaveBeenCalled()
@@ -95,7 +102,7 @@ test('typed text is a reply when the question allows it', async () => {
 
 test('text for a buttons-only question asks for an option number', async () => {
   const { runtime, type, handlers, output, clear } = setup()
-  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes', 'No'], false, undefined)
+  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes', 'No'], false, undefined, undefined)
   clear()
   await type('maybe')
   expect(output()).toBe('#1 needs an option number from 1 to 2\n')
@@ -104,10 +111,10 @@ test('text for a buttons-only question asks for an option number', async () => {
 
 test('an out-of-range number is a reply when text is allowed, else an error', async () => {
   const { runtime, type, handlers, output, clear } = setup()
-  await runtime.sendRequest('r1', plain('Count?'), ['Skip'], true, undefined)
+  await runtime.sendRequest('r1', plain('Count?'), ['Skip'], true, undefined, undefined)
   await type('3')
   expect(handlers.reply.mock.calls).toEqual([['r1', '3']])
-  await runtime.sendRequest('r2', plain('Ship it?'), ['Yes'], false, undefined)
+  await runtime.sendRequest('r2', plain('Ship it?'), ['Yes'], false, undefined, undefined)
   clear()
   await type('#2 3')
   expect(output()).toBe('#2 needs an option number from 1 to 1\n')
@@ -115,8 +122,8 @@ test('an out-of-range number is a reply when text is allowed, else an error', as
 
 test('with several open questions a #number prefix picks one', async () => {
   const { runtime, type, handlers, output, clear } = setup()
-  await runtime.sendRequest('r1', plain('First?'), ['A', 'B'], false, undefined)
-  await runtime.sendRequest('r2', plain('Second?'), ['C', 'D'], true, undefined)
+  await runtime.sendRequest('r1', plain('First?'), ['A', 'B'], false, undefined, undefined)
+  await runtime.sendRequest('r2', plain('Second?'), ['C', 'D'], true, undefined, undefined)
   clear()
   await type('1')
   expect(output()).toBe('several questions are open; start with the number, like "#1 1"\n')
@@ -128,7 +135,7 @@ test('with several open questions a #number prefix picks one', async () => {
 
 test('an unknown #number says it is not open', async () => {
   const { runtime, type, output, clear } = setup()
-  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined)
+  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined, undefined)
   clear()
   await type('#7 1')
   expect(output()).toBe('#7 is not open\n')
@@ -136,7 +143,7 @@ test('an unknown #number says it is not open', async () => {
 
 test('an answer the service no longer takes says it is not open', async () => {
   const { runtime, type, output, clear } = setup('expired')
-  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined)
+  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined, undefined)
   clear()
   await type('1')
   expect(output()).toBe('#1 is not open\n')
@@ -158,7 +165,14 @@ test('blank lines are ignored', async () => {
 
 test('finalize prints the ending and closes the question', async () => {
   const { runtime, type, output, clear } = setup()
-  const reference = await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined)
+  const reference = await runtime.sendRequest(
+    'r1',
+    plain('Ship it?'),
+    ['Yes'],
+    false,
+    undefined,
+    undefined,
+  )
   clear()
   await runtime.finalize?.(reference, plain('Ship it?'), { kind: 'answered', answer: 'Yes' })
   expect(output()).toBe('#1 answered: Yes\n')
@@ -178,7 +192,7 @@ test('finalize describes every ending', async () => {
   ] as const
   const lines = []
   for (const ending of endings) {
-    const reference = await runtime.sendRequest('r', plain('Q'), ['No'], true, undefined)
+    const reference = await runtime.sendRequest('r', plain('Q'), ['No'], true, undefined, undefined)
     clear()
     await runtime.finalize?.(reference, plain('Q'), ending)
     lines.push(output())
@@ -194,7 +208,7 @@ test('finalize describes every ending', async () => {
 
 test("finalize for a previous run's question leaves a new one with the same number open", async () => {
   const { runtime, type, handlers } = setup()
-  await runtime.sendRequest('new', plain('Ship it?'), ['Yes'], false, undefined)
+  await runtime.sendRequest('new', plain('Ship it?'), ['Yes'], false, undefined, undefined)
   await runtime.finalize?.({ number: 1, id: 'old' }, plain('Old'), { kind: 'expired' })
   await type('1')
   expect(handlers.answer.mock.calls).toEqual([['new', 0]])
@@ -236,7 +250,7 @@ test('an unknown slash command lists the known ones', async () => {
 
 test('stop stops reading input', async () => {
   const { runtime, type, handlers } = setup()
-  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined)
+  await runtime.sendRequest('r1', plain('Ship it?'), ['Yes'], false, undefined, undefined)
   await runtime.stop()
   await type('1')
   expect(handlers.answer).not.toHaveBeenCalled()

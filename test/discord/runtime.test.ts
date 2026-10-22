@@ -199,7 +199,7 @@ test('stop closes the real gateway and a later close or 401 is not fatal', async
     expect(gateway.destroyCount).toBe(1)
     gateway.emit('closed', 4004)
     await expect(
-      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined),
+      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
     ).rejects.toThrow()
     expect(runtimeHandlers.fatal).not.toHaveBeenCalled()
   })
@@ -213,7 +213,7 @@ test('a rest 401 before stop is fatal without the token', async () => {
     runtime.start(runtimeHandlers)
     await flush()
     await expect(
-      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined),
+      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
     ).rejects.toThrow()
     expect(runtimeHandlers.fatal).toHaveBeenCalledWith(REJECTED_TOKEN_FATAL)
     expect(JSON.stringify(runtimeHandlers.fatal.mock.calls)).not.toContain(TOKEN)
@@ -239,7 +239,14 @@ test('gateway messages and interactions reach the handlers', async () => {
   const runtimeHandlers = handlers()
   await runtime.checkCredentials()
   runtime.start(runtimeHandlers)
-  const reference = await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined)
+  const reference = await runtime.sendRequest(
+    'r1',
+    plain('Name?'),
+    ['a'],
+    true,
+    undefined,
+    undefined,
+  )
   expect(reference).toEqual({ channelId: 'dm1', messageId: 'm1', hasButtons: true })
   fake.events()?.message({
     id: 'u1',
@@ -274,7 +281,7 @@ test('a throwing event handler is logged without its message', async () => {
   })
   await runtime.checkCredentials()
   runtime.start(runtimeHandlers)
-  await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined)
+  await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined, undefined)
   fake.events()?.message({
     id: 'u1',
     channelId: 'dm1',
@@ -294,7 +301,7 @@ test('pairing makes later requests go to the new owner', async () => {
   await runtime.checkCredentials()
   runtime.start(handlers({ pair }))
   await expect(
-    runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined),
+    runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
   ).rejects.toThrow('bot is not paired yet')
   fake.events()?.message({
     id: 'u1',
@@ -308,13 +315,13 @@ test('pairing makes later requests go to the new owner', async () => {
   await flush()
   expect(pair).toHaveBeenCalledWith('5', 'ABCDEFGH')
   expect(fake.created.map((entry) => entry.message.content)).toEqual([PAIRED_REPLY])
-  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined)
+  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined)
   expect(fake.openedFor).toEqual(['5'])
 })
 
 test('a saved owner id receives requests without pairing', async () => {
   const { fake, runtime } = setup(createFakeDiscord(), { ownerId: '5' })
   await runtime.checkCredentials()
-  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined)
+  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined)
   expect(fake.openedFor).toEqual(['5'])
 })
