@@ -1,6 +1,6 @@
 import type { ClientToken } from '../auth/index.ts'
 import { postApi, prepareAttachment, requestApi, toSendTimeoutMs } from '../client/index.ts'
-import type { AttachmentBody, AttachmentSource } from '../client/index.ts'
+import type { Answer, AskBody, AttachmentBody, AttachmentSource } from '../client/index.ts'
 import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
 
 /**
@@ -16,26 +16,15 @@ export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Pro
   if (attachment.kind === 'failed') {
     return 1
   }
-  const result = await requestApi(
-    deps.port,
-    {
-      text: args.text,
-      ...(args.options === undefined ? {} : { options: args.options }),
-      ...(args.allowText === undefined ? {} : { allowText: args.allowText }),
-      timeoutOption: args.timeoutOption,
-      ...(args.timeout === undefined ? {} : { timeout: args.timeout }),
-      ...(args.project === undefined ? {} : { project: args.project }),
-      ...(args.format === undefined ? {} : { format: args.format }),
-      ...attachment.body,
-    },
-    { signal: deps.signal, ...toTokenOption(deps.token) },
-  )
+  const result = await requestApi(deps.port, toAskBody(args, attachment.attachment), {
+    signal: deps.signal,
+    ...toTokenOption(deps.token),
+  })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
   }
-  const { answer, timedOut } = result.outcome
-  deps.print(args.json ? JSON.stringify({ answer, timedOut }) : answer)
+  deps.print(formatAnswer(result.outcome, args.json))
   return 0
 }
 
@@ -49,21 +38,11 @@ export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promi
   if (attachment.kind === 'failed') {
     return 1
   }
-  const result = await postApi(
-    deps.port,
-    '/notify',
-    {
-      text: args.text,
-      ...(args.project === undefined ? {} : { project: args.project }),
-      ...(args.format === undefined ? {} : { format: args.format }),
-      ...attachment.body,
-    },
-    {
-      signal: deps.signal,
-      timeoutMs: toSendTimeoutMs(args.attachment !== undefined),
-      ...toTokenOption(deps.token),
-    },
-  )
+  const result = await postApi(deps.port, '/notify', toNotifyBody(args, attachment.attachment), {
+    signal: deps.signal,
+    timeoutMs: toSendTimeoutMs(args.attachment !== undefined),
+    ...toTokenOption(deps.token),
+  })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
     return 1
@@ -71,13 +50,43 @@ export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promi
   return 0
 }
 
+/** The `/request` body for `args`, shared by the service and direct paths. */
+export function toAskBody(args: SendRequestArgs, attachment: AttachmentBody | undefined): AskBody {
+  return {
+    text: args.text,
+    ...(args.options === undefined ? {} : { options: args.options }),
+    ...(args.allowText === undefined ? {} : { allowText: args.allowText }),
+    timeoutOption: args.timeoutOption,
+    ...(args.timeout === undefined ? {} : { timeout: args.timeout }),
+    ...(args.project === undefined ? {} : { project: args.project }),
+    ...(args.format === undefined ? {} : { format: args.format }),
+    ...(attachment === undefined ? {} : { attachment }),
+  }
+}
+
+/** The `/notify` body for `args`, shared by the service and direct paths. */
+export function toNotifyBody(args: SendNotifyArgs, attachment: AttachmentBody | undefined) {
+  return {
+    text: args.text,
+    ...(args.project === undefined ? {} : { project: args.project }),
+    ...(args.format === undefined ? {} : { format: args.format }),
+    ...(attachment === undefined ? {} : { attachment }),
+  }
+}
+
+/** The line `send request` prints: the bare answer, or `{ answer, timedOut }` with `json`. */
+export function formatAnswer(outcome: Answer, json: boolean | undefined): string {
+  const { answer, timedOut } = outcome
+  return json === true ? JSON.stringify({ answer, timedOut }) : answer
+}
+
 type Prepared =
-  | { readonly kind: 'ready'; readonly body: { readonly attachment?: AttachmentBody } }
+  | { readonly kind: 'ready'; readonly attachment: AttachmentBody | undefined }
   | { readonly kind: 'failed' }
 
 async function prepare(source: AttachmentSource | undefined, deps: SendDeps): Promise<Prepared> {
   if (source === undefined) {
-    return { kind: 'ready', body: {} }
+    return { kind: 'ready', attachment: undefined }
   }
   const result = await prepareAttachment(deps.port, source, {
     signal: deps.signal,
@@ -87,7 +96,7 @@ async function prepare(source: AttachmentSource | undefined, deps: SendDeps): Pr
     deps.printError(`jaypost: ${result.message}`)
     return { kind: 'failed' }
   }
-  return { kind: 'ready', body: { attachment: result.attachment } }
+  return { kind: 'ready', attachment: result.attachment }
 }
 
 function toTokenOption(token: ClientToken): { readonly token?: string } {

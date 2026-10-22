@@ -200,3 +200,12 @@ export type SendDeps = {
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
 }
+
+/** What direct `send` reads and writes; aborting `signal` cancels a pending question. */
+export type DirectSendDeps = {
+  readonly env: NodeJS.ProcessEnv
+  readonly providers: readonly Provider[]
+  readonly signal: AbortSignal
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
+}

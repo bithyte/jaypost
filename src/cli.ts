@@ -14,6 +14,8 @@ import {
   defaultFetchStatus,
   runFinishUpdate,
   runAudit,
+  runDirectSendNotify,
+  runDirectSendRequest,
   runInit,
   runLog,
   runOwner,
@@ -27,9 +29,11 @@ import {
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
-import type { InitArgs, LogArgs, SendDeps } from './commands/index.ts'
-import { DEFAULT_PORT, loadConfig, PORT_ENV_VAR, VERSION } from './config/index.ts'
+import type { DirectSendDeps, InitArgs, LogArgs, SendDeps } from './commands/index.ts'
+import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
 import { runService } from './daemon/index.ts'
+import { resolveSendMode } from './direct/index.ts'
+import type { SendMode } from './direct/index.ts'
 import { MESSAGE_FORMATS } from './format/index.ts'
 import type { MessageFormat } from './format/index.ts'
 import { readHookInput, runHook } from './hook/index.ts'
@@ -145,6 +149,28 @@ function createSendDeps(flagPort: number | undefined, signal: AbortSignal): Send
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
   }
+}
+
+function createDirectSendDeps(signal: AbortSignal): DirectSendDeps {
+  return {
+    env: process.env,
+    providers: PROVIDERS,
+    signal,
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+  }
+}
+
+/** The send mode from `JAYPOST_MODE`; an unknown value is a usage error (exit 2). */
+function requireSendMode(command: Command): Exclude<SendMode, { readonly kind: 'invalid' }> {
+  const mode = resolveSendMode(process.env)
+  if (mode.kind === 'invalid') {
+    command.error(
+      `error: ${MODE_ENV_VAR} must be "direct" or "service", got ${JSON.stringify(mode.value)}`,
+      { exitCode: 2 },
+    )
+  }
+  return mode
 }
 
 function createHookDeps(flagPort: number | undefined, signal: AbortSignal): HookDeps {
@@ -530,6 +556,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly port?: number
         },
       ) => {
+        const mode = requireSendMode(request)
         if (options.attachName !== undefined && options.attach === undefined) {
           request.error("error: option '--attach-name <name>' needs '--attach <file>'", {
             exitCode: 2,
@@ -541,24 +568,29 @@ export async function main(argv: readonly string[]): Promise<number> {
             exitCode: 2,
           })
         }
-        code = await runWithSignals((controller) =>
-          runSendRequest(
-            {
-              text,
-              ...(options.option === undefined
-                ? {}
-                : { options: toButtons(options.option, options.default, options.allowText) }),
-              ...(options.allowText === undefined ? {} : { allowText: options.allowText }),
-              timeoutOption: options.default,
-              ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
-              ...(options.project === undefined ? {} : { project: options.project }),
-              ...(options.format === undefined ? {} : { format: options.format }),
-              ...(options.json === undefined ? {} : { json: options.json }),
-              ...(attachment === undefined ? {} : { attachment }),
-            },
-            createSendDeps(options.port, controller.signal),
-          ),
-        )
+        const args = {
+          text,
+          ...(options.option === undefined
+            ? {}
+            : { options: toButtons(options.option, options.default, options.allowText) }),
+          ...(options.allowText === undefined ? {} : { allowText: options.allowText }),
+          timeoutOption: options.default,
+          ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
+          ...(options.project === undefined ? {} : { project: options.project }),
+          ...(options.format === undefined ? {} : { format: options.format }),
+          ...(options.json === undefined ? {} : { json: options.json }),
+          ...(attachment === undefined ? {} : { attachment }),
+        }
+        // A cancelled CI run sends SIGTERM; the question is still edited to the cancelled line.
+        code =
+          mode.kind === 'direct'
+            ? await runWithSignals(
+                (controller) => runDirectSendRequest(args, createDirectSendDeps(controller.signal)),
+                ['SIGINT', 'SIGTERM'],
+              )
+            : await runWithSignals((controller) =>
+                runSendRequest(args, createSendDeps(options.port, controller.signal)),
+              )
       },
     )
   const notify = send
@@ -592,23 +624,28 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly port?: number
         },
       ) => {
+        const mode = requireSendMode(notify)
         if (options.attachName !== undefined && options.attach === undefined) {
           notify.error("error: option '--attach-name <name>' needs '--attach <file>'", {
             exitCode: 2,
           })
         }
         const attachment = toAttachmentSource(options.attach, options.attachName)
-        code = await runWithSignals((controller) =>
-          runSendNotify(
-            {
-              text,
-              ...(options.project === undefined ? {} : { project: options.project }),
-              ...(options.format === undefined ? {} : { format: options.format }),
-              ...(attachment === undefined ? {} : { attachment }),
-            },
-            createSendDeps(options.port, controller.signal),
-          ),
-        )
+        const args = {
+          text,
+          ...(options.project === undefined ? {} : { project: options.project }),
+          ...(options.format === undefined ? {} : { format: options.format }),
+          ...(attachment === undefined ? {} : { attachment }),
+        }
+        code =
+          mode.kind === 'direct'
+            ? await runWithSignals(
+                (controller) => runDirectSendNotify(args, createDirectSendDeps(controller.signal)),
+                ['SIGINT', 'SIGTERM'],
+              )
+            : await runWithSignals((controller) =>
+                runSendNotify(args, createSendDeps(options.port, controller.signal)),
+              )
       },
     )
   program
