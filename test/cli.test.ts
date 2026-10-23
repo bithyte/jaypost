@@ -123,28 +123,6 @@ test('send request adds the default as the last button unless an option names it
   ])
 })
 
-test('test --port sends to that port, over the install and PORT', async () => {
-  const urls: (string | undefined)[] = []
-  const server = createServer((request, response) => {
-    urls.push(request.url)
-    request.resume()
-    request.on('end', () => {
-      response.setHeader('content-type', 'application/json')
-      response.end(JSON.stringify({ answer: 'Approve', timedOut: false }))
-    })
-  })
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const port = String((server.address() as AddressInfo).port)
-  vi.stubEnv('PORT', '1')
-  vi.spyOn(console, 'log').mockImplementation(() => {})
-  try {
-    expect(await main(['test', '--port', port])).toBe(0)
-  } finally {
-    server.close()
-  }
-  expect(urls).toEqual(['/request'])
-})
-
 async function listenForRequests(): Promise<{
   readonly port: number
   readonly urls: (string | undefined)[]
@@ -166,6 +144,30 @@ async function listenForRequests(): Promise<{
     close: () => server.close(),
   }
 }
+
+test('test --port sends to that port, over the install and JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const flagListener = await listenForRequests()
+  const installListener = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'))
+  writeFileSync(
+    join(directory, 'jaypost', 'install.json'),
+    JSON.stringify({ target: 'systemd', port: installListener.port, version: VERSION }),
+  )
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['test', '--port', String(flagListener.port)])).toBe(0)
+  } finally {
+    flagListener.close()
+    installListener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(flagListener.urls).toEqual(['/request'])
+  expect(installListener.urls).toEqual([])
+})
 
 test('test without --port uses the install port over JAYPOST_PORT', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))

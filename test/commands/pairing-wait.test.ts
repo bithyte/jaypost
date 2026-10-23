@@ -88,7 +88,7 @@ test('waitForPairing shows the service start, then notes the pairing code', asyn
   ])
 })
 
-test('already paired at the first answer shows no pairing step', async () => {
+test('already paired at the first answer still closes the pairing step', async () => {
   const { progress, events } = createRecordingProgress()
   const result = await waitForPairing({
     ...base,
@@ -96,7 +96,12 @@ test('already paired at the first answer shows no pairing step', async () => {
     progress,
   })
   expect(result).toBe('paired')
-  expect(events).toEqual(['start:Waiting for the service to start', 'succeed:Service is up'])
+  expect(events).toEqual([
+    'start:Waiting for the service to start',
+    'succeed:Service is up',
+    'start:Waiting for pairing',
+    'succeed:Paired',
+  ])
 })
 
 test('abort returns interrupted and says the service is still running', async () => {

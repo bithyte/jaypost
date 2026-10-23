@@ -74,3 +74,42 @@ test('a signal that is not re-raised keeps the exit code run returned', async ()
   const result = await runChild(['SIGHUP'], 'SIGTERM')
   expect(result).toEqual({ stdout: 'ready\naborted\nsettled 7\n', code: 7, signal: null })
 })
+
+test('a second signal ends a run that ignores the abort', async () => {
+  const script = `
+import { runWithSignals } from ${JSON.stringify(COMMANDS_URL)}
+await runWithSignals(
+  async (controller) => {
+    setInterval(() => {}, 1000)
+    controller.signal.addEventListener('abort', () => process.stdout.write('aborted\\n'))
+    process.stdout.write('ready\\n')
+    await new Promise(() => {})
+    return 0
+  },
+  ['SIGINT', 'SIGTERM'],
+)
+`
+  const result = await new Promise<ChildResult>((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: fileURLToPath(new URL('../..', import.meta.url)),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    // Without the fix the child never exits; SIGKILL makes that a failure instead of a hang.
+    const fallback = setTimeout(() => child.kill('SIGKILL'), 3000)
+    let stdout = ''
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+      // The first signal aborts but the run never settles; the second must end the process.
+      if (stdout === 'ready\n' || stdout === 'ready\naborted\n') {
+        child.kill('SIGTERM')
+      }
+    })
+    child.on('error', reject)
+    child.on('close', (code, signal) => {
+      clearTimeout(fallback)
+      resolve({ stdout, code, signal })
+    })
+  })
+  expect(result).toEqual({ stdout: 'ready\naborted\n', code: null, signal: 'SIGTERM' })
+})

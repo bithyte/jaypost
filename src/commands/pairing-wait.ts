@@ -91,9 +91,6 @@ async function pollPairing(options: WaitOptions, holder: StepHolder): Promise<Wa
       if (!answered) {
         answered = true
         holder.current().succeed('Service is up')
-        if (fetched.status.paired) {
-          return 'paired'
-        }
         holder.replace(progress.start('Waiting for pairing'))
       }
       if (fetched.status.paired) {

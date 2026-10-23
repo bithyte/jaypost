@@ -555,7 +555,11 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('test')
     .description('send a test approval request')
-    .option('--port <n>', 'API port (default: the install, then PORT, then 8787)', parsePort)
+    .option(
+      '--port <n>',
+      'API port (default: the install, then JAYPOST_PORT, then 8787)',
+      parsePort,
+    )
     .action(async (options: { readonly port?: number }) => {
       const port =
         options.port ?? readInstall(resolveInstallPaths().installFile)?.port ?? resolvePort()
