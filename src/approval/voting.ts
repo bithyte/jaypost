@@ -6,6 +6,7 @@ import type { ApprovalService } from './service.ts'
 import { decideVote } from './vote.ts'
 import type {
   ApprovalRequest,
+  AskProgress,
   RetryResult,
   RoundEnd,
   Vote,
@@ -35,20 +36,29 @@ export class VoterSendError extends SendError {
 /**
  * Asks `request` up to `retryCount + 1` times, asking again only after a timeout; every round but
  * the last ends its message as re-asked. Throws `SendError` like `ApprovalService.request`. An
- * aborted `signal` resolves as cancelled and asks nothing more.
+ * aborted `signal` resolves as cancelled and asks nothing more. `onProgress` gets `sent` once each
+ * round's message is out.
  */
 export async function askWithRetries(
-  service: Pick<ApprovalService, 'request'>,
+  service: Pick<ApprovalService, 'send'>,
   request: ApprovalRequest,
   retryCount: number,
   signal: AbortSignal,
+  onProgress?: (event: AskProgress) => void,
 ): Promise<RetryResult> {
   for (let round = 1; ; round += 1) {
     if (signal.aborted) {
       return CANCELLED_RESULT
     }
     const isLast = round > retryCount
-    const result = await service.request({ ...request, reaskOnTimeout: !isLast }, signal)
+    const sent = await service.send({ ...request, reaskOnTimeout: !isLast }, signal)
+    onProgress?.({
+      kind: 'sent',
+      round,
+      roundCount: retryCount + 1,
+      timeoutSeconds: request.timeoutSeconds,
+    })
+    const result = await sent.result
     if (result.kind === 'cancelled') {
       return result
     }
@@ -66,15 +76,17 @@ export async function askWithRetries(
  * Rounds running out reject, counting missing votes as rejections. Throws `VoterSendError` when a
  * send fails, after cancelling the messages that were sent. An aborted `signal` cancels every open
  * message and resolves as cancelled. Settles only once every update it sent has landed.
+ * `onProgress` gets `sent` once every send of a round is out and `voted` after each recorded vote.
  */
 export async function runVote(
   service: VoteService,
   vote: Vote,
   signal: AbortSignal,
+  onProgress?: (event: AskProgress) => void,
 ): Promise<VoteResult> {
   const state: VoteState = { answers: new Map(), latest: new Map(), updates: [] }
   try {
-    return await runRounds(service, vote, state, signal)
+    return await runRounds(service, vote, state, signal, onProgress)
   } finally {
     // So no update is still on its way when the caller exits.
     await Promise.all(state.updates)
@@ -86,6 +98,7 @@ async function runRounds(
   vote: Vote,
   state: VoteState,
   signal: AbortSignal,
+  onProgress: ((event: AskProgress) => void) | undefined,
 ): Promise<VoteResult> {
   const roundCount = vote.retryCount + 1
   for (let round = 1; round <= roundCount; round += 1) {
@@ -93,7 +106,15 @@ async function runRounds(
       return CANCELLED_VOTE
     }
     const asked = vote.voters.filter((voter) => !state.answers.has(voter))
-    const end = await runRound(service, vote, asked, round === roundCount, state, signal)
+    const end = await runRound(
+      service,
+      vote,
+      asked,
+      { round, roundCount },
+      state,
+      signal,
+      onProgress,
+    )
     if (end.kind === 'cancelled') {
       return CANCELLED_VOTE
     }
@@ -104,15 +125,19 @@ async function runRounds(
   return toVoteResult(vote, state.answers, false, roundCount, true)
 }
 
+type RoundPosition = { readonly round: number; readonly roundCount: number }
+
 /** Sends one round to `asked` and records their votes in `state` as they arrive. */
 async function runRound(
   service: VoteService,
   vote: Vote,
   asked: readonly string[],
-  isLast: boolean,
+  position: RoundPosition,
   state: VoteState,
   signal: AbortSignal,
+  onProgress: ((event: AskProgress) => void) | undefined,
 ): Promise<RoundEnd> {
+  const isLast = position.round === position.roundCount
   const controllers = asked.map(() => new AbortController())
   const abortAll = () => {
     for (const controller of controllers) {
@@ -146,7 +171,12 @@ async function runRound(
     for (const question of questions) {
       state.latest.set(question.voter, question)
     }
-    return await collectRound(service, vote, questions, state)
+    onProgress?.({
+      kind: 'sent',
+      ...position,
+      timeoutSeconds: vote.request.timeoutSeconds,
+    })
+    return await collectRound(service, vote, questions, state, position, onProgress)
   } finally {
     signal.removeEventListener('abort', abortAll)
   }
@@ -161,6 +191,8 @@ async function collectRound(
   vote: Vote,
   questions: readonly VoterQuestion[],
   state: VoteState,
+  position: RoundPosition,
+  onProgress: ((event: AskProgress) => void) | undefined,
 ): Promise<RoundEnd> {
   const { answers } = state
   const waiting = new Map(
@@ -181,6 +213,12 @@ async function collectRound(
       continue
     }
     answers.set(voter, result.outcome.answer)
+    onProgress?.({
+      kind: 'voted',
+      ...position,
+      votedCount: answers.size,
+      voterCount: vote.voters.length,
+    })
     const decision = decideVote(vote.rule, countVotes(vote, answers))
     if (decision !== 'undecided') {
       const approved = decision === 'approved'

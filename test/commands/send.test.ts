@@ -16,14 +16,19 @@ import type {
   MessageReference,
   Messenger,
 } from '../../src/approval/index.ts'
-import { runSendNotify, runSendRequest } from '../../src/commands/index.ts'
+import { formatWaitTitle, runSendNotify, runSendRequest } from '../../src/commands/index.ts'
 import type { SendDeps } from '../../src/commands/index.ts'
 import { NotificationService } from '../../src/notify/index.ts'
 import type { Notifier } from '../../src/notify/index.ts'
 import { NO_AUTH, NO_CLIENT_TOKEN } from '../../src/auth/index.ts'
 import type { ApiAuth, ClientToken } from '../../src/auth/index.ts'
 import { TOKEN_REJECTED_MESSAGE, toLocalEndpoint } from '../../src/client/index.ts'
+import { SILENT_PROGRESS } from '../../src/progress/index.ts'
+import type { Progress } from '../../src/progress/index.ts'
+import { PROVIDERS } from '../../src/provider/index.ts'
 import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
+import { telegramProvider } from '../../src/telegram/index.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
 const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
@@ -35,6 +40,8 @@ class RecordingMessenger implements Messenger {
   attachments: (Attachment | undefined)[] = []
   finalized: MessageEnding[] = []
   failSend = false
+  /** When set, `sendRequest` waits for it before resolving. */
+  gate: Promise<void> | undefined
 
   async sendRequest(
     id: string,
@@ -51,6 +58,7 @@ class RecordingMessenger implements Messenger {
     this.recipients.push(recipient)
     this.attachments.push(attachment)
     this.messages.push(message)
+    await this.gate
     return REFERENCE
   }
 
@@ -95,6 +103,7 @@ async function startApi(
     readonly notifications?: boolean
     readonly auth?: ApiAuth
     readonly maxAttachmentBytes?: number
+    readonly provider?: string
   } = {},
 ) {
   const messenger = new RecordingMessenger()
@@ -103,7 +112,11 @@ async function startApi(
   const server = createApiServer(
     createSingleBotRouter({
       service,
-      status: () => ({ paired: true, bot: 'b' }),
+      status: () => ({
+        paired: true,
+        bot: 'b',
+        ...(options.provider === undefined ? {} : { provider: options.provider }),
+      }),
       maxTextLength: 3900,
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       providerName: 'test',
@@ -124,6 +137,7 @@ function createDeps(
   port: number,
   signal = new AbortController().signal,
   token: ClientToken = NO_CLIENT_TOKEN,
+  extra: Partial<SendDeps> = {},
 ) {
   const out: string[] = []
   const errors: string[] = []
@@ -133,6 +147,9 @@ function createDeps(
     token,
     print: (text) => out.push(text),
     printError: (text) => errors.push(text),
+    progress: SILENT_PROGRESS,
+    providers: PROVIDERS,
+    ...extra,
   }
   return { deps, out, errors }
 }
@@ -248,6 +265,26 @@ test('notify sends and prints nothing', async () => {
   const { deps, out, errors } = createDeps(port)
   expect(await runSendNotify({ text: 'done', project: 'api' }, deps)).toBe(0)
   expect(notifier.sent).toEqual(['[api]\n\ndone'])
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('a live send notify says it was sent', async () => {
+  const { port } = await startApi({ provider: 'telegram' })
+  const { progress, events } = createRecordingProgress()
+  const { deps, out, errors } = createDeps(port, undefined, undefined, { progress })
+  expect(await runSendNotify({ text: 'done' }, deps)).toBe(0)
+  expect(events).toEqual(['done:Sent to Telegram'])
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('send notify off a terminal prints nothing', async () => {
+  const { port } = await startApi()
+  const { progress, events } = createRecordingProgress('silent')
+  const { deps, out, errors } = createDeps(port, undefined, undefined, { progress })
+  expect(await runSendNotify({ text: 'done' }, deps)).toBe(0)
+  expect(events).toEqual([])
   expect(out).toEqual([])
   expect(errors).toEqual([])
 })
@@ -417,14 +454,11 @@ function runCli(args: readonly string[], port: number, stdin?: Readable | string
   })
 }
 
-test('send request --attach sends the file', async () => {
+test('request --attach sends the file', async () => {
   const { port, service, messenger } = await startApi()
   const path = join(createTempDirectory(), 'notes.md')
   writeFileSync(path, '# notes')
-  const pending = runCli(
-    ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach', path],
-    port,
-  )
+  const pending = runCli(['request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach', path], port)
   await waitFor(() => messenger.sent.length === 1)
   service.tap(messenger.sent[0]?.id ?? '', 0)
   expect(await pending).toEqual({ code: 0, stdout: 'Yes\n', stderr: '' })
@@ -432,23 +466,23 @@ test('send request --attach sends the file', async () => {
   expect(Buffer.from(messenger.attachments[0]?.content ?? []).toString()).toBe('# notes')
 })
 
-test('send notify --attach - reads stdin with the default name', async () => {
+test('notify --attach - reads stdin with the default name', async () => {
   const { port, notifier } = await startApi()
-  const result = await runCli(['send', 'notify', 'done', '--attach', '-'], port, 'hello')
+  const result = await runCli(['notify', 'done', '--attach', '-'], port, 'hello')
   expect(result).toEqual({ code: 0, stdout: '', stderr: '' })
   expect(notifier.attachments[0]?.name).toBe('attachment.txt')
   expect(Buffer.from(notifier.attachments[0]?.content ?? []).toString()).toBe('hello')
 })
 
-test('send notify --attach - --attach-name uses the name', async () => {
+test('notify --attach - --attach-name uses the name', async () => {
   const { port, notifier } = await startApi()
-  const args = ['send', 'notify', 'done', '--attach', '-', '--attach-name', 'changes.diff']
+  const args = ['notify', 'done', '--attach', '-', '--attach-name', 'changes.diff']
   const result = await runCli(args, port, 'diff')
   expect(result.code).toBe(0)
   expect(notifier.attachments[0]?.name).toBe('changes.diff')
 })
 
-test('send notify --attach - stops at the size cap on an endless stdin', async () => {
+test('notify --attach - stops at the size cap on an endless stdin', async () => {
   const { port, notifier } = await startApi()
   const endless = Readable.from(
     (function* () {
@@ -457,7 +491,7 @@ test('send notify --attach - stops at the size cap on an endless stdin', async (
       }
     })(),
   )
-  const result = await runCli(['send', 'notify', 'done', '--attach', '-'], port, endless)
+  const result = await runCli(['notify', 'done', '--attach', '-'], port, endless)
   endless.destroy()
   expect(result.code).toBe(1)
   expect(result.stderr).toBe(
@@ -534,4 +568,120 @@ test('retry against a service that ignores it keeps an answer that came in time'
   const { deps, out } = createDeps(port)
   expect(await runSendRequest({ ...ASK, retryCount: 1 }, deps)).toBe(0)
   expect(out).toEqual(['Approve'])
+})
+
+function createLiveDeps(port: number, signal = new AbortController().signal, mode?: 'silent') {
+  const { progress, events } = createRecordingProgress(mode ?? 'live')
+  const created = createDeps(port, signal, NO_CLIENT_TOKEN, {
+    progress: progress as Progress,
+    providers: [telegramProvider],
+    now: () => 0,
+    wallNow: () => Date.now() - 500,
+  })
+  return { ...created, events }
+}
+
+test('a live send request shows sent and the countdown, and prints only the answer', async () => {
+  const { port, service, messenger } = await startApi({ provider: 'telegram' })
+  const { deps, out, errors, events } = createLiveDeps(port)
+  const pending = runSendRequest(ASK, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  await waitFor(() => events.length >= 3)
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  expect(await pending).toBe(0)
+  expect(out).toEqual(['Approve'])
+  expect(errors).toEqual([])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Telegram',
+    'start:Waiting for your answer 5:00 left, then Decline',
+    'succeed:Answered after 0:00',
+  ])
+})
+
+test('a live send request that times out shows the timeout answer', async () => {
+  const { port } = await startApi({ provider: 'telegram' })
+  const { deps, out, events } = createLiveDeps(port)
+  expect(await runSendRequest({ ...ASK, timeout: 1 }, deps)).toBe(0)
+  expect(events.at(-1)).toBe('succeed:Timed out, answered Decline')
+  expect(out).toEqual(['Decline'])
+})
+
+test('a live send request --json prints the same object as before', async () => {
+  const { port } = await startApi({ provider: 'telegram' })
+  const { deps, out } = createLiveDeps(port)
+  expect(await runSendRequest({ ...ASK, timeout: 1, json: true }, deps)).toBe(0)
+  expect(out).toEqual(['{"answer":"Decline","timedOut":true}'])
+})
+
+test('aborting a live send request cancels the question on the service', async () => {
+  const { port, messenger } = await startApi({ provider: 'telegram' })
+  const controller = new AbortController()
+  const { deps, out, errors, events } = createLiveDeps(port, controller.signal)
+  const pending = runSendRequest(ASK, deps)
+  await waitFor(() => events.length >= 3)
+  controller.abort()
+  expect(await pending).toBe(1)
+  expect(out).toEqual([])
+  expect(errors).toEqual(['jaypost: cancelled'])
+  expect(events.at(-1)).toBe('cancel:Cancelled, the question was withdrawn')
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+})
+
+test('aborting a live send request while it is still sending cancels it once sent', async () => {
+  const { port, messenger } = await startApi({ provider: 'telegram' })
+  let open: () => void = () => {}
+  messenger.gate = new Promise<void>((resolve) => {
+    open = resolve
+  })
+  const controller = new AbortController()
+  const { deps, errors, events } = createLiveDeps(port, controller.signal)
+  const pending = runSendRequest(ASK, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  controller.abort()
+  open()
+  expect(await pending).toBe(1)
+  expect(errors).toEqual(['jaypost: cancelled'])
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+  expect(events.some((event) => event.startsWith('succeed:Sent'))).toBe(false)
+  expect(events.at(-1)).toBe('cancel:Cancelled, the question was withdrawn')
+})
+
+test('a send request off a terminal writes no progress and prints the same answer', async () => {
+  const { port, service, messenger } = await startApi({ provider: 'telegram' })
+  const { deps, out, events } = createLiveDeps(port, undefined, 'silent')
+  const pending = runSendRequest(ASK, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  expect(await pending).toBe(0)
+  expect(events).toEqual([])
+  expect(out).toEqual(['Approve'])
+})
+
+test('a live send request says Sent when the service does not report its provider', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, events } = createLiveDeps(port)
+  const pending = runSendRequest(ASK, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  await waitFor(() => events.length >= 3)
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  expect(await pending).toBe(0)
+  expect(events[1]).toBe('succeed:Sent')
+})
+
+test('a live send request that fails marks the step failed and prints the message', async () => {
+  const { port } = await startApi({ provider: 'telegram' })
+  const { deps, out, errors, events } = createLiveDeps(port)
+  expect(await runSendRequest({ ...ASK, timeoutOption: 'Maybe' }, deps)).toBe(1)
+  expect(out).toEqual([])
+  expect(errors[0]).toMatch(/^jaypost: .*timeoutOption/)
+  expect(events.at(-1)).toBe('fail:Sending')
+})
+
+test('formatWaitTitle counts down with the timeout answer', () => {
+  expect(formatWaitTitle(288_000, 'Decline')).toBe(
+    'Waiting for your answer 4:48 left, then Decline',
+  )
 })

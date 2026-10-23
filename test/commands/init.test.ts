@@ -10,6 +10,7 @@ import { resolveInstallPaths, readInstall, writeInstall } from '../../src/instal
 import type { InstallPaths, Secrets, Target, TargetName } from '../../src/install/index.ts'
 import type { CredentialCheck, Provider, SettingValues } from '../../src/provider/index.ts'
 import { telegramProvider } from '../../src/telegram/index.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -17,13 +18,17 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 let tmp: string
 let paths: InstallPaths
 let order: string[]
-let out: string[]
+let recording = createRecordingProgress()
+
+function notes(): string[] {
+  return recording.notes()
+}
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'init-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   order = []
-  out = []
+  recording = createRecordingProgress()
 })
 
 const TOKEN = 'saved-api-token-'.padEnd(43, 'x')
@@ -106,7 +111,7 @@ function deps(over: Partial<InitDeps> & { targets?: Record<TargetName, Target> }
       return true
     }),
     wait: vi.fn(async () => 'paired' as const),
-    print: (s) => out.push(s),
+    progress: recording.progress,
     version: '1.2.3',
     env: {},
     platform: 'linux',
@@ -126,7 +131,7 @@ test('fresh install: default target, default port, writes install record', async
     expect.objectContaining({ port: 8787, settings: { botToken: 'good-token' }, version: '1.2.3' }),
   )
   expect(readInstall(paths.installFile)?.target).toBe('quadlet')
-  expect(out.join('\n')).toContain('Done. Try it: jaypost test')
+  expect(notes().join('\n')).toContain('Done. Try it: jaypost ping')
 })
 
 test('passes the time zone to the target install when given', async () => {
@@ -194,7 +199,7 @@ test('requested target unavailable returns 1 with the reason', async () => {
     },
   })
   expect(await runInit({ target: 'quadlet' }, d)).toBe(1)
-  expect(out.join('\n')).toContain('quadlet missing')
+  expect(notes().join('\n')).toContain('quadlet missing')
   expect(d.targets.compose.install).not.toHaveBeenCalled()
 })
 
@@ -208,7 +213,7 @@ test('no target available returns 1 with reasons', async () => {
     },
   })
   expect(await runInit({}, d)).toBe(1)
-  expect(out.join('\n')).toContain('compose missing')
+  expect(notes().join('\n')).toContain('compose missing')
 })
 
 test('invalid token reprompts without echoing Telegram errors', async () => {
@@ -227,7 +232,7 @@ test('invalid token reprompts without echoing Telegram errors', async () => {
   // first call rejects: checkCredentials is documented to never throw, but be safe
   expect(await runInit({}, d)).toBe(0)
   expect(secret).toHaveBeenCalledTimes(3)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('Telegram rejected that token (or could not be reached). Try again.')
   expect(text).not.toContain('SECRET-ERR')
   expect(text).not.toContain('ECONNREFUSED')
@@ -253,13 +258,13 @@ test('stored token invalid falls back to prompt', async () => {
   })
   expect(await runInit({}, d)).toBe(0)
   expect(d.prompt.password).toHaveBeenCalledTimes(1)
-  expect(out.join('\n')).not.toContain('stale')
+  expect(notes().join('\n')).not.toContain('stale')
 })
 
 test('port in use returns 1 before install', async () => {
   const d = deps({ isPortFree: vi.fn(async () => false) })
   expect(await runInit({ port: 9999 }, d)).toBe(1)
-  expect(out.join('\n')).toContain('Port 9999 is in use. Pick another with --port.')
+  expect(notes().join('\n')).toContain('Port 9999 is in use. Pick another with --port.')
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
@@ -273,10 +278,10 @@ test('interrupted wait returns 130 and leaves the service', async () => {
 
 test('not-started and stopped return 1 with logs hint', async () => {
   for (const r of ['notStarted', 'stopped'] as const) {
-    out = []
+    recording = createRecordingProgress()
     const d = deps({ wait: vi.fn(async () => r) })
     expect(await runInit({}, d)).toBe(1)
-    expect(out.join('\n')).toContain('logs for quadlet')
+    expect(notes().join('\n')).toContain('logs for quadlet')
   }
 })
 
@@ -295,7 +300,7 @@ test('legacy systemd unit is replaced and its config reused', async () => {
     },
   })
   expect(await runInit({ target: 'systemd' }, d)).toBe(0)
-  expect(out.join('\n').toLowerCase()).toContain('legacy')
+  expect(notes().join('\n').toLowerCase()).toContain('legacy')
   expect(order).toEqual(['remove', 'port', 'install:systemd'])
   expect(old.install).toHaveBeenCalledWith(
     expect.objectContaining({ settings: { botToken: 'lt', ownerId: 7 }, port: 9123 }),
@@ -397,7 +402,7 @@ test('install throwing returns 1 with generic message, no secrets', async () => 
     throw new Error('boom good-token')
   })
   expect(await runInit({}, d)).toBe(1)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('Install failed: boom ***')
   expect(text).toContain('Run jaypost init again')
   expect(text).not.toContain('good-token')
@@ -436,7 +441,7 @@ test('target error message is shown with a reused token redacted', async () => {
     throw new Error('npm install failed: bad url https://x/bot123:SECRET/getMe')
   })
   expect(await runInit({ target: 'quadlet' }, d)).toBe(1)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('npm install failed: bad url https://x/bot***/getMe')
   expect(text).not.toContain('123:SECRET')
 })
@@ -463,7 +468,7 @@ test('failure after removing the old target keeps install.json so a re-run reuse
     throw new Error('podman build failed (exit 1)')
   })
   expect(await runInit({ target: 'quadlet' }, deps({ targets }))).toBe(1)
-  expect(out.join('\n')).toContain('podman build failed (exit 1)')
+  expect(notes().join('\n')).toContain('podman build failed (exit 1)')
   expect(readInstall(paths.installFile)?.target).toBe('compose')
 
   targets.quadlet.install = fake('quadlet').install
@@ -501,8 +506,8 @@ test('no install record: reuses a token and owner kept by uninstall, no replace 
   expect(d.targets.compose.install).toHaveBeenCalledWith(
     expect.objectContaining({ settings: { botToken: 'KTOK', ownerId: 11 } }),
   )
-  expect(out.join('\n')).toContain('Reusing the saved bot token (@mybot).')
-  expect(out.join('\n')).not.toContain('KTOK')
+  expect(notes().join('\n')).toContain('Reusing the saved bot token (@mybot).')
+  expect(notes().join('\n')).not.toContain('KTOK')
 })
 
 test('no install record: leftover token from a container .env, rejected token prompts', async () => {
@@ -537,7 +542,7 @@ test('a reused secret is masked when removing the old install fails', async () =
     },
   })
   expect(await runInit({ target: 'quadlet' }, d)).toBe(1)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('Install failed: down failed: ***')
   expect(text).not.toContain('TOK1')
 })
@@ -547,8 +552,8 @@ test('single provider: no provider prompt and unchanged output', async () => {
   expect(await runInit({}, d)).toBe(0)
   expect(d.prompt.select).toHaveBeenCalledTimes(1)
   expect(vi.mocked(d.prompt.select).mock.calls[0]?.[0]).toBe('Where should the bot run?')
-  expect(out).toEqual([
-    'Done. Try it: jaypost test',
+  expect(notes()).toEqual([
+    'Done. Try it: jaypost ping',
     'Check state: jaypost status',
     savedToLine(),
     'Logs: logs for quadlet',
@@ -558,7 +563,7 @@ test('single provider: no provider prompt and unchanged output', async () => {
 test('--provider unknown returns 1', async () => {
   const d = deps()
   expect(await runInit({ provider: 'nope' }, d)).toBe(1)
-  expect(out).toContain('Unknown provider "nope".')
+  expect(notes()).toContain('Unknown provider "nope".')
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
@@ -642,7 +647,7 @@ test('leftover secrets of another provider are not reused', async () => {
   )
   const d = deps({ providers: [telegram(), createFakeProvider()] })
   expect(await runInit({ provider: 'fake' }, d)).toBe(0)
-  expect(out).not.toContain(telegramProvider.setup.text.leftoverFound)
+  expect(notes()).not.toContain(telegramProvider.setup.text.leftoverFound)
   expect(d.prompt.password).toHaveBeenCalledWith('Fake key')
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(
     expect.objectContaining({ settings: { fakeKey: 'good-token' } }),
@@ -665,7 +670,7 @@ test('every secret setting value is masked in errors', async () => {
     throw new Error('boom SECRET-ONE SECRET-TWO')
   })
   expect(await runInit({}, d)).toBe(1)
-  expect(out).toContain('Install failed: boom *** ***')
+  expect(notes()).toContain('Install failed: boom *** ***')
 })
 
 test('non-secret prompted setting uses the text prompt', async () => {
@@ -689,7 +694,7 @@ test('a provider with nothing to prompt and rejected credentials returns 1', asy
   })
   const d = deps({ providers: [provider] })
   expect(await runInit({}, d)).toBe(1)
-  expect(out).toEqual([provider.setup.text.rejected])
+  expect(notes()).toEqual([provider.setup.text.rejected])
   expect(d.prompt.password).not.toHaveBeenCalled()
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
@@ -711,8 +716,8 @@ test('fresh install generates a token, saves it before installing, and passes it
   )
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token }))
   expect(wasAsked(d)).toBe(false)
-  expect(out).toContain(savedToLine())
-  expect(out.join('\n')).not.toContain(token)
+  expect(notes()).toContain(savedToLine())
+  expect(notes().join('\n')).not.toContain(token)
 })
 
 test('a valid token file is reused without asking', async () => {
@@ -724,10 +729,10 @@ test('a valid token file is reused without asking', async () => {
     expect.objectContaining({ auth: { kind: 'token', token: TOKEN } }),
   )
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
-  expect(out).toContain('Reusing the saved API token.')
+  expect(notes()).toContain('Reusing the saved API token.')
   expect(wasAsked(d)).toBe(false)
   expect(savedToken()).toBe(TOKEN)
-  expect(out.join('\n')).not.toContain(TOKEN)
+  expect(notes().join('\n')).not.toContain(TOKEN)
 })
 
 test('replacing an install without a token file asks, and yes makes one', async () => {
@@ -740,7 +745,7 @@ test('replacing an install without a token file asks, and yes makes one', async 
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(
     expect.objectContaining({ auth: { kind: 'token', token } }),
   )
-  expect(out).toContain(savedToLine())
+  expect(notes()).toContain(savedToLine())
 })
 
 test('answering no installs without a token', async () => {
@@ -750,7 +755,7 @@ test('answering no installs without a token', async () => {
   expect(await runInit({}, d)).toBe(0)
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: NO_AUTH }))
   expect(d.wait).toHaveBeenCalledWith(expect.not.objectContaining({ token: expect.anything() }))
-  expect(out).toContain(NO_TOKEN_LINE)
+  expect(notes()).toContain(NO_TOKEN_LINE)
   expect(existsSync(paths.tokenFile)).toBe(false)
 })
 
@@ -776,7 +781,7 @@ test('--no-token removes the token file only after the install succeeds', async 
   expect(await runInit({ token: false }, d)).toBe(0)
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: NO_AUTH }))
   expect(existsSync(paths.tokenFile)).toBe(false)
-  expect(out).toContain(NO_TOKEN_LINE)
+  expect(notes()).toContain(NO_TOKEN_LINE)
 })
 
 test('an invalid token file is replaced without asking', async () => {
@@ -790,16 +795,16 @@ test('an invalid token file is replaced without asking', async () => {
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(
     expect.objectContaining({ auth: { kind: 'token', token } }),
   )
-  expect(out).toContain('The saved API token was invalid; made a new one.')
+  expect(notes()).toContain('The saved API token was invalid; made a new one.')
   expect(wasAsked(d)).toBe(false)
-  expect(out.join('\n')).not.toContain('short-secret')
+  expect(notes().join('\n')).not.toContain('short-secret')
 })
 
 test('an unreadable token file fails the install', async () => {
   mkdirSync(paths.tokenFile, { recursive: true })
   const d = deps()
   expect(await runInit({}, d)).toBe(1)
-  expect(out.join('\n')).toContain('Install failed:')
+  expect(notes().join('\n')).toContain('Install failed:')
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
@@ -810,7 +815,7 @@ test('the token is masked in install errors', async () => {
     throw new Error(`boom ${TOKEN}`)
   })
   expect(await runInit({}, d)).toBe(1)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('Install failed: boom ***')
   expect(text).not.toContain(TOKEN)
 })
@@ -838,5 +843,81 @@ test('a stale JAYPOST_TOKEN in the shell does not reach the wait', async () => {
 test('an unauthorized wait returns 1 with the hint', async () => {
   const d = deps({ wait: vi.fn(async () => 'unauthorized' as const) })
   expect(await runInit({}, d)).toBe(1)
-  expect(out).toContain(TOKEN_REJECTED_MESSAGE)
+  expect(notes()).toContain(TOKEN_REJECTED_MESSAGE)
 })
+
+test('init ticks the checks and runs the install as a checklist', async () => {
+  const d = deps({ platform: 'linux', targets: systemdFirst() })
+  expect(await runInit({ target: 'systemd' }, d)).toBe(0)
+  const { events } = recording
+  const doneIndex = events.findIndex((event) => event.startsWith('note:Done.'))
+  expect(events.slice(0, doneIndex)).toEqual([
+    'done:Bot token checked (@mybot)',
+    'done:Port 8787 is free',
+    'plan:Installing the systemd service|Waiting for the service to start|Waiting for pairing',
+    'start:Installing the systemd service',
+    'succeed:Installed the systemd service',
+  ])
+})
+
+test('init names the image build for container targets', async () => {
+  expect(await runInit({ target: 'compose' }, deps())).toBe(0)
+  expect(recording.events).toContain(
+    'plan:Building the compose image|Waiting for the service to start|Waiting for pairing',
+  )
+})
+
+test('init marks the install step failed before the install failed message', async () => {
+  const targets = systemdFirst()
+  vi.mocked(targets.systemd.install).mockRejectedValue(new Error('boom'))
+  expect(await runInit({ target: 'systemd' }, deps({ targets }))).toBe(1)
+  const { events } = recording
+  const failed = events.indexOf('fail:Installing the systemd service')
+  expect(failed).toBeGreaterThan(-1)
+  expect(failed).toBeLessThan(events.indexOf('note:Install failed: boom'))
+})
+
+test('init fails the install step when the install record cannot be written', async () => {
+  // A directory where install.json goes makes the write throw after the target installed.
+  mkdirSync(paths.installFile, { recursive: true })
+  expect(await runInit({ target: 'systemd' }, deps({ targets: systemdFirst() }))).toBe(1)
+  const { events } = recording
+  expect(events.slice(events.indexOf('start:Installing the systemd service'))).toEqual([
+    'start:Installing the systemd service',
+    'fail:Installing the systemd service',
+    expect.stringMatching(/^note:Install failed: /),
+    'note:Run jaypost init again. Check the logs for details.',
+  ])
+})
+
+test('init cancels the install step when interrupted during the install', async () => {
+  const controller = new AbortController()
+  const targets = systemdFirst()
+  vi.mocked(targets.systemd.install).mockImplementation(async () => {
+    controller.abort()
+    throw new Error('killed')
+  })
+  expect(await runInit({ target: 'systemd' }, deps({ targets, signal: controller.signal }))).toBe(
+    130,
+  )
+  expect(recording.events.slice(-2)).toEqual(['cancel:Installing the systemd service', 'note:'])
+})
+
+test('init passes the install step output to the target', async () => {
+  const targets = systemdFirst()
+  vi.mocked(targets.systemd.install).mockImplementation(async (options) => {
+    options.output?.('npm notice\n')
+    return { target: 'systemd', port: options.port, version: options.version }
+  })
+  expect(await runInit({ target: 'systemd' }, deps({ targets }))).toBe(0)
+  expect(recording.events).toContain('output:npm notice\n')
+})
+
+function systemdFirst(): Record<TargetName, Mutable<Target>> {
+  return {
+    quadlet: fake('quadlet'),
+    compose: fake('compose'),
+    systemd: fake('systemd'),
+    launchd: fake('launchd'),
+  }
+}

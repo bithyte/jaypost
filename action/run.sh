@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Runs `jaypost send` for the GitHub Action (action.yml): installs the release binary that matches
+# Runs `jaypost request` or `jaypost notify` for the GitHub Action (action.yml): installs the release binary that matches
 # this checkout's package.json version, builds the argv from the inputs and runs it in direct mode.
 # Reads INPUT_COMMAND, INPUT_TEXT, INPUT_OPTIONS, INPUT_DEFAULT, INPUT_TIMEOUT, INPUT_ALLOW_TEXT,
-# INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID (JAYPOST_MODE and
-# JAYPOST_PROVIDER pass through) and the runner's GITHUB_* and RUNNER_* variables.
+# INPUT_REQUIRE, INPUT_RETRY, INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID,
+# JAYPOST_APPROVERS (JAYPOST_MODE and JAYPOST_PROVIDER pass through) and the runner's GITHUB_* and RUNNER_* variables.
 # Exits with the binary's status; 2 means a bad input.
 set -euo pipefail
 
@@ -18,6 +18,9 @@ options="${INPUT_OPTIONS:-}"
 default_answer="${INPUT_DEFAULT:-}"
 timeout_seconds="${INPUT_TIMEOUT:-}"
 allow_text="${INPUT_ALLOW_TEXT:-}"
+require="${INPUT_REQUIRE:-}"
+retry="${INPUT_RETRY:-}"
+approvers="${JAYPOST_APPROVERS:-}"
 
 if [ "${RUNNER_OS:-}" = Windows ]; then
   fail 1 "Windows runners aren't supported; see the npx example in the jaypost CI docs"
@@ -45,11 +48,23 @@ if [ "$command_name" = request ]; then
   if [ -z "$options" ] && [ "$allow_text" != true ]; then
     fail 2 "input options or allow-text: true is required for command request"
   fi
+  if [ -n "$approvers" ] && [ -z "$require" ]; then
+    fail 2 "input require is required with approvers (all or majority)"
+  fi
+  if [ -n "$require" ] && [ -z "$approvers" ]; then
+    fail 2 "input approvers is empty; pass it from a secret (a missing secret is empty too)"
+  fi
 else
   if [ -n "$options" ]; then fail 2 "input options only applies to command request"; fi
   if [ -n "$default_answer" ]; then fail 2 "input default only applies to command request"; fi
   if [ -n "$timeout_seconds" ]; then fail 2 "input timeout only applies to command request"; fi
   if [ "$allow_text" = true ]; then fail 2 "input allow-text only applies to command request"; fi
+  if [ -n "$approvers" ]; then fail 2 "input approvers only applies to command request"; fi
+  if [ -n "$require" ]; then fail 2 "input require only applies to command request"; fi
+  if [ -n "$retry" ]; then fail 2 "input retry only applies to command request"; fi
+fi
+if [ -z "$approvers" ]; then
+  unset JAYPOST_APPROVERS
 fi
 
 version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$GITHUB_ACTION_PATH/package.json")
@@ -68,7 +83,7 @@ fi
 
 project="${INPUT_PROJECT:-${GITHUB_REPOSITORY#*/}}"
 run_link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-args=(send "$command_name" "--project=$project")
+args=("$command_name" "--project=$project")
 if [ -n "${INPUT_FORMAT:-}" ]; then
   args+=("--format=$INPUT_FORMAT")
 fi
@@ -87,6 +102,12 @@ if [ -n "$timeout_seconds" ]; then
 fi
 if [ "$allow_text" = true ]; then
   args+=(--allow-text)
+fi
+if [ -n "$require" ]; then
+  args+=("--require=$require")
+fi
+if [ -n "$retry" ]; then
+  args+=("--retry=$retry")
 fi
 args+=(-- "$text"$'\n\n'"Workflow run: $run_link")
 

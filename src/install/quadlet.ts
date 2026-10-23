@@ -81,7 +81,7 @@ export function createQuadletTarget(deps: TargetDeps): Target {
       const build = await exec(
         'podman',
         ['build', '-t', formatImageTag(options.version), paths.quadletDirectory],
-        { inherit: true },
+        options.output === undefined ? { inherit: true } : { onOutput: options.output },
       )
       if (build.code !== 0) {
         throw new Error(`podman build failed (exit ${build.code})`)

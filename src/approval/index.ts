@@ -44,6 +44,7 @@ export { decideVote } from './vote.ts'
 export { askWithRetries, runVote, toVoteReport, VoterSendError } from './voting.ts'
 export type {
   ApprovalRequest,
+  AskProgress,
   ApprovalServiceOptions,
   Attachment,
   AuditSink,

@@ -28,6 +28,7 @@ const LINK = '\n\nWorkflow run: https://github.com/bithyte/demo/actions/runs/42'
 const FAKE_BINARY = `#!/bin/sh
 printf '%s\\0' "$@" >"$FAKE_ARGS_FILE"
 echo "$JAYPOST_MODE $JAYPOST_PROVIDER $JAYPOST_BOT_TOKEN $JAYPOST_OWNER_ID" >"$FAKE_ENV_FILE"
+echo "\${JAYPOST_APPROVERS-unset}" >"$FAKE_ENV_FILE.approvers"
 if [ "\${FAKE_WAIT:-}" = 1 ]; then
   trap 'echo TERM >"$FAKE_SIGNAL_FILE"; exit 1' TERM
   echo ready >&2
@@ -131,6 +132,8 @@ function createRunner(releaseUrl: string, inputs: Record<string, string> = {}): 
     INPUT_ALLOW_TEXT: '',
     INPUT_PROJECT: '',
     INPUT_FORMAT: '',
+    INPUT_REQUIRE: '',
+    INPUT_RETRY: '',
     ...inputs,
   }
   return { directory, output, argsFile, envFile, env }
@@ -193,8 +196,9 @@ async function expectInputError(
   inputs: Record<string, string>,
   message: string,
   status = 2,
+  extraEnv: Record<string, string> = {},
 ): Promise<RunResult> {
-  const runner = await setUp(inputs)
+  const runner = await setUp(inputs, extraEnv)
   const result = await runAction(runner.env).result
   expect(result.stderr).toBe(`jaypost action: ${message}\n`)
   expect(result.status).toBe(status)
@@ -213,7 +217,6 @@ test('asks with the inputs as send arguments and sets the answer output', async 
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
   expect(readArgs(runner)).toEqual([
-    'send',
     'request',
     '--project=demo',
     '--option=Yes',
@@ -232,7 +235,7 @@ test('notify sends the text with the run link and nothing else', async () => {
   const runner = await setUp({ INPUT_COMMAND: 'notify', INPUT_TEXT: 'Shipped' })
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
-  expect(readArgs(runner)).toEqual(['send', 'notify', '--project=demo', '--', `Shipped${LINK}`])
+  expect(readArgs(runner)).toEqual(['notify', '--project=demo', '--', `Shipped${LINK}`])
 })
 
 test('passes project, format and allow-text through', async () => {
@@ -246,7 +249,6 @@ test('passes project, format and allow-text through', async () => {
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
   expect(readArgs(runner)).toEqual([
-    'send',
     'request',
     '--project=api',
     '--format=markdown',
@@ -410,6 +412,84 @@ test('rejects request-only inputs on notify', async () => {
     { INPUT_COMMAND: 'notify', INPUT_TEXT: 'Hi', INPUT_OPTIONS: 'Yes' },
     'input options only applies to command request',
   )
+})
+
+test('passes approvers through env and require and retry as flags', async () => {
+  const runner = await setUp(
+    {
+      INPUT_TEXT: 'Ship it?',
+      INPUT_OPTIONS: 'Yes\nNo',
+      INPUT_DEFAULT: 'No',
+      INPUT_REQUIRE: 'majority',
+      INPUT_RETRY: '2',
+    },
+    { JAYPOST_APPROVERS: '1,2' },
+  )
+  const result = await runAction(runner.env).result
+  expect(result.status, result.stderr).toBe(0)
+  const args = readArgs(runner)
+  expect(args).toContain('--require=majority')
+  expect(args).toContain('--retry=2')
+  expect(args.filter((arg) => arg.includes('1,2'))).toEqual([])
+  expect(readFileSync(`${runner.envFile}.approvers`, 'utf8').trim()).toBe('1,2')
+})
+
+test('unsets empty approvers', async () => {
+  const runner = await setUp(
+    { INPUT_TEXT: 'Ship it?', INPUT_OPTIONS: 'Yes', INPUT_DEFAULT: 'No' },
+    { JAYPOST_APPROVERS: '' },
+  )
+  const result = await runAction(runner.env).result
+  expect(result.status, result.stderr).toBe(0)
+  expect(readFileSync(`${runner.envFile}.approvers`, 'utf8').trim()).toBe('unset')
+})
+
+test('retry alone re-asks without a vote', async () => {
+  const runner = await setUp({
+    INPUT_TEXT: 'Ship it?',
+    INPUT_OPTIONS: 'Yes',
+    INPUT_DEFAULT: 'No',
+    INPUT_RETRY: '1',
+  })
+  const result = await runAction(runner.env).result
+  expect(result.status, result.stderr).toBe(0)
+  const args = readArgs(runner)
+  expect(args).toContain('--retry=1')
+  expect(args.filter((arg) => arg.startsWith('--require'))).toEqual([])
+})
+
+test('requires require with approvers', async () => {
+  await expectInputError(
+    { INPUT_TEXT: 'Hi', INPUT_OPTIONS: 'Yes', INPUT_DEFAULT: 'No' },
+    'input require is required with approvers (all or majority)',
+    2,
+    { JAYPOST_APPROVERS: '1,2' },
+  )
+})
+
+test('rejects require with empty approvers', async () => {
+  await expectInputError(
+    { INPUT_TEXT: 'Hi', INPUT_OPTIONS: 'Yes', INPUT_DEFAULT: 'No', INPUT_REQUIRE: 'all' },
+    'input approvers is empty; pass it from a secret (a missing secret is empty too)',
+    2,
+    { JAYPOST_APPROVERS: '' },
+  )
+})
+
+test('rejects vote inputs on notify', async () => {
+  const cases: readonly (readonly [string, Record<string, string>, Record<string, string>])[] = [
+    ['approvers', {}, { JAYPOST_APPROVERS: '1,2' }],
+    ['require', { INPUT_REQUIRE: 'all' }, {}],
+    ['retry', { INPUT_RETRY: '1' }, {}],
+  ]
+  for (const [name, inputs, extraEnv] of cases) {
+    await expectInputError(
+      { INPUT_COMMAND: 'notify', INPUT_TEXT: 'Hi', ...inputs },
+      `input ${name} only applies to command request`,
+      2,
+      extraEnv,
+    )
+  }
 })
 
 test('rejects windows runners', async () => {

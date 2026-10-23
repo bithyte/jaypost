@@ -52,6 +52,8 @@ export type InstallOptions = {
   readonly timeZone?: string
   readonly tarball?: string
   readonly print: (text: string) => void
+  /** Receives the build and npm install output as it arrives; when unset, builds inherit stdio. */
+  readonly output?: (chunk: string) => void
 }
 
 /** Whether a target can be used here; `reason` says why not. */
@@ -70,8 +72,15 @@ export type Target = {
    */
   readonly upgrade: (options: InstallOptions, previous: InstallRecord) => Promise<InstallRecord>
   readonly readSecrets: (record: InstallRecord) => Promise<Secrets>
-  /** Stop and delete files; purge also deletes credential and owner storage. */
-  readonly remove: (record: InstallRecord, purge: boolean) => Promise<void>
+  /**
+   * Stop and delete files; purge also deletes credential and owner storage. Hints for the user go
+   * to `print` (stdout when not given).
+   */
+  readonly remove: (
+    record: InstallRecord,
+    purge: boolean,
+    print?: (text: string) => void,
+  ) => Promise<void>
   readonly restart: (record: InstallRecord) => Promise<void>
   readonly clearOwner: (record: InstallRecord) => Promise<void>
   readonly isRunning: (record: InstallRecord) => Promise<boolean>

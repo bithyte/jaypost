@@ -8,6 +8,7 @@ import {
 } from '../../src/approval/index.ts'
 import type {
   ApprovalRequest,
+  AskProgress,
   Attachment,
   MessageButtons,
   MessageEnding,
@@ -633,4 +634,45 @@ test('askWithRetries stops re-asking once aborted', async () => {
   await vi.advanceTimersByTimeAsync(90_000)
   expect(messenger.sent.length).toBe(1)
   expect(endingsOf('1')).toEqual([CANCELLED])
+})
+
+test('askWithRetries reports each round it sends', async () => {
+  const { service, idOf } = setup()
+  const events: AskProgress[] = []
+  const result = askWithRetries(
+    service,
+    { ...REQUEST, recipient: '1' },
+    2,
+    new AbortController().signal,
+    (event) => events.push(event),
+  )
+  await flush()
+  await vi.advanceTimersByTimeAsync(30_000)
+  await vi.advanceTimersByTimeAsync(30_000)
+  service.tap(idOf('1'), 0)
+  await result
+  const timeoutSeconds = REQUEST.timeoutSeconds
+  expect(events).toEqual([
+    { kind: 'sent', round: 1, roundCount: 3, timeoutSeconds },
+    { kind: 'sent', round: 2, roundCount: 3, timeoutSeconds },
+    { kind: 'sent', round: 3, roundCount: 3, timeoutSeconds },
+  ])
+})
+
+test('runVote reports each round sent and each vote recorded', async () => {
+  const { service, idOf } = setup()
+  const events: AskProgress[] = []
+  const vote: Vote = { request: REQUEST, voters: ['1', '2'], rule: 'all', retryCount: 0 }
+  const result = runVote(service, vote, new AbortController().signal, (event) => events.push(event))
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  service.tap(idOf('2'), 0)
+  await result
+  const position = { round: 1, roundCount: 1 }
+  expect(events).toEqual([
+    { kind: 'sent', ...position, timeoutSeconds: REQUEST.timeoutSeconds },
+    { kind: 'voted', ...position, votedCount: 1, voterCount: 2 },
+    { kind: 'voted', ...position, votedCount: 2, voterCount: 2 },
+  ])
 })

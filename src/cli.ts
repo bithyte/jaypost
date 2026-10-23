@@ -21,27 +21,51 @@ import {
   runInit,
   runLog,
   runOwner,
+  runPairApprover,
+  runPing,
   runResetOwner,
   runSendNotify,
   runSendRequest,
   runSetupCi,
   runStatus,
-  runTest,
   runUninstall,
   runUpdate,
+  runWithSignals,
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
-import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
-import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
+import { createProgress, formatOnRail, resolveProgressMode } from './progress/index.ts'
+import type { Progress } from './progress/index.ts'
+import type {
+  DirectSendDeps,
+  InitArgs,
+  LogArgs,
+  PairApproverArgs,
+  SendDeps,
+  SendRequestArgs,
+  SetupCiArgs,
+} from './commands/index.ts'
+import {
+  APPROVERS_ENV_VAR,
+  DEFAULT_PORT,
+  loadConfig,
+  MODE_ENV_VAR,
+  PORT_ENV_VAR,
+  VERSION,
+} from './config/index.ts'
 import { runService } from './daemon/index.ts'
-import { resolveSendMode } from './direct/index.ts'
+import { resolveApprovers, resolveSendMode } from './direct/index.ts'
 import type { SendMode } from './direct/index.ts'
 import { MESSAGE_FORMATS } from './format/index.ts'
 import type { MessageFormat } from './format/index.ts'
 import { readHookInput, runHook } from './hook/index.ts'
 import type { HookDeps } from './hook/index.ts'
-import { createTargets, resolveInstallPaths, resolveTargetOrder } from './install/index.ts'
+import {
+  createTargets,
+  readInstall,
+  resolveInstallPaths,
+  resolveTargetOrder,
+} from './install/index.ts'
 import { resolveMcpEndpoint, resolveMcpPort, runMcp } from './mcp/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from './install/index.ts'
 import {
@@ -152,23 +176,54 @@ function toAttachmentSource(
   }
 }
 
-function createSendDeps(flagPort: number | undefined, signal: AbortSignal): SendDeps {
+let isStderrErrorHandled = false
+
+/** A stderr checklist; `fallback` is the mode when no flag or env decides (silent by default). */
+function createStderrProgress(fallback: 'plain' | 'silent' = 'silent'): Progress {
+  if (!isStderrErrorHandled) {
+    isStderrErrorHandled = true
+    // A closed terminal or pipe (EPIPE, EIO) arrives as an async 'error' event that the renderer's
+    // try/catch can't see, and an unhandled one kills the process mid-command.
+    process.stderr.on('error', () => {})
+  }
+  const mode = resolveProgressMode(process.stderr, process.env, fallback)
+  return createProgress({ stream: process.stderr, mode, env: process.env })
+}
+
+// stdout on a terminal too means nobody captures the answer, so it can sit on the checklist rail.
+// Piped or captured, it stays bare for scripts.
+function createAnswerPrint(progress: Progress): (text: string) => void {
+  if (progress.mode !== 'live' || process.stdout.isTTY !== true) {
+    return (text) => console.log(text)
+  }
+  const useColor = (process.env.NO_COLOR ?? '') === ''
+  return (text) => console.log(formatOnRail(text, useColor))
+}
+
+function createSendDeps(
+  flagPort: number | undefined,
+  signal: AbortSignal,
+  progress: Progress,
+): SendDeps {
   return {
     endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
     token: resolveClientToken(process.env, resolveTokenFile(process.env)),
     signal,
-    print: (text) => console.log(text),
+    print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
+    progress,
+    providers: PROVIDERS,
   }
 }
 
-function createDirectSendDeps(signal: AbortSignal): DirectSendDeps {
+function createDirectSendDeps(signal: AbortSignal, progress: Progress): DirectSendDeps {
   return {
     env: process.env,
     providers: PROVIDERS,
     signal,
-    print: (text) => console.log(text),
+    print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
+    progress,
   }
 }
 
@@ -237,30 +292,58 @@ function runInitCommand(args: InitArgs): Promise<number> {
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
   const timeZone = findTimeZone()
-  return runWithSignals((controller) =>
-    runInit(args, {
-      targets,
-      paths,
-      prompt: createClackPrompts(controller.signal),
-      providers: PROVIDERS,
-      isPortFree,
-      wait: waitForPairing,
-      print: (text) => console.log(text),
-      signal: controller.signal,
-      version: VERSION,
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }),
+  return runWithSignals(
+    (controller) =>
+      runInit(args, {
+        targets,
+        paths,
+        prompt: createClackPrompts(controller.signal),
+        providers: PROVIDERS,
+        isPortFree,
+        wait: waitForPairing,
+        progress: createStderrProgress('plain'),
+        signal: controller.signal,
+        version: VERSION,
+        ...(timeZone === undefined ? {} : { timeZone }),
+      }),
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
   )
 }
 
 function runSetupCiCommand(args: SetupCiArgs): Promise<number> {
-  return runWithSignals((controller) =>
-    runSetupCi(args, {
-      prompt: createClackPrompts(controller.signal),
-      providers: PROVIDERS,
-      print: (text) => console.log(text),
-      signal: controller.signal,
-    }),
+  return runWithSignals(
+    (controller) => {
+      const progress = createStderrProgress('plain')
+      return runSetupCi(args, {
+        prompt: createClackPrompts(controller.signal),
+        providers: PROVIDERS,
+        print: (text) => console.log(text),
+        progress,
+        log: progress.note,
+        signal: controller.signal,
+      })
+    },
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
+  )
+}
+
+function runPairApproverCommand(args: PairApproverArgs): Promise<number> {
+  return runWithSignals(
+    (controller) => {
+      const progress = createStderrProgress('plain')
+      return runPairApprover(args, {
+        prompt: createClackPrompts(controller.signal),
+        providers: PROVIDERS,
+        print: (text) => console.log(text),
+        progress,
+        log: progress.note,
+        signal: controller.signal,
+      })
+    },
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
   )
 }
 
@@ -292,22 +375,37 @@ function resolveCliLocation(): CliLocation {
   }
 }
 
-async function runWithSignals(
-  run: (controller: AbortController) => Promise<number>,
-  signals: readonly NodeJS.Signals[] = ['SIGINT'],
-): Promise<number> {
-  const controller = new AbortController()
-  const onSignal = () => controller.abort()
-  for (const signal of signals) {
-    process.on(signal, onSignal)
+const LIVE_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+
+/** Setup commands: Ctrl-C keeps exit 130; SIGTERM re-raises once the running step is cancelled. */
+const SETUP_SIGNALS = ['SIGINT', 'SIGTERM'] as const
+
+const SETUP_RERAISED = ['SIGTERM'] as const
+
+function runSendRequestWithSignals(args: SendRequestArgs, flagPort: number | undefined) {
+  const progress = createStderrProgress()
+  if (progress.mode !== 'live') {
+    return runWithSignals((controller) =>
+      runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+    )
   }
-  try {
-    return await run(controller)
-  } finally {
-    for (const signal of signals) {
-      process.off(signal, onSignal)
-    }
-  }
+  return runWithSignals(
+    (controller) => runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+    LIVE_SIGNALS,
+    ['SIGTERM', 'SIGHUP'],
+  )
+}
+
+// A cancelled CI run sends SIGTERM; the question is still edited to the cancelled line and the
+// command exits with its own code. A closed terminal (SIGHUP) only stops the live countdown, so
+// it is re-raised for the default status.
+function runDirectSendRequestWithSignals(args: SendRequestArgs): Promise<number> {
+  const progress = createStderrProgress()
+  return runWithSignals(
+    (controller) => runDirectSendRequest(args, createDirectSendDeps(controller.signal, progress)),
+    progress.mode === 'live' ? LIVE_SIGNALS : ['SIGINT', 'SIGTERM'],
+    progress.mode === 'live' ? ['SIGHUP'] : [],
+  )
 }
 
 function runStatusCommand(): Promise<number> {
@@ -340,31 +438,37 @@ function runResetOwnerCommand(): Promise<number> {
   const token = resolveClientToken(process.env, resolveTokenFile(process.env))
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
-  return runWithSignals((controller) =>
-    runResetOwner({
-      targets,
-      paths,
-      providers: PROVIDERS,
-      confirm: createClackPrompts(controller.signal).confirm,
-      wait: waitForPairing,
-      print: (text) => console.log(text),
-      signal: controller.signal,
-      token,
-    }),
+  return runWithSignals(
+    (controller) =>
+      runResetOwner({
+        targets,
+        paths,
+        providers: PROVIDERS,
+        confirm: createClackPrompts(controller.signal).confirm,
+        wait: waitForPairing,
+        progress: createStderrProgress('plain'),
+        signal: controller.signal,
+        token,
+      }),
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
   )
 }
 
 function runUninstallCommand(): Promise<number> {
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
-  return runWithSignals((controller) =>
-    runUninstall({
-      targets,
-      paths,
-      confirm: createClackPrompts(controller.signal).confirm,
-      print: (text) => console.log(text),
-      signal: controller.signal,
-    }),
+  return runWithSignals(
+    (controller) =>
+      runUninstall({
+        targets,
+        paths,
+        confirm: createClackPrompts(controller.signal).confirm,
+        progress: createStderrProgress('plain'),
+        signal: controller.signal,
+      }),
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
   )
 }
 
@@ -372,24 +476,40 @@ function runUpdateCommand(isFinish: boolean): Promise<number> {
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
   const timeZone = findTimeZone()
-  return runWithSignals((controller) => {
-    const deps = {
-      targets,
-      paths,
-      providers: PROVIDERS,
-      exec: realExec,
-      cli: resolveCliLocation(),
-      version: VERSION,
-      platform: process.platform,
-      arch: process.arch,
-      releasesUrl: RELEASES_API_URL,
-      npmLatestUrl: NPM_LATEST_URL,
-      print: (text: string) => console.log(text),
-      signal: controller.signal,
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }
-    return isFinish ? runFinishUpdate(deps) : runUpdate(deps)
-  })
+  return runWithSignals(
+    (controller) => {
+      const deps = {
+        targets,
+        paths,
+        providers: PROVIDERS,
+        exec: realExec,
+        cli: resolveCliLocation(),
+        version: VERSION,
+        platform: process.platform,
+        arch: process.arch,
+        releasesUrl: RELEASES_API_URL,
+        npmLatestUrl: NPM_LATEST_URL,
+        progress: createStderrProgress('plain'),
+        signal: controller.signal,
+        ...(timeZone === undefined ? {} : { timeZone }),
+      }
+      return isFinish ? runFinishUpdate(deps) : runUpdate(deps)
+    },
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
+  )
+}
+
+/** Maps the old `send request`, `send notify` and `test` spellings so existing scripts keep working. */
+function toCurrentArgv(argv: readonly string[]): readonly string[] {
+  const [first, second] = argv
+  if (first === 'send' && (second === 'request' || second === 'notify')) {
+    return argv.slice(1)
+  }
+  if (first === 'test') {
+    return ['ping', ...argv.slice(1)]
+  }
+  return argv
 }
 
 /** Takes argv without node and script path; returns the exit code (2 for usage errors). */
@@ -431,18 +551,30 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
   program
     .command('setup-ci')
-    .description('pair an owner and approvers for CI and print the env vars for direct mode')
+    .description('pair an owner for CI and print the env vars for direct mode')
     .addOption(
       new Option('--provider <name>', 'chat app to use').choices(
         PROVIDERS.map((provider) => provider.name),
       ),
     )
-    .option('--approvers-only', 'skip the owner and only pair approvers for send request -u')
-    .action(async (options: { readonly provider?: string; readonly approversOnly?: boolean }) => {
-      code = await runSetupCiCommand({
-        ...(options.provider === undefined ? {} : { provider: options.provider }),
-        ...(options.approversOnly === true ? { approversOnly: true } : {}),
-      })
+    .action(async (options: { readonly provider?: string }) => {
+      code = await runSetupCiCommand(
+        options.provider === undefined ? {} : { provider: options.provider },
+      )
+    })
+  const pair = program.command('pair').description('pair someone with the bot for CI')
+  pair
+    .command('approver')
+    .description('pair approvers for direct mode votes and print their ids')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      code = await runPairApproverCommand(
+        options.provider === undefined ? {} : { provider: options.provider },
+      )
     })
   program
     .command('start')
@@ -481,15 +613,32 @@ export async function main(argv: readonly string[]): Promise<number> {
       },
     )
   program
-    .command('test')
-    .description('send a test approval request')
-    .option('--port <n>', 'API port (default: the install, then PORT, then 8787)', parsePort)
+    .command('ping')
+    .description('send a test message to check the service and pairing')
+    .option(
+      '--port <n>',
+      'API port (default: the install, then JAYPOST_PORT, then 8787)',
+      parsePort,
+    )
     .action(async (options: { readonly port?: number }) => {
-      code = await runTest(
-        options.port ?? resolvePort(),
-        options.port === undefined ? resolveInstallPaths().installFile : undefined,
-        resolveClientToken(process.env, resolveTokenFile(process.env)),
-      )
+      const port =
+        options.port ?? readInstall(resolveInstallPaths().installFile)?.port ?? resolvePort()
+      const progress = createStderrProgress()
+      const runLive = (controller: AbortController) =>
+        runPing({
+          port,
+          token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+          progress,
+          providers: PROVIDERS,
+          signal: controller.signal,
+          print: createAnswerPrint(progress),
+          printError: (text) => console.error(text),
+        })
+      // Off a terminal there's no signal handler, as before: a signal ends the process.
+      code =
+        progress.mode === 'live'
+          ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
+          : await runLive(new AbortController())
     })
   program
     .command('reset-owner')
@@ -539,10 +688,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .action((file: string | undefined, options: { readonly port?: number }) => {
       code = runOpenApiCommand(file, options.port)
     })
-  const send = program
-    .command('send')
-    .description('ask a question or send a notification from a script')
-  const request = send
+  const request = program
     .command('request')
     .description('ask a question and print the answer')
     .argument('<text>', 'question to show')
@@ -563,7 +709,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '-u, --user <id>',
-      'send to this paired user instead of the owner; repeat per approver',
+      'send to this paired user instead of the owner; repeat per approver; overrides JAYPOST_APPROVERS',
       collect,
     )
     .addOption(
@@ -612,7 +758,14 @@ export async function main(argv: readonly string[]): Promise<number> {
         },
       ) => {
         const mode = requireSendMode(request)
-        const isVote = options.user !== undefined || options.require !== undefined
+        const approvers = resolveApprovers(options.user, process.env)
+        const isVote = approvers.kind === 'listed' || options.require !== undefined
+        if (approvers.kind === 'empty') {
+          request.error(
+            `error: ${APPROVERS_ENV_VAR} is set but has no ids; a missing GitHub secret is empty too`,
+            { exitCode: 2 },
+          )
+        }
         if (
           isVote &&
           (options.allowText === true ||
@@ -649,23 +802,17 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.format === undefined ? {} : { format: options.format }),
           ...(options.json === undefined ? {} : { json: options.json }),
           ...(attachment === undefined ? {} : { attachment }),
-          ...(options.user === undefined ? {} : { voters: options.user }),
+          ...(approvers.kind === 'listed' ? { voters: approvers.voters } : {}),
           ...(options.require === undefined ? {} : { rule: options.require }),
           ...(options.retry === undefined ? {} : { retryCount: options.retry }),
         }
-        // A cancelled CI run sends SIGTERM; the question is still edited to the cancelled line.
         code =
           mode.kind === 'direct'
-            ? await runWithSignals(
-                (controller) => runDirectSendRequest(args, createDirectSendDeps(controller.signal)),
-                ['SIGINT', 'SIGTERM'],
-              )
-            : await runWithSignals((controller) =>
-                runSendRequest(args, createSendDeps(options.port, controller.signal)),
-              )
+            ? await runDirectSendRequestWithSignals(args)
+            : await runSendRequestWithSignals(args, options.port)
       },
     )
-  const notify = send
+  const notify = program
     .command('notify')
     .description("send a message that doesn't need an answer")
     .argument('<text>', 'message to show')
@@ -712,11 +859,18 @@ export async function main(argv: readonly string[]): Promise<number> {
         code =
           mode.kind === 'direct'
             ? await runWithSignals(
-                (controller) => runDirectSendNotify(args, createDirectSendDeps(controller.signal)),
+                (controller) =>
+                  runDirectSendNotify(
+                    args,
+                    createDirectSendDeps(controller.signal, createStderrProgress()),
+                  ),
                 ['SIGINT', 'SIGTERM'],
               )
             : await runWithSignals((controller) =>
-                runSendNotify(args, createSendDeps(options.port, controller.signal)),
+                runSendNotify(
+                  args,
+                  createSendDeps(options.port, controller.signal, createStderrProgress()),
+                ),
               )
       },
     )
@@ -767,7 +921,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       code = runAudit(args)
     })
   try {
-    await program.parseAsync(argv.length === 0 ? ['--help'] : argv, {
+    await program.parseAsync(argv.length === 0 ? ['--help'] : toCurrentArgv(argv), {
       from: 'user',
     })
   } catch (error) {

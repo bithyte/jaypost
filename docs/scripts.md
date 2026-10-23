@@ -5,15 +5,15 @@
 `jaypost send` wraps `/request` and `/notify` so scripts don't need curl:
 
 ```
-answer=$(jaypost send request 'Deploy?' -o Approve -d Decline --timeout 60)
-jaypost send notify 'backup finished' --project nas
-jaypost send request $'Force-push `main`?' -o Yes -d No --format markdown
-git diff | jaypost send request 'Ship it?' -o Yes -d Stop --attach - --attach-name changes.diff
+answer=$(jaypost request 'Deploy?' -o Approve -d Decline --timeout 60)
+jaypost notify 'backup finished' --project nas
+jaypost request $'Force-push `main`?' -o Yes -d No --format markdown
+git diff | jaypost request 'Ship it?' -o Yes -d Stop --attach - --attach-name changes.diff
 ```
 
-`send request` prints the answer on stdout (the `-d` default on timeout) and exits 0. `--json` prints `{"answer":"...","timedOut":false}` instead, if you need to tell a timeout from a tap. `-o` repeats once per button; `-d` adds the default as the last button unless an `-o` already names it. `--allow-text` also lets you answer by replying with text; then `-o` is optional and `-d` can be any short answer, not added as a button. `send notify` prints nothing and exits 0 once sent. `--format markdown` on either one reads the text as [markdown](formatting.md). Errors go to stderr with exit 1, and bad arguments exit 2. Ctrl-C cancels a pending question, which edits the Telegram message to a "cancelled" line. `--attach FILE` sends a file along with the message (10 MiB at most; the service's limit applies); `--attach -` reads stdin, named `attachment.txt` unless `--attach-name NAME` says otherwise. `--attach-name` without `--attach` exits 2. The port is picked the same way as for [`mcp`](mcp.md).
+`request` prints the answer on stdout (the `-d` default on timeout) and exits 0. `--json` prints `{"answer":"...","timedOut":false}` instead, if you need to tell a timeout from a tap. `-o` repeats once per button; `-d` adds the default as the last button unless an `-o` already names it. `--allow-text` also lets you answer by replying with text; then `-o` is optional and `-d` can be any short answer, not added as a button. `notify` prints nothing on stdout and exits 0 once sent (in a terminal it also confirms on stderr). `--format markdown` on either one reads the text as [markdown](formatting.md). Errors go to stderr with exit 1, and bad arguments exit 2. Ctrl-C cancels a pending question, which edits the Telegram message to a "cancelled" line. `--attach FILE` sends a file along with the message (10 MiB at most; the service's limit applies); `--attach -` reads stdin, named `attachment.txt` unless `--attach-name NAME` says otherwise. `--attach-name` without `--attach` exits 2. The port is picked the same way as for [`mcp`](mcp.md).
 
-`-u ID` sends the question to an approver instead of the owner (repeat it for each one), `--require all|majority` decides the vote, and `--retry N` (0 to 100) asks again after a timeout; see [Several approvers](ci.md#several-approvers) for the exit codes and `--json` output. In service mode they go through the service's [`POST /vote`](http-api.md#votes) and `retry`, so the service has to be at least as new as this release.
+`-u ID` sends the question to an approver instead of the owner (repeat it for each one; `JAYPOST_APPROVERS` is the env alternative, ids separated by commas or spaces), `--require all|majority` decides the vote, and `--retry N` (0 to 100) asks again after a timeout; see [Several approvers](ci.md#several-approvers) for the exit codes and `--json` output. In service mode they go through the service's [`POST /vote`](http-api.md#votes) and `retry`, so the service has to be at least as new as this release.
 
 ## From Node
 

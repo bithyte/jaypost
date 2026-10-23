@@ -49,7 +49,7 @@ export async function resolveProviderSettings(
     const displayName = await findDisplayName(provider, saved)
     if (displayName) {
       print(text.reusing(displayName))
-      return { kind: 'accepted', settings: saved }
+      return { kind: 'accepted', settings: saved, displayName }
     }
   }
   const isPrompted = provider.settings.some((setting) => setting.prompt !== undefined)
@@ -65,8 +65,11 @@ export async function resolveProviderSettings(
     const candidate = await promptSettings(provider, options.prompt, signal)
     seen.push(...listSecretValues(provider, candidate))
     const merged = { ...saved, ...candidate }
-    if (isComplete(provider, merged) && (await findDisplayName(provider, merged))) {
-      return { kind: 'accepted', settings: merged }
+    const displayName = isComplete(provider, merged)
+      ? await findDisplayName(provider, merged)
+      : undefined
+    if (displayName) {
+      return { kind: 'accepted', settings: merged, displayName }
     }
     print(text.rejected)
   }

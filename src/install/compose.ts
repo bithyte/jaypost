@@ -1,6 +1,6 @@
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import type { Exec } from '../system/index.ts'
+import type { Exec, ExecOptions } from '../system/index.ts'
 import { DOCKERIGNORE, PACKAGE_NAME } from './constants.ts'
 import { readContainerSecrets, removeEnvKey, writeEnvFile } from './envfile.ts'
 import { requireRecordOwner } from './state.ts'
@@ -22,7 +22,7 @@ export function createComposeTarget(deps: TargetDeps): Target {
   const { exec, paths, providers } = deps
   const file = join(paths.composeDirectory, 'compose.yaml')
   const envPath = join(paths.composeDirectory, '.env')
-  const compose = (args: readonly string[], options?: { readonly inherit?: boolean }) =>
+  const compose = (args: readonly string[], options?: ExecOptions) =>
     exec('docker', ['compose', '-f', file, ...args], options)
   /** The bot service's image ID, or empty when there's none or compose can't tell. */
   async function readImageId(): Promise<string> {
@@ -73,7 +73,10 @@ export function createComposeTarget(deps: TargetDeps): Target {
           ...(options.timeZone === undefined ? {} : { timeZone: options.timeZone }),
         }),
       )
-      const result = await compose(['up', '-d', '--build'], { inherit: true })
+      const result = await compose(
+        ['up', '-d', '--build'],
+        options.output === undefined ? { inherit: true } : { onOutput: options.output },
+      )
       if (result.code !== 0) {
         throw new Error(`docker compose up failed (exit ${result.code})`)
       }

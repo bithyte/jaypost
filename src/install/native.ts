@@ -150,7 +150,11 @@ export async function resolveCliCommand(
       args = ['i', '-g', '--prefix', paths.userNpmPrefix, packageSpec]
       installRoot = fallbackRoot
     }
-    const result = await exec('npm', args)
+    const result = await exec(
+      'npm',
+      args,
+      options.output === undefined ? undefined : { onOutput: options.output },
+    )
     if (result.code !== 0) {
       throw new Error(`npm install failed: ${result.stderr.trim()}`)
     }
@@ -203,11 +207,15 @@ export function printPathHint(
   }
 }
 
-/** Deletes config, state, audit files and the binary copy; for an npm install prints how to remove the package. */
+/**
+ * Deletes config, state, audit files and the binary copy; for an npm install prints how to remove
+ * the package.
+ */
 export function purgeServiceFiles(
   record: InstallRecord,
   configFile: string,
   paths: InstallPaths,
+  print: (text: string) => void = (text) => console.log(text),
 ): void {
   rmSync(configFile, { force: true })
   rmSync(resolveStatePath(configFile), { force: true })
@@ -223,7 +231,5 @@ export function purgeServiceFiles(
     record.cliPath !== undefined && isUnder(record.cliPath, fallbackRoot)
       ? `--prefix ${paths.userNpmPrefix} `
       : ''
-  console.log(
-    `The npm package was left in place; remove it with: npm rm -g ${prefix}${PACKAGE_NAME}`,
-  )
+  print(`The npm package was left in place; remove it with: npm rm -g ${prefix}${PACKAGE_NAME}`)
 }

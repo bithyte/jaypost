@@ -14,8 +14,11 @@ let fail: (cmd: string, args: readonly string[]) => boolean
 let ownerOut: string
 let imageIds: string[]
 
-const fakeExec: Exec = async (cmd, args) => {
+const fakeExec: Exec = async (cmd, args, options) => {
   calls.push([cmd, args])
+  if (args.includes('up')) {
+    options?.onOutput?.('STEP 1/7\n')
+  }
   if (fail(cmd, args)) {
     return { code: 1, stdout: '', stderr: 'x' }
   }
@@ -127,6 +130,13 @@ test('install writes files and runs up -d --build', async () => {
     'docker',
     ['compose', '-f', join(paths.composeDirectory, 'compose.yaml'), 'up', '-d', '--build'],
   ])
+})
+
+test('compose install streams docker compose output to the output callback', async () => {
+  const { t } = make()
+  const chunks: string[] = []
+  await t.install({ ...base, output: (chunk) => chunks.push(chunk) })
+  expect(chunks).toEqual(['STEP 1/7\n'])
 })
 
 test('install throws when up fails', async () => {

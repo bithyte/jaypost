@@ -158,6 +158,8 @@ export type RequestStore = {
 export type ApprovalServiceOptions = {
   readonly store?: RequestStore
   readonly audit?: AuditSink
+  /** Where failed message edits are reported; `console.error(message, error)` when not given. */
+  readonly logError?: (message: string, error: unknown) => void
 }
 
 /** Records what happened to each request; implementations must not throw. */
@@ -267,7 +269,7 @@ export type RetryParseResult =
   | { readonly ok: false; readonly error: string }
 
 /**
- * A decided vote as JSON, over HTTP and from `send request --json`: `votes` maps each voter to
+ * A decided vote as JSON, over HTTP and from `request --json`: `votes` maps each voter to
  * their answer, `null` when they never voted.
  */
 export type VoteReport = {
@@ -308,6 +310,25 @@ export type RoundEnd =
 
 /** What a vote needs from the service: sending, closing and editing messages. */
 export type VoteService = Pick<ApprovalService, 'send' | 'close' | 'update'>
+
+/**
+ * What a direct ask reports while it runs; rounds are 1-based. `sent` fires once a round's
+ * message(s) are out, `voted` after each answer is recorded (the deciding one too).
+ */
+export type AskProgress =
+  | {
+      readonly kind: 'sent'
+      readonly round: number
+      readonly roundCount: number
+      readonly timeoutSeconds: number
+    }
+  | {
+      readonly kind: 'voted'
+      readonly round: number
+      readonly roundCount: number
+      readonly votedCount: number
+      readonly voterCount: number
+    }
 
 /** A vote message sent to `voter`. */
 export type VoterQuestion = SentQuestion & { readonly voter: string }

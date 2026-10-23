@@ -147,7 +147,7 @@ curl -s -X POST http://127.0.0.1:8787/vote \
 }
 ```
 
-`votes` has `null` for anyone who didn't vote, and `timedOut` means the rounds ran out. Errors are the same as `/request`, except a `502` also names the voter whose message couldn't be sent (`{"error":"failed to send message","voter":"222"}`); the messages already sent are cancelled. Disconnecting cancels every open message. This is what `jaypost send request -u ... --require ...` calls in service mode.
+`votes` has `null` for anyone who didn't vote, and `timedOut` means the rounds ran out. Errors are the same as `/request`, except a `502` also names the voter whose message couldn't be sent (`{"error":"failed to send message","voter":"222"}`); the messages already sent are cancelled. Disconnecting cancels every open message. This is what `jaypost request -u ... --require ...` calls in service mode.
 
 ## Attachments
 

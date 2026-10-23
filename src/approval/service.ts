@@ -45,6 +45,7 @@ export class ApprovalService {
   #newId: () => string
   #store: RequestStore | undefined
   #audit: AuditSink | undefined
+  #logError: (message: string, error: unknown) => void
   #pending = new PendingRequests()
   #history: HistoryEntry[] = []
   #background = new Map<string, BackgroundEntry>()
@@ -62,6 +63,7 @@ export class ApprovalService {
     this.#newId = newId
     this.#store = options.store
     this.#audit = options.audit
+    this.#logError = options.logError ?? ((message, error) => console.error(message, error))
   }
 
   /**
@@ -119,7 +121,7 @@ export class ApprovalService {
         }
         await this.#messenger.update?.(reference, message, buttons)
       })
-      .catch((error: unknown) => console.error('failed to update approval message', error))
+      .catch((error: unknown) => this.#logError('failed to update approval message', error))
     this.#updates.set(id, queued)
     void queued.then(() => {
       if (this.#updates.get(id) === queued) {
@@ -150,7 +152,7 @@ export class ApprovalService {
       // Recorded before the final edit, so a read right after a settle never sees an unknown id.
       this.#background.set(opened.id, { state, settled })
       this.#finishBackground(opened, settlement).catch((error) =>
-        console.error('failed to finish background request', error),
+        this.#logError('failed to finish background request', error),
       )
       return state
     })
@@ -353,7 +355,7 @@ export class ApprovalService {
     try {
       await this.#messenger.finalize(reference, finalText, ending)
     } catch (error) {
-      console.error('failed to finalize approval message', error)
+      this.#logError('failed to finalize approval message', error)
     }
   }
 

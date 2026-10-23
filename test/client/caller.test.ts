@@ -111,16 +111,23 @@ async function startApi(options: { maxAttachmentBytes?: number; notifications?: 
   const unexpected = (): never => {
     throw new Error('unexpected call')
   }
+  const request = async (request: ApprovalRequest): Promise<RequestResult> => {
+    requests.push(request)
+    return { kind: 'completed', outcome: { answer: 'Approve', timedOut: false } }
+  }
   const service = {
-    request: async (request: ApprovalRequest): Promise<RequestResult> => {
-      requests.push(request)
-      return { kind: 'completed', outcome: { answer: 'Approve', timedOut: false } }
-    },
+    request,
     start: unexpected,
     get: unexpected,
     waitFor: unexpected,
     cancel: unexpected,
-    send: unexpected,
+    send: async (sent: ApprovalRequest) => ({
+      id: 'q',
+      reference: { chatId: 1, messageId: 1 },
+      message: sent.message,
+      result: Promise.resolve(await request(sent)),
+      finalText: () => undefined,
+    }),
     close: unexpected,
     update: unexpected,
   }

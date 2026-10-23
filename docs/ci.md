@@ -11,7 +11,7 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
-After the owner pairs and the env vars print, `setup-ci` asks `Pair an approver?`. Say yes and it shows a fresh code for that person to send to the bot; repeat for each approver. When you're done it prints their ids as `-u ID` flags to pass to `send request` (see [Several approvers](#several-approvers)). `jaypost setup-ci --approvers-only` skips the owner and the env vars, to add approvers later. On Discord, an approver must be in a server the bot is in before they DM the code.
+`setup-ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code.
 
 ## Through a service by URL
 
@@ -22,7 +22,7 @@ JAYPOST_URL=https://jaypost.example.com
 JAYPOST_TOKEN=...
 ```
 
-`-u`, `--require` and `--retry` go through the service the same way (see [Several approvers](#several-approvers)). A plain `send request` exits 0 for any answer in service mode, so gate on its output or use a vote, which exits 3 when rejected. Use https for anything that leaves the machine, since the token goes with every call.
+`-u`, `--require` and `--retry` go through the service the same way (see [Several approvers](#several-approvers)). A plain `request` exits 0 for any answer in service mode, so gate on its output or use a vote, which exits 3 when rejected. Use https for anything that leaves the machine, since the token goes with every call.
 
 ## GitHub Action
 
@@ -69,6 +69,25 @@ jobs:
 | `provider`   | `telegram`      | `telegram` or `discord`                               |
 | `bot-token`  |                 | from a secret (required)                              |
 | `owner-id`   |                 | from a secret (required)                              |
+| `approvers`  |                 | voter ids from a secret; needs `require` (request)    |
+| `require`    |                 | `all` or `majority`; needs `approvers` (request)      |
+| `retry`      |                 | retries after a timeout, 0 to 100 (request)           |
+
+For a vote, pass `approvers` and `require` together:
+
+```yaml
+- uses: bithyte/jaypost@v0
+  with:
+    text: Deploy ${{ github.ref_name }} to prod?
+    options: 'Yes'
+    default: 'No'
+    approvers: ${{ secrets.PROD_APPROVERS }}
+    require: majority
+    retry: 5
+    provider: ${{ secrets.JAYPOST_PROVIDER }}
+    bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+    owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+```
 
 The output `answer` is what the owner chose, e.g. `${{ steps.approval.outputs.answer }}`.
 
@@ -84,17 +103,17 @@ Workflow example:
 - uses: actions/setup-node@v4
   with:
     node-version: 24
-- run: npx jaypost send request 'Publish v123?' -o Yes -d No
+- run: npx jaypost request 'Publish v123?' -o Yes -d No
   env:
     JAYPOST_MODE: direct
     JAYPOST_PROVIDER: telegram
     JAYPOST_BOT_TOKEN: ${{ secrets.JAYPOST_BOT_TOKEN }}
     JAYPOST_OWNER_ID: ${{ secrets.JAYPOST_OWNER_ID }}
-- run: npx jaypost send notify 'New version published'
+- run: npx jaypost notify 'New version published'
   env: # same four
 ```
 
-In direct mode `send request` exits with:
+In direct mode `request` exits with:
 
 - 0: any answer other than the `-d` one
 - 1: an error
@@ -103,7 +122,7 @@ In direct mode `send request` exits with:
 
 With `--allow-text`, a typed reply counts as the `-d` answer only when it equals the `-d` value exactly, case included.
 
-So `-d No` works as a gate: the step fails unless someone approves. In service mode `send request` still exits 0 for any answer, including the default.
+So `-d No` works as a gate: the step fails unless someone approves. In service mode `request` still exits 0 for any answer, including the default.
 
 ## Several approvers
 
@@ -113,7 +132,7 @@ So `-d No` works as a gate: the step fails unless someone approves. In service m
 - `majority`: approved when more than half of the listed approvers answer `-o`, rejected once that can't happen. A tie rejects.
 
 ```yaml
-- run: npx jaypost send request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
+- run: npx jaypost request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
   env: # same four
 ```
 
@@ -121,7 +140,20 @@ So `-d No` works as a gate: the step fails unless someone approves. In service m
 
 A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
 
-All of this works in service mode too, through the service's [`POST /vote`](http-api.md#votes) and `retry`, with the same exit codes and output. A service older than this release can't do it, and `send` says so instead of asking once.
+Instead of `-u` flags, `JAYPOST_APPROVERS` can hold the ids, comma or space separated. That keeps them out of the workflow file when it comes from a secret, and a different secret per step gives each step its own approvers:
+
+```yaml
+- run: npx jaypost request 'Deploy prod?' -o Yes -d No --require majority
+  env:
+    JAYPOST_APPROVERS: ${{ secrets.PROD_APPROVERS }}
+    # plus JAYPOST_MODE, JAYPOST_PROVIDER, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID
+```
+
+Setting it means the same as passing those ids with `-u`: the question is a vote and `--require` defaults to `all`. If any `-u` is given, `-u` wins and the variable is ignored, not merged. A variable that is set but empty exits 2, because a misspelled or missing secret expands to an empty string and would otherwise send a plain question to the owner. `notify` ignores it.
+
+On GitHub Actions the voter ids, from `-u` or `JAYPOST_APPROVERS`, are masked in the logs (shown as `***`) in direct mode. GitHub masks the secret as a whole but not the single ids inside a list.
+
+All of this works in service mode too, through the service's [`POST /vote`](http-api.md#votes) and `retry`, with the same exit codes and output. A service older than this release can't do it, and `request` says so instead of asking once. In the Action, `approvers` and `require` go together.
 
 Other differences from service mode:
 

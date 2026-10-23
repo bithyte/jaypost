@@ -45,7 +45,17 @@ function createStub(request: RequestFn): ApiBot['service'] {
     get: unexpected,
     waitFor: unexpected,
     cancel: unexpected,
-    send: unexpected,
+    // Retries go through send; it settles with request's result, so `request` stays the one mock.
+    send: async (sent, signal) => {
+      const result = await request(sent, signal)
+      return {
+        id: 'q',
+        reference: { chatId: 1, messageId: 1 },
+        message: sent.message,
+        result: Promise.resolve(result),
+        finalText: () => undefined,
+      }
+    },
     close: unexpected,
     update: unexpected,
   }

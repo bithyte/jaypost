@@ -3,9 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test, vi } from 'vite-plus/test'
 import type { MessageEnding } from '../../src/approval/index.ts'
-import { runDirectSendNotify, runDirectSendRequest } from '../../src/commands/index.ts'
+import {
+  formatRoundTitle,
+  runDirectSendNotify,
+  runDirectSendRequest,
+} from '../../src/commands/index.ts'
 import type { DirectSendDeps, SendRequestArgs } from '../../src/commands/index.ts'
 import type { Provider, ProviderRuntime } from '../../src/provider/index.ts'
+import { SILENT_PROGRESS } from '../../src/progress/index.ts'
+import type { Progress } from '../../src/progress/index.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
 import type { FakeRuntime } from '../provider/fake.ts'
 
@@ -54,6 +61,7 @@ function createDeps(
   provider: Provider,
   signal: AbortSignal = new AbortController().signal,
   env: NodeJS.ProcessEnv = ENV,
+  progress: Progress = SILENT_PROGRESS,
 ) {
   const printed: string[] = []
   const errors: string[] = []
@@ -63,6 +71,8 @@ function createDeps(
     signal,
     print: (text) => printed.push(text),
     printError: (text) => errors.push(text),
+    progress,
+    now: () => 0,
   }
   return { deps, printed, errors }
 }
@@ -260,6 +270,16 @@ test('notify exits 0 once sent', async () => {
   expect(recorded.stopCount).toBe(1)
 })
 
+test('a live direct send notify says it was sent', async () => {
+  const { provider } = createProvider()
+  const { progress, events } = createRecordingProgress()
+  const { deps, printed, errors } = createDeps(provider, undefined, ENV, progress)
+  expect(await runDirectSendNotify({ text: 'Shipped' }, deps)).toBe(0)
+  expect(events).toEqual(['done:Sent to Fake pair'])
+  expect(printed).toEqual([])
+  expect(errors).toEqual([])
+})
+
 test('notify exits 1 when sending fails', async () => {
   const { provider, recorded } = createProvider({
     sendNotification: async () => {
@@ -421,6 +441,67 @@ test('voter ids are normalized to the form the provider parses them to', async (
   ])
 })
 
+function createNumericProvider() {
+  const base = createPairingFakeProvider()
+  return createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              parse: (raw: unknown) =>
+                typeof raw === 'string' && /^\s*\d+\s*$/.test(raw) ? Number(raw) : undefined,
+            }
+          : setting,
+      ),
+    },
+  )
+}
+
+test('under github actions voter ids are masked on stderr before they are checked', async () => {
+  const base = createPairingFakeProvider()
+  const { provider } = createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              parse: (raw: unknown) => (raw === 'bad' ? undefined : setting.parse(raw)),
+            }
+          : setting,
+      ),
+    },
+  )
+  const { deps, errors } = createDeps(provider, undefined, { ...ENV, GITHUB_ACTIONS: 'true' })
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'bad'] }, deps)).toBe(1)
+  expect(errors).toEqual(['::add-mask::a', '::add-mask::bad', 'jaypost: invalid user id "bad"'])
+})
+
+test('normalized voter ids are masked too, and stdout stays the answer', async () => {
+  const { provider } = createNumericProvider()
+  const env = { ...ENV, FAKE_OWNER: '9', GITHUB_ACTIONS: 'true' }
+  const { deps, printed, errors } = createDeps(provider, undefined, env)
+  const answered = answerVoter(provider, '111', 0)
+  const args = { ...REQUEST, voters: ['0111', ' 111'], json: true } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(errors).toEqual(['::add-mask::0111', '::add-mask::111'])
+  expect(printed).toEqual([
+    '{"answer":"Yes","timedOut":false,"approved":true,"require":"all","votes":{"111":"Yes"},"rounds":1}',
+  ])
+})
+
+test('the default owner voter gets no mask line', async () => {
+  const { provider } = createProvider()
+  const { deps, errors } = createDeps(provider, undefined, { ...ENV, GITHUB_ACTIONS: 'true' })
+  const answered = answerVoter(provider, 'o', 0)
+  expect(await runDirectSendRequest({ ...REQUEST, rule: 'majority' }, deps)).toBe(0)
+  await answered
+  expect(errors).toEqual([])
+})
+
 test('a failed send to one voter exits 1 naming them', async () => {
   const { provider } = createProvider({
     sendRequest: async (_id, _message, _options, _allowText, _attachment, recipient) => {
@@ -452,4 +533,195 @@ test('a plain question with retries is re-asked after a timeout', async () => {
   expect(await runDirectSendRequest(args, deps)).toBe(0)
   expect(sendCount).toBe(2)
   expect(printed).toEqual(['Yes'])
+})
+
+test('a live direct request shows sent, the countdown and the answer', async () => {
+  const { provider } = createProvider()
+  const { progress, events } = createRecordingProgress()
+  const { deps, printed, errors } = createDeps(provider, undefined, ENV, progress)
+  const answered = answerWhenSent(provider, 0)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual(['Yes'])
+  expect(errors).toEqual([])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Fake pair',
+    'start:Waiting for your answer 5:00 left, then No',
+    'succeed:Answered after 0:00',
+  ])
+})
+
+test('a live direct request that is cancelled cancels the running step', async () => {
+  const { provider } = createProvider()
+  const controller = new AbortController()
+  const { progress, events } = createRecordingProgress()
+  const { deps, errors } = createDeps(provider, controller.signal, ENV, progress)
+  const cancelled = waitForSent(provider).then(() => controller.abort())
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(1)
+  await cancelled
+  expect(errors).toContain('jaypost: cancelled')
+  expect(events.at(-1)).toBe('cancel:Cancelled')
+})
+
+test('a live direct request notes the cancel only after the cancel mark', async () => {
+  const { provider } = createProvider()
+  const controller = new AbortController()
+  const { progress, events } = createRecordingProgress()
+  const { deps, errors } = createDeps(provider, controller.signal, ENV, progress)
+  const cancelled = waitForSent(provider).then(() => controller.abort())
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(1)
+  await cancelled
+  expect(errors).toEqual(['jaypost: cancelled'])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Fake pair',
+    'start:Waiting for your answer 5:00 left, then No',
+    'cancel:Cancelled',
+  ])
+})
+
+test('a live direct request that times out says so with the default', async () => {
+  const { provider } = createProvider()
+  const { progress, events } = createRecordingProgress()
+  const { deps, printed } = createDeps(provider, undefined, ENV, progress)
+  expect(await runDirectSendRequest({ ...REQUEST, timeout: 0.01 }, deps)).toBe(3)
+  expect(printed).toEqual(['No'])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Fake pair',
+    'start:Waiting for your answer 0:00 left, then No',
+    'succeed:Timed out, answered No',
+  ])
+})
+
+test('a live direct request with retries shows the second round', async () => {
+  let sendCount = 0
+  const { provider } = createProvider({
+    sendRequest: async (id) => {
+      sendCount += 1
+      if (sendCount === 2) {
+        setTimeout(() => provider.runtimes[0]?.handlers?.answer(id, 0), 0)
+      }
+      return { n: sendCount }
+    },
+  })
+  const { progress, events } = createRecordingProgress()
+  const { deps, printed } = createDeps(provider, undefined, ENV, progress)
+  expect(await runDirectSendRequest({ ...REQUEST, timeout: 0.01, retryCount: 1 }, deps)).toBe(0)
+  expect(printed).toEqual(['Yes'])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Fake pair',
+    'start:Waiting for your answer 0:00 left, then No',
+    'succeed:No answer, asking again (round 2 of 2)',
+    'start:Waiting for your answer 0:00 left, then No',
+    'succeed:Answered after 0:00',
+  ])
+})
+
+test('live runtime log lines are notes above the countdown, not raw stderr', async () => {
+  const { provider } = createProvider()
+  const logging = createFakeProvider({
+    ...provider,
+    createRuntime: (settings, log) => {
+      const runtime = provider.createRuntime(settings, log)
+      log('connected')
+      return runtime
+    },
+  })
+  const { progress, events } = createRecordingProgress()
+  const { deps, errors } = createDeps(logging, undefined, ENV, progress)
+  const answered = answerWhenSent(provider, 0)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(0)
+  await answered
+  expect(errors).toEqual([])
+  expect(events).toContain('note:jaypost: connected')
+})
+
+test('a live failed final edit is a note, not a raw console error', async () => {
+  const { provider } = createProvider({
+    finalize: async () => {
+      throw new Error('edit failed')
+    },
+  })
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { progress, events } = createRecordingProgress()
+  const { deps, errors } = createDeps(provider, undefined, ENV, progress)
+  const answered = answerWhenSent(provider, 0)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(0)
+  await answered
+  expect(consoleError).not.toHaveBeenCalled()
+  consoleError.mockRestore()
+  expect(errors).toEqual([])
+  expect(
+    events.filter((event) => event.startsWith('note:failed to finalize approval message')),
+  ).toEqual([expect.stringMatching(/^note:failed to finalize approval message Error: edit failed/)])
+})
+
+test('off a terminal a failed final edit still goes to console.error', async () => {
+  const { provider } = createProvider({
+    finalize: async () => {
+      throw new Error('edit failed')
+    },
+  })
+  const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { deps } = createDeps(provider)
+  const answered = answerWhenSent(provider, 0)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(0)
+  await answered
+  expect(consoleError).toHaveBeenCalledWith(
+    'failed to finalize approval message',
+    expect.any(Error),
+  )
+  consoleError.mockRestore()
+})
+
+test('a live direct request that fails fails the running step', async () => {
+  const { provider } = createProvider({
+    checkCredentials: async () => ({ ok: false, reason: 'Fake rejected that key' }),
+  })
+  const { progress, events } = createRecordingProgress()
+  const { deps, errors } = createDeps(provider, undefined, ENV, progress)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(1)
+  expect(errors).toEqual(['jaypost: Fake rejected that key'])
+  expect(events).toEqual(['start:Sending', 'fail:Sending'])
+})
+
+test('a live direct vote shows the round and the vote count', async () => {
+  const { provider } = createProvider()
+  const { progress, events } = createRecordingProgress()
+  const { deps, printed } = createDeps(provider, undefined, ENV, progress)
+  const answered = Promise.all([answerVoter(provider, 'a', 0), answerVoter(provider, 'b', 0)])
+  const args = { ...REQUEST, voters: ['a', 'b'], retryCount: 1 }
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual(['Yes'])
+  expect(events).toEqual([
+    'start:Sending',
+    'succeed:Sent to Fake pair',
+    'start:Round 1 of 2: 0 of 2 voted, 5:00 left',
+    'succeed:Approved, 2 of 2 voted',
+  ])
+})
+
+test('a direct request off a terminal writes no progress and prints the same answer', async () => {
+  const { provider } = createProvider()
+  const { progress, events } = createRecordingProgress('silent')
+  const { deps, printed, errors } = createDeps(provider, undefined, ENV, progress)
+  const answered = answerWhenSent(provider, 0)
+  expect(await runDirectSendRequest(REQUEST, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual(['Yes'])
+  expect(errors).toEqual([])
+  expect(events).toEqual([])
+})
+
+test('formatRoundTitle drops the round prefix for a single round', () => {
+  expect(formatRoundTitle({ round: 1, roundCount: 1, votedCount: 1, voterCount: 2 }, 130_000)).toBe(
+    '1 of 2 voted, 2:10 left',
+  )
+  expect(formatRoundTitle({ round: 2, roundCount: 3, votedCount: 1, voterCount: 2 }, 130_000)).toBe(
+    'Round 2 of 3: 1 of 2 voted, 2:10 left',
+  )
 })
