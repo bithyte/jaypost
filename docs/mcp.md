@@ -100,3 +100,27 @@ The port comes from `--port`, then `JAYPOST_PORT`, then the install's `install.j
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 
 `project` needs a service at least as new as this release. An older service sends the message without the project line, and `notify_user` reports that the service is too old. Re-run `init` to upgrade. `format` needs a service at least as new as the release that added it; an older one shows the markdown as typed.
+
+## Telling the agent when to ask
+
+The tool descriptions and the server's instructions only say what each tool does. Agents still tend to skip `ask_user` before a risky step, or ask in the chat whether they should ask. Paste this into `CLAUDE.md`, `AGENTS.md` or a system prompt, and edit the lists to fit the project:
+
+```markdown
+## Reaching me on my phone (jaypost)
+
+I'm often away from the terminal. The jaypost MCP tools are how you reach me: call them directly. Don't ask in chat whether to ask, and don't stop to wait for a chat reply I won't see.
+
+Ask with `ask_user` before you:
+
+- do something destructive or hard to undo: delete files, data or branches, force-push, rewrite history, run migrations
+- spend money or touch something shared: deploy, publish a package, call a paid API, message other people
+- pick between options that change what gets built, when the code and the task don't settle it
+
+Don't ask about what you can decide from the code or a sensible default. Pick one and mention it when you report back.
+
+Use `notify_user` when no answer is needed: the task is done, you're blocked on something only I can fix, or a long step finished.
+
+Make `timeout_option` the choice that changes nothing.
+```
+
+With the [Claude Code plugin](claude-code.md#plugin) or hook, tool permission prompts already reach the phone, so a tool call that needs permission is asked about anyway. The snippet matters for the steps that run without a prompt, and the plugin's `jaypost:phone` skill says the same thing.

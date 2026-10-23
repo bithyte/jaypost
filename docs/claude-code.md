@@ -11,7 +11,7 @@ The plugin wires Claude Code to jaypost without editing settings. You need jaypo
 /plugin install jaypost@bithyte
 ```
 
-It adds the two hooks from [the manual setup](#hook-manual-setup), the `jaypost` MCP server, a `jaypost:phone` skill that tells Claude how to write questions and notices for the phone, and a check at session start that says what's missing: jaypost not installed, too old (run `jaypost update`), not running, a token problem, or not paired.
+It adds the two hooks from [the manual setup](#hook-manual-setup), the `jaypost` MCP server, a `jaypost:phone` skill that tells Claude when to ask and how to write questions and notices for the phone, and a check at session start that says what's missing: jaypost not installed, too old (run `jaypost update`), not running, a token problem, or not paired.
 
 When jaypost isn't usable, prompts stay in the terminal quietly. The session-start message is the only notice.
 
