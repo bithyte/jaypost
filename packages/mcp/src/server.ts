@@ -25,6 +25,16 @@ import {
 import { OpenQuestions } from './questions.ts'
 import type { AskArguments, AttachmentArgument, McpOptions, McpServerOptions } from './types.ts'
 
+const INSTRUCTIONS = [
+  "jaypost reaches the user on their phone (Telegram or Discord). Use it when they're away from",
+  'the terminal: they asked to be pinged or asked on their phone, or the session runs unattended.',
+  'Need a decision before you go on: ask_user.',
+  'Need a decision later and have other work first: ask_user_async, then wait_for_answer.',
+  'Finished, blocked, or something they should know with no answer needed: notify_user.',
+  'Make timeout_option the safe choice, the one that changes nothing.',
+  'Use the project or repo directory name as project_name, the same in every call.',
+].join(' ')
+
 const ATTACH_SENTENCE =
   'Optionally attach a file (path) or long text (over the text limit, see GET /status maxTextLength; such as a diff or log) to show the user as a document with the message.'
 
@@ -39,11 +49,11 @@ const ASK_DESCRIPTION = [
   ATTACH_SENTENCE,
 ].join(' ')
 
-const ASK_IN_BACKGROUND_DESCRIPTION = [
+const ASK_ASYNC_DESCRIPTION = [
   'Ask the user a question on their phone and return at once with a request_id;',
   'call wait_for_answer with it when you need the answer.',
   'Use this when you have other work to do before you need the answer, or when a long blocking',
-  'call is not possible; otherwise use ask_for_permission.',
+  'call is not possible; otherwise use ask_user.',
   'On timeout the answer is timeout_option, so make that the safe choice.',
   `Default timeout ${DEFAULT_TIMEOUT_SECONDS} s, max ${MAX_TIMEOUT_SECONDS} s (24 h).`,
   'Questions still open when this session ends are cancelled.',
@@ -52,7 +62,7 @@ const ASK_IN_BACKGROUND_DESCRIPTION = [
 ].join(' ')
 
 const WAIT_DESCRIPTION = [
-  'Wait for the answer to a question asked with ask_for_permission_in_background.',
+  'Wait for the answer to a question asked with ask_user_async.',
   'Without wait_seconds it waits until the user answers or the question times out;',
   'wait_seconds 0 checks once. Results stay readable for 24 h after the question settles.',
   'Cancelling this call stops waiting but leaves the question open.',
@@ -137,9 +147,8 @@ const askInputSchema = {
 }
 
 /**
- * MCP server with ask_for_permission, ask_for_permission_in_background, wait_for_answer and
- * notify_user; aborting `signal` cancels every call. Background questions it asks go into
- * `options.openQuestions`.
+ * MCP server with ask_user, ask_user_async, wait_for_answer and notify_user; aborting `signal`
+ * cancels every call. Background questions it asks go into `options.openQuestions`.
  */
 export function createMcpServer(
   caller: Caller,
@@ -148,9 +157,12 @@ export function createMcpServer(
 ): McpServer {
   const progressIntervalMs = options.progressIntervalMs ?? PROGRESS_INTERVAL_MS
   const openQuestions = options.openQuestions ?? new OpenQuestions()
-  const server = new McpServer({ name: 'jaypost', version: options.version })
+  const server = new McpServer(
+    { name: 'jaypost', version: options.version },
+    { instructions: INSTRUCTIONS },
+  )
   server.registerTool(
-    'ask_for_permission',
+    'ask_user',
     {
       description: ASK_DESCRIPTION,
       inputSchema: askInputSchema,
@@ -175,9 +187,9 @@ export function createMcpServer(
     },
   )
   server.registerTool(
-    'ask_for_permission_in_background',
+    'ask_user_async',
     {
-      description: ASK_IN_BACKGROUND_DESCRIPTION,
+      description: ASK_ASYNC_DESCRIPTION,
       inputSchema: askInputSchema,
       outputSchema: { request_id: z.string(), expires_at: z.string() },
     },
@@ -206,10 +218,7 @@ export function createMcpServer(
     {
       description: WAIT_DESCRIPTION,
       inputSchema: {
-        request_id: z
-          .string()
-          .min(1)
-          .describe('The request_id from ask_for_permission_in_background'),
+        request_id: z.string().min(1).describe('The request_id from ask_user_async'),
         wait_seconds: z
           .number()
           .min(0)
