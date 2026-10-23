@@ -1,0 +1,14 @@
+{
+  "name": "@jaypost/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Wire schemas and types of the HTTP API, shared by the server and its clients",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jaypost/core": "workspace:*",
+    "zod": "catalog:"
+  }
+}

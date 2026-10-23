@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vite-plus/test'
-import { resolveInstallPaths, writeInstall } from '../../src/install/index.ts'
+import { resolveInstallPaths, writeInstall } from '@jaypost/install'
 
 const ROOT = new URL('../..', import.meta.url).pathname
 const WRAPPER = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
@@ -264,7 +264,7 @@ test('an unknown mode exits 1 naming it', async () => {
 
 test('session start against the real cli reports a stopped service', async () => {
   const sandbox = await createSandbox(
-    `#!/bin/sh\nexec "${process.execPath}" "${ROOT}src/cli.ts" "$@"\n`,
+    `#!/bin/sh\nexec "${process.execPath}" "${ROOT}apps/cli/src/cli.ts" "$@"\n`,
   )
   const configHome = join(sandbox.root, 'config')
   await mkdir(configHome)

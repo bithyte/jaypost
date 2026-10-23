@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="site/public/favicon.svg" alt="" width="96" height="96">
+<img src="apps/site/public/favicon.svg" alt="" width="96" height="96">
 
 # jaypost
 

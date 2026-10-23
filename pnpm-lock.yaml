@@ -4,62 +4,302 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+catalogs:
+  default:
+    '@clack/prompts':
+      specifier: ^1.8.1
+      version: 1.8.1
+    '@discordjs/core':
+      specifier: ^2.6.0
+      version: 2.6.0
+    '@discordjs/rest':
+      specifier: ^2.6.3
+      version: 2.6.3
+    '@discordjs/ws':
+      specifier: ^2.0.4
+      version: 2.0.4
+    '@modelcontextprotocol/sdk':
+      specifier: ^1.32.1
+      version: 1.32.1
+    commander:
+      specifier: ^15.0.0
+      version: 15.0.0
+    fastify:
+      specifier: ^5.12.7
+      version: 5.12.7
+    grammy:
+      specifier: ^1.46.0
+      version: 1.46.0
+    yaml:
+      specifier: ^2.9.1
+      version: 2.9.1
+    zod:
+      specifier: ^4.6.7
+      version: 4.6.7
+
 importers:
 
   .:
-    dependencies:
-      '@clack/prompts':
-        specifier: ^1.8.1
-        version: 1.8.1
-      '@discordjs/core':
-        specifier: ^2.6.0
-        version: 2.6.0
-      '@discordjs/rest':
-        specifier: ^2.6.3
-        version: 2.6.3
-      '@discordjs/ws':
-        specifier: ^2.0.4
-        version: 2.0.4
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.32.1
-        version: 1.32.1(zod@4.6.7)
-      commander:
-        specifier: ^15.0.0
-        version: 15.0.0
-      fastify:
-        specifier: ^5.12.7
-        version: 5.12.7
-      grammy:
-        specifier: ^1.46.0
-        version: 1.46.0
-      yaml:
-        specifier: ^2.9.1
-        version: 2.9.1
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
     devDependencies:
       '@changesets/cli':
         specifier: ^3.0.3
         version: 3.0.3
+      '@jaypost/install':
+        specifier: workspace:*
+        version: link:packages/install
       '@types/node':
         specifier: 24.19.2
         version: 24.19.2
-      punycode:
-        specifier: ^2.3.1
-        version: 2.3.1
       typescript:
         specifier: 7.0.2
         version: 7.0.2
       vite-plus:
         specifier: 1.3.0
         version: 1.3.0(@astrojs/compiler-rs@0.5.2)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)(yaml@2.9.1)
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
 
-  site:
+  apps/cli:
+    dependencies:
+      '@clack/prompts':
+        specifier: 'catalog:'
+        version: 1.8.1
+      '@discordjs/core':
+        specifier: 'catalog:'
+        version: 2.6.0
+      '@discordjs/rest':
+        specifier: 'catalog:'
+        version: 2.6.3
+      '@discordjs/ws':
+        specifier: 'catalog:'
+        version: 2.0.4
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.32.1(zod@4.6.7)
+      commander:
+        specifier: 'catalog:'
+        version: 15.0.0
+      fastify:
+        specifier: 'catalog:'
+        version: 5.12.7
+      grammy:
+        specifier: 'catalog:'
+        version: 1.46.0
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@jaypost/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@jaypost/hook':
+        specifier: workspace:*
+        version: link:../../packages/hook
+      '@jaypost/install':
+        specifier: workspace:*
+        version: link:../../packages/install
+      '@jaypost/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@jaypost/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@jaypost/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
+      '@jaypost/service':
+        specifier: workspace:*
+        version: link:../../packages/service
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../../packages/store
+      '@jaypost/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      punycode:
+        specifier: ^2.3.1
+        version: 2.3.1
+
+  apps/site:
     dependencies:
       astro:
         specifier: ^7.4.1
         version: 7.4.1(@types/node@24.19.2)(yaml@2.9.1)
+
+  packages/client:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jaypost/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+    devDependencies:
+      '@jaypost/service':
+        specifier: workspace:*
+        version: link:../service
+
+  packages/core:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+
+  packages/hook:
+    dependencies:
+      '@jaypost/client':
+        specifier: workspace:*
+        version: link:../client
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@jaypost/service':
+        specifier: workspace:*
+        version: link:../service
+      fastify:
+        specifier: 'catalog:'
+        version: 5.12.7
+
+  packages/install:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jaypost/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@jaypost/testing':
+        specifier: workspace:*
+        version: link:../testing
+
+  packages/mcp:
+    dependencies:
+      '@jaypost/client':
+        specifier: workspace:*
+        version: link:../client
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jaypost/install':
+        specifier: workspace:*
+        version: link:../install
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.32.1(zod@4.6.7)
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@jaypost/service':
+        specifier: workspace:*
+        version: link:../service
+      fastify:
+        specifier: 'catalog:'
+        version: 5.12.7
+
+  packages/protocol:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+
+  packages/providers:
+    dependencies:
+      '@discordjs/core':
+        specifier: 'catalog:'
+        version: 2.6.0
+      '@discordjs/rest':
+        specifier: 'catalog:'
+        version: 2.6.3
+      '@discordjs/ws':
+        specifier: 'catalog:'
+        version: 2.0.4
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      grammy:
+        specifier: 'catalog:'
+        version: 1.46.0
+    devDependencies:
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+      '@jaypost/testing':
+        specifier: workspace:*
+        version: link:../testing
+
+  packages/service:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      '@jaypost/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@jaypost/providers':
+        specifier: workspace:*
+        version: link:../providers
+      '@jaypost/store':
+        specifier: workspace:*
+        version: link:../store
+      fastify:
+        specifier: 'catalog:'
+        version: 5.12.7
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+    devDependencies:
+      '@jaypost/testing':
+        specifier: workspace:*
+        version: link:../testing
+
+  packages/store:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
+      zod:
+        specifier: 'catalog:'
+        version: 4.6.7
+
+  packages/testing:
+    dependencies:
+      '@jaypost/core':
+        specifier: workspace:*
+        version: link:../core
 
 packages:
 

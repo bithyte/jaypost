@@ -6,5 +6,9 @@ dist/
 *.tgz
 .mcp.json
 dist-exe/
-site/.astro/
+apps/site/.astro/
+# copied from the repo root by the jaypost prepack script
+apps/cli/README.md
+apps/cli/LICENSE
+apps/cli/install.sh
 .dev/

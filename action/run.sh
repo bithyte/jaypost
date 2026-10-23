@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs `jaypost request` or `jaypost notify` for the GitHub Action (action.yml): installs the release binary that matches
-# this checkout's package.json version, builds the argv from the inputs and runs it in direct mode.
+# this checkout's apps/cli/package.json version, builds the argv from the inputs and runs it in direct mode.
 # Reads INPUT_COMMAND, INPUT_TEXT, INPUT_OPTIONS, INPUT_DEFAULT, INPUT_TIMEOUT, INPUT_ALLOW_TEXT,
 # INPUT_REQUIRE, INPUT_RETRY, INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID,
 # JAYPOST_APPROVERS (JAYPOST_MODE and JAYPOST_PROVIDER pass through) and the runner's GITHUB_* and RUNNER_* variables.
@@ -67,9 +67,9 @@ if [ -z "$approvers" ]; then
   unset JAYPOST_APPROVERS
 fi
 
-version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$GITHUB_ACTION_PATH/package.json")
+version=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$GITHUB_ACTION_PATH/apps/cli/package.json")
 if [ -z "$version" ]; then
-  fail 1 "can't read the version from package.json"
+  fail 1 "can't read the version from apps/cli/package.json"
 fi
 
 install_dir="$RUNNER_TEMP/jaypost-$version"

@@ -1,0 +1,21 @@
+{
+  "name": "@jaypost/providers",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Telegram, Discord and terminal providers and their registry",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@discordjs/core": "catalog:",
+    "@discordjs/rest": "catalog:",
+    "@discordjs/ws": "catalog:",
+    "@jaypost/core": "workspace:*",
+    "grammy": "catalog:"
+  },
+  "devDependencies": {
+    "@jaypost/store": "workspace:*",
+    "@jaypost/testing": "workspace:*"
+  }
+}

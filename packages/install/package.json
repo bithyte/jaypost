@@ -1,0 +1,19 @@
+{
+  "name": "@jaypost/install",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Service installs (systemd, launchd, quadlet, compose, native) and self-update",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jaypost/core": "workspace:*",
+    "@jaypost/providers": "workspace:*",
+    "@jaypost/store": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@jaypost/testing": "workspace:*"
+  }
+}
