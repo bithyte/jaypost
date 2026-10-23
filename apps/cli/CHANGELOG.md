@@ -1,5 +1,19 @@
 # jaypost
 
+## 0.10.0
+
+### Minor Changes
+
+- 6b894a7: `JAYPOST_APPROVERS` holds the voters for direct `request`. `-u` overrides it, set but empty exits 2, and it exits 2 in service mode. Voter ids are masked in GitHub Actions logs. The Action takes `approvers`, `require` and `retry`.
+- c0836c1: The MCP server has two new tools: `cancel_question` withdraws a background question, and `list_questions` lists the session's background questions whose answers haven't been collected yet.
+- bfc6902: The MCP tools `ask_for_permission` and `ask_for_permission_in_background` are now `ask_user` and `ask_user_async`, since they ask any question, not just for permission. Update permission rules and prompts that name the old tools. The MCP server also sends instructions saying when to use each tool, and the Claude Code plugin adds a `jaypost:phone` skill on writing questions and notices for the phone.
+- 6b894a7: New `jaypost pair approver` pairs approvers and prints their ids. Breaking: `setup-ci` no longer pairs approvers and `--approvers-only` is gone; use `jaypost pair approver`.
+- 780b664: Commands now show what they're doing while they wait: `test` and `send request` say when the question was sent and count down to the timeout, and `init`, `update`, `uninstall`, `reset-owner` and `setup-ci` show a checklist with live build output. Script output on stdout is unchanged.
+- 3983f48: `jaypost hook` handles `Stop`: when Claude finishes and nobody types for a minute, its last message goes to the phone, and a text reply wakes Claude with it as the next prompt (through Claude Code's `asyncRewake`). `UserPromptSubmit` and `SessionEnd` cancel a question that's still waiting. The plugin turns this on and drops `idle_prompt` from its notifications, since the new message covers the same moment.
+- d7f7851: `send`, `hook`, `mcp` and the Node `Client` can reach the service by URL with `JAYPOST_URL` (or `Client`'s `url` option), http or https, with an optional path prefix.
+- d7f7851: `request -u`, `--require` and `--retry` work in service mode too, through a new `POST /vote` route and a `retry` field on `POST /request`. The Node `Client` takes `retry` as well, answers with `rounds` when it's set, and has `vote()`.
+- 5e3801e: `jaypost send request` and `jaypost send notify` are now `jaypost request` and `jaypost notify`, and `jaypost test` is `jaypost ping`, which sends a plain notification instead of a question with buttons. The old names still work.
+
 ## 0.9.0
 
 ### Minor Changes
