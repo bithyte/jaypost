@@ -18,6 +18,12 @@ inputs:
     description: Seconds to wait for an answer; 300 by default, 86400 at most (command request).
   allow-text:
     description: Also accept a typed answer, true or false (command request).
+  approvers:
+    description: Approver ids, comma or space separated, for a vote. Pass them from a secret; needs require.
+  require:
+    description: How the vote decides, all or majority; needs approvers (command request).
+  retry:
+    description: Ask again up to N times after a timeout, 0 to 100 (command request).
   project:
     description: Project name shown on the message. The repository name by default.
   format:
@@ -48,9 +54,12 @@ runs:
         INPUT_DEFAULT: ${{ inputs.default }}
         INPUT_TIMEOUT: ${{ inputs.timeout }}
         INPUT_ALLOW_TEXT: ${{ inputs.allow-text }}
+        INPUT_REQUIRE: ${{ inputs.require }}
+        INPUT_RETRY: ${{ inputs.retry }}
         INPUT_PROJECT: ${{ inputs.project }}
         INPUT_FORMAT: ${{ inputs.format }}
         JAYPOST_MODE: direct
+        JAYPOST_APPROVERS: ${{ inputs.approvers }}
         JAYPOST_PROVIDER: ${{ inputs.provider }}
         JAYPOST_BOT_TOKEN: ${{ inputs.bot-token }}
         JAYPOST_OWNER_ID: ${{ inputs.owner-id }}
