@@ -12,15 +12,15 @@ The relay should be a drop-in replacement for the daemon: same HTTP API, same cl
 2. **A bot is separate from the HTTP API.** `ApiBot` (src/server/types.ts) is everything the API needs from one bot: its approval service, notifications, status and provider limits. `createApiServer(router)` asks a `BotRouter` for the call's bot from its Authorization header before reading the body, and answers 401 when there's none. The daemon uses `createSingleBotRouter({ ...bot, auth })`. A relay would use a router that maps each token to its bot.
 3. **Starting a bot is separate from serving it.** `startBot` (src/daemon/bot.ts) starts one provider runtime with its state, audit log, quiet hours and pairing, and returns an `ApiBot`. `startService` is now `startBot` plus a single-bot API.
 
-The HTTP API and its OpenAPI document don't change.
+The HTTP API and its OpenAPI document don't change in these three steps. Votes and retries were added over HTTP afterwards (`POST /vote` and `retry` on `/request`), so a pipeline sharing a bot through the relay can use `-u`, `--require` and `--retry`.
 
 ## What the relay still needs
 
 - **Config for several bots**: one `Config` and data directory per bot, plus the token(s) that reach each one. `startBot` already keeps a bot's files next to its `configPath`.
 - **A multi-bot router**: token to bot, compared in constant time like `isAuthorized`. Several tokens per bot (one per pipeline) would let one be revoked without the others.
-- **Votes and retries over HTTP**: `-u`, `--require` and `--retry` only exist in direct mode (src/direct/session.ts drives `runVote` and `askWithRetries` in-process). A pipeline that shares a bot through the relay needs them as API routes, and `send` needs to stop requiring `JAYPOST_MODE=direct` for them. The vote logic is already in the approval core, so this is routes plus wire types.
 - **TLS and exposure**: the relay should run behind https. Clients don't refuse plain http to a non-loopback host today; whether they should is open.
 - **Per-bot logging**: the API's log lines name the provider, not the bot.
+- **Who a vote may reach**: `/vote` takes any user id that started a chat with the bot, so any token holder can message them. A shared relay may need an allowlist of voters per bot or per token.
 
 ## Calls I made
 

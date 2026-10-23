@@ -666,6 +666,15 @@ test('askInBackground on an old service is tooOld', async () => {
   )
 })
 
+test('askInBackground leaves retry out of the body', async () => {
+  const { port } = await startBackgroundApi()
+  expect(await caller(port).askInBackground({ ...ASK, retry: 2 }, CALL)).toEqual({
+    kind: 'pending',
+    id: expect.any(String),
+    expiresAt: expect.any(String),
+  })
+})
+
 test('an unreadable state body is unreadable', async () => {
   const port = await startStub(reply(200, '{"id":"x","state":"pending"}'))
   expect(await caller(port).waitFor('x', { ...CALL, waitSeconds: 0 })).toEqual(

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { VOTE_RULES } from '../approval/constants.ts'
 
 /**
  * Shape of the /status response; `code` is present only while unpaired. `bot` is a Telegram-only
@@ -26,3 +27,13 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
     maxOptionCount: z.number().optional(),
   }),
 ])
+
+/** Shape of the /vote response; `null` in `votes` is a voter who never voted. Unknown fields are kept. */
+export const voteReportSchema = z.looseObject({
+  answer: z.string(),
+  timedOut: z.boolean(),
+  approved: z.boolean(),
+  require: z.enum(VOTE_RULES),
+  votes: z.record(z.string(), z.string().nullable()),
+  rounds: z.number(),
+})

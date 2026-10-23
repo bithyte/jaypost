@@ -32,7 +32,20 @@ const { answer, timedOut } = await client.request({
 await client.notify({ text: 'backup finished' })
 ```
 
-`new Client()` takes optional `host` (default `127.0.0.1`), `port` (default 8787), `url`, `token` and `project`. `url` is the service's base URL, `http` or `https`, and can't be combined with `host` or `port`; with none of the three, `JAYPOST_URL` is used when set. `project` is sent with every call unless it passes its own. Without `token`, each call looks one up: `JAYPOST_TOKEN` if set, else the token file, else none is sent. An invalid `token` throws a `RangeError`. `request` takes the [`/request` fields](http-api.md#ask-a-question) plus an optional `signal`, and `request` and `notify` take `format: 'markdown'` (see [Formatting](formatting.md)). When you put untrusted text into a markdown message, `escapeMarkdown(text)` makes it show as typed and `formatCodeBlock(code, language?)` wraps code in a fence that can't be closed from inside. Both are exported from the package; aborting it cancels the question and rejects with the signal's reason. Failures (service down, a 400, a send error) throw a `JaypostError` with the same message the CLI prints. A timeout isn't a failure: it resolves with `timeoutOption` and `timedOut: true`.
+`new Client()` takes optional `host` (default `127.0.0.1`), `port` (default 8787), `url`, `token` and `project`. `url` is the service's base URL, `http` or `https`, and can't be combined with `host` or `port`; with none of the three, `JAYPOST_URL` is used when set. `project` is sent with every call unless it passes its own. Without `token`, each call looks one up: `JAYPOST_TOKEN` if set, else the token file, else none is sent. An invalid `token` throws a `RangeError`. `request` takes the [`/request` fields](http-api.md#ask-a-question) plus an optional `signal`, and `request` and `notify` take `format: 'markdown'` (see [Formatting](formatting.md)). When you put untrusted text into a markdown message, `escapeMarkdown(text)` makes it show as typed and `formatCodeBlock(code, language?)` wraps code in a fence that can't be closed from inside. Both are exported from the package; aborting it cancels the question and rejects with the signal's reason. Failures (service down, a 400, a send error) throw a `JaypostError` with the same message the CLI prints. A timeout isn't a failure: it resolves with `timeoutOption` and `timedOut: true`. With `retry`, the answer also has `rounds`, how many times it was asked.
+
+`vote` asks several people the same yes/no question and resolves once it's decided, approved or not. It takes the `request` fields with `options: [approve, reject]` and `timeoutOption` the reject answer, plus `voters` (default: the owner), `require` (`all` or `majority`) and `retry`, and resolves with the [`/vote` report](http-api.md#votes); a rejection isn't a failure, check `approved`:
+
+```ts
+const report = await client.vote({
+  text: 'Publish v123?',
+  options: ['Yes', 'No'],
+  timeoutOption: 'No',
+  voters: ['111', '222', '333'],
+  require: 'majority',
+})
+if (!report.approved) process.exit(3)
+```
 
 `request` and `notify` also take an `attachment`, one file sent along with the message (see the HTTP `attachment` field for limits):
 

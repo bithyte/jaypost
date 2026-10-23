@@ -74,8 +74,26 @@ export type AskRequest = {
   readonly signal?: AbortSignal
 }
 
-/** The tapped option or typed reply, or `timeoutOption` with `timedOut` set. */
-export type Answer = { readonly answer: string; readonly timedOut: boolean }
+/**
+ * The tapped option or typed reply, or `timeoutOption` with `timedOut` set; `rounds` is how many
+ * times it was asked, present when the request had `retry`.
+ */
+export type Answer = {
+  readonly answer: string
+  readonly timedOut: boolean
+  readonly rounds?: number
+}
+
+/**
+ * A yes/no question for several people, one message each: `options` are `[approve, reject]` and
+ * `timeoutOption` the reject answer. `voters` (provider user ids) default to the owner and
+ * `require` to `all`; `retry` re-asks only voters who haven't voted. Needs a service with votes.
+ */
+export type VoteRequest = Omit<AskRequest, 'options' | 'allowText'> & {
+  readonly options: readonly [string, string]
+  readonly voters?: readonly string[]
+  readonly require?: VoteRule
+}
 
 /** A message that doesn't need an answer. */
 export type Notification = {
@@ -228,7 +246,7 @@ export type Failure = {
 
 export type Pending = { readonly kind: 'pending'; readonly id: string; readonly expiresAt: string }
 
-export type Done = { readonly kind: 'done'; readonly answer: string; readonly timedOut: boolean }
+export type Done = { readonly kind: 'done' } & Answer
 
 export type QuestionState =
   | Pending

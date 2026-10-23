@@ -59,14 +59,15 @@ export class Caller {
     if (attachment.kind === 'failed') {
       return attachment
     }
-    const result = await requestApi(session.endpoint, toAskBody(question, attachment.body), {
-      ...this.#apiOptions(session, call.signal),
-      now: this.#now,
-    })
+    const result = await requestApi(
+      session.endpoint,
+      { ...toAskBody(question, attachment.body), ...toRetryField(question) },
+      { ...this.#apiOptions(session, call.signal), now: this.#now },
+    )
     if (result.kind === 'failed') {
       return result
     }
-    return { kind: 'done', answer: result.outcome.answer, timedOut: result.outcome.timedOut }
+    return { kind: 'done', ...result.outcome }
   }
 
   /**
@@ -84,6 +85,7 @@ export class Caller {
     }
     const body: VoteBody = {
       ...toAskBody(question, attachment.body),
+      ...toRetryField(question),
       ...(ballot.voters === undefined ? {} : { voters: ballot.voters }),
       ...(ballot.rule === undefined ? {} : { require: ballot.rule }),
     }
@@ -283,7 +285,7 @@ export class Caller {
   }
 }
 
-/** The `/ask` wire body for `question`, with the attachment already read. */
+/** The `/ask` wire body for `question`, with the attachment already read and without `retry`. */
 export function toAskBody(question: Question, attachment: AttachmentBody | undefined): AskBody {
   return {
     text: question.text,
@@ -294,8 +296,12 @@ export function toAskBody(question: Question, attachment: AttachmentBody | undef
     ...(question.project === undefined ? {} : { project: question.project }),
     ...(question.format === undefined ? {} : { format: question.format }),
     ...(attachment === undefined ? {} : { attachment }),
-    ...(question.retry === undefined ? {} : { retry: question.retry }),
   }
+}
+
+// Only /request and /vote take `retry`; /request/async answers 400 to it.
+function toRetryField(question: Question): { readonly retry?: number } {
+  return question.retry === undefined ? {} : { retry: question.retry }
 }
 
 /** The `/notify` wire body for `message`, with the attachment already read. */

@@ -712,6 +712,21 @@ test('session start with an unusable token reports it without calling the servic
   expect(messenger.sent).toEqual([])
 })
 
+test('session start with an unreachable remote url says to check it', async () => {
+  const { deps, out } = createDeps(0, SESSION_START_EVENT, { env: await createEmptyHome() })
+  const remote: HookDeps = {
+    ...deps,
+    endpoint: { kind: 'url', url: new URL('http://0.0.0.0:9/relay') },
+  }
+  expect(await runHook({}, remote)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage:
+        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check JAYPOST_URL and that the service there is running.",
+    }),
+  ])
+})
+
 test('session start aborted prints nothing', async () => {
   const { port } = await startApi()
   const controller = new AbortController()

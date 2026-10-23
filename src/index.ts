@@ -6,6 +6,8 @@ export type {
   AttachmentInput,
   ClientOptions,
   Notification,
+  VoteRequest,
 } from './client/index.ts'
+export type { VoteReport, VoteRule } from './approval/index.ts'
 export { escapeMarkdown, formatCodeBlock } from './format/index.ts'
 export type { MessageFormat } from './format/index.ts'

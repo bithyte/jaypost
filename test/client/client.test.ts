@@ -14,6 +14,7 @@ import {
   ATTACHMENT_TOO_OLD_MESSAGE,
   INVALID_URL_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
+  VOTE_TOO_OLD_MESSAGE,
 } from '../../src/client/index.ts'
 import { Client, JaypostError } from '../../src/index.ts'
 
@@ -92,6 +93,58 @@ test('request returns a timeout as data', async () => {
   })
 })
 
+test('request with retry returns the rounds asked', async () => {
+  const { port, seen } = await startStub(200, '{"answer":"Approve","timedOut":false,"rounds":2}')
+  const client = new Client({ port })
+  expect(await client.request({ ...ASK, retry: 3 })).toEqual({
+    answer: 'Approve',
+    timedOut: false,
+    rounds: 2,
+  })
+  expect(seen.body).toEqual({ ...ASK, retry: 3 })
+})
+
+test('a long timeout with many retries still waits for the answer', async () => {
+  const { port } = await startStub(200, '{"answer":"Approve","timedOut":false,"rounds":1}')
+  const client = new Client({ port })
+  expect(await client.request({ ...ASK, timeout: 86_400, retry: 100 })).toEqual({
+    answer: 'Approve',
+    timedOut: false,
+    rounds: 1,
+  })
+})
+
+test('vote posts to /vote and returns the report', async () => {
+  const report = {
+    answer: 'Decline',
+    timedOut: false,
+    approved: false,
+    require: 'majority',
+    votes: { '111': 'Decline', '222': null },
+    rounds: 1,
+  }
+  const { port, seen } = await startStub(200, JSON.stringify(report))
+  const client = new Client({ port, project: 'app' })
+  const vote = {
+    text: 'Deploy?',
+    options: ['Approve', 'Decline'] as const,
+    timeoutOption: 'Decline',
+    voters: ['111', '222'],
+    require: 'majority' as const,
+    retry: 1,
+  }
+  expect(await client.vote(vote)).toEqual(report)
+  expect(seen).toEqual({ url: '/vote', body: { ...vote, project: 'app' } })
+})
+
+test('vote against a service without /vote throws the upgrade message', async () => {
+  const { port } = await startStub(404, '{"error":"not found"}')
+  const client = new Client({ port })
+  await expect(
+    client.vote({ text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }),
+  ).rejects.toThrow(new JaypostError(VOTE_TOO_OLD_MESSAGE))
+})
+
 test('client project is sent unless the call sets its own', async () => {
   const { port, seen } = await startStub(200, '{"answer":"Approve","timedOut":false}')
   const client = new Client({ port, project: 'api' })
@@ -163,6 +216,21 @@ test('unreachable url throws and names it', async () => {
       'jaypost service not reachable on http://127.0.0.2:9/relay (run jaypost status)',
     ),
   )
+})
+
+test('unreachable remote url says to check it rather than the local install', async () => {
+  const client = new Client({ url: 'http://0.0.0.0:9/relay' })
+  await expect(client.notify({ text: 'hi' })).rejects.toThrow(
+    new JaypostError(
+      'jaypost service not reachable on http://0.0.0.0:9/relay (check the URL and that the service there is running)',
+    ),
+  )
+})
+
+test('url with a double slash path keeps calls on its host', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  await new Client({ url: `http://127.0.0.1:${port}//team/` }).notify({ text: 'hi' })
+  expect(seen.url).toBe('//team/notify')
 })
 
 test('bad JAYPOST_URL throws on the call without repeating it', async () => {

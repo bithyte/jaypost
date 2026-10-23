@@ -32,6 +32,8 @@ export const RETRY_TOO_OLD_MESSAGE =
 /** Shown when the service has no /vote. */
 export const VOTE_TOO_OLD_MESSAGE =
   'jaypost service is too old for votes (run jaypost init to upgrade)'
+/** Longest delay a Node timer takes (2^31 - 1 ms, about 24.8 days); longer ones fire at once. */
+export const MAX_TIMER_MS = 2_147_483_647
 /** Extra time a call with an attachment gets, for the upload and the service's send. */
 export const ATTACHMENT_GRACE_MS = 120_000
 /** Name for an attachment with no name of its own, such as text piped to the CLI. */

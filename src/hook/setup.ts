@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describeEndpoint } from '../client/index.ts'
+import { describeEndpoint, isLoopbackEndpoint } from '../client/index.ts'
 import type { Caller } from '../client/index.ts'
 import { MANUAL_HOOK_PATTERN, MANUAL_MCP_PATTERN, SETUP_STATUS_TIMEOUT_MS } from './constants.ts'
 import type { HookDeps } from './types.ts'
@@ -12,6 +12,12 @@ import type { HookDeps } from './types.ts'
  * Never throws.
  */
 export async function checkService(caller: Caller, deps: HookDeps): Promise<string | undefined> {
+  const { endpoint } = deps
+  if (endpoint.kind === 'invalid') {
+    return deps.signal.aborted
+      ? undefined
+      : `jaypost can't find its service (${endpoint.message}), so permission prompts stay in the terminal.`
+  }
   const result = await caller.status({ signal: deps.signal, timeoutMs: SETUP_STATUS_TIMEOUT_MS })
   if (result.kind === 'status') {
     return result.status.paired
@@ -25,12 +31,9 @@ export async function checkService(caller: Caller, deps: HookDeps): Promise<stri
     case 'unreachable':
     case 'cancelled':
     case 'httpTimeout':
-      if (deps.endpoint.kind === 'invalid') {
-        return undefined
-      }
-      return `jaypost isn't running on ${describeEndpoint(deps.endpoint.url)}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
-    case 'invalidUrl':
-      return `jaypost can't find its service (${result.message}), so permission prompts stay in the terminal.`
+      return isLoopbackEndpoint(endpoint.url)
+        ? `jaypost isn't running on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
+        : `jaypost isn't reachable on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Check JAYPOST_URL and that the service there is running.`
     case 'unusableToken':
     case 'unauthorized':
       return `jaypost can't use its API token (${result.message}), so permission prompts stay in the terminal. Run \`jaypost init\`, or set JAYPOST_TOKEN in a container.`

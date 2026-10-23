@@ -258,10 +258,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     }
     const signal = abortOnClose(reply)
     const { retryCount } = ask
-    const pending =
-      retryCount === undefined
-        ? bot.service.request(ask.request, signal)
-        : askWithRetries(bot.service, ask.request, retryCount, signal)
+    const pending = askWithRetries(bot.service, ask.request, retryCount ?? 0, signal)
     // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
     ask = undefined
     const result = await pending
@@ -270,9 +267,9 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       return reply.code(500).send({ error: 'request was cancelled' })
     }
     // `rounds` tells a client that sent `retry` that this service re-asks.
-    return 'roundCount' in result
-      ? { ...result.outcome, rounds: result.roundCount }
-      : result.outcome
+    return retryCount === undefined
+      ? result.outcome
+      : { ...result.outcome, rounds: result.roundCount }
   })
   app.post<{ Body: string | undefined }>('/request/async', guard, async (request, reply) => {
     const bot = requireBot(request)

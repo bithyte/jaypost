@@ -3,7 +3,15 @@ import type { ClientToken } from '../auth/index.ts'
 import { DEFAULT_PORT } from '../config/constants.ts'
 import { Caller } from './caller.ts'
 import { findEnvEndpoint, parseEndpointUrl, toLocalEndpoint } from './endpoint.ts'
-import type { Answer, AskRequest, ClientOptions, Notification, ServiceEndpoint } from './types.ts'
+import type { VoteReport } from '../approval/index.ts'
+import type {
+  Answer,
+  AskRequest,
+  ClientOptions,
+  Notification,
+  ServiceEndpoint,
+  VoteRequest,
+} from './types.ts'
 
 /** Thrown by `Client` when the service is unreachable, rejects the input or can't send. */
 export class JaypostError extends Error {
@@ -51,7 +59,31 @@ export class Client {
     if (result.kind === 'failed') {
       throw new JaypostError(result.message)
     }
-    return { answer: result.answer, timedOut: result.timedOut }
+    const { kind: _kind, ...answer } = result
+    return answer
+  }
+
+  /**
+   * Asks every voter the two-way question and resolves once the vote is decided, either way;
+   * `approved` says which. Throws like `request`.
+   */
+  async vote(request: VoteRequest): Promise<VoteReport> {
+    const signal = request.signal ?? new AbortController().signal
+    const { signal: _signal, voters, require, ...question } = request
+    const ballot = {
+      ...(voters === undefined ? {} : { voters }),
+      ...(require === undefined ? {} : { rule: require }),
+    }
+    const result = await this.#caller.vote(
+      { ...question, ...this.#withProject(request.project) },
+      ballot,
+      { signal },
+    )
+    throwIfAborted(signal)
+    if (result.kind === 'failed') {
+      throw new JaypostError(result.message)
+    }
+    return result.report
   }
 
   /** Resolves once Telegram accepts the message. Throws like `request`. */

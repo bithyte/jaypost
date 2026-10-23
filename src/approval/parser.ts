@@ -330,13 +330,17 @@ export function createVoteFieldsSchema() {
   })
 }
 
+// Built once: unlike the request schema, these don't depend on the provider's limits.
+const RETRY_SCHEMA = createRetrySchema()
+const VOTE_FIELDS_SCHEMA = createVoteFieldsSchema()
+
 /**
  * Reads `retry` from a body `parseApprovalRequest` accepted. Never throws; absent means
  * undefined.
  */
 export function parseRetryCount(body: unknown): RetryParseResult {
   const raw = typeof body === 'object' && body !== null && 'retry' in body ? body.retry : undefined
-  const result = createRetrySchema().safeParse(raw)
+  const result = RETRY_SCHEMA.safeParse(raw)
   return result.success
     ? { ok: true, retryCount: result.data }
     : { ok: false, error: result.error.issues[0]?.message ?? RETRY_ERROR }
@@ -368,7 +372,7 @@ export function parseVoteRequest(
   if (request.timeoutOption !== request.options[1]) {
     return { ok: false, error: 'timeoutOption must be the second option' }
   }
-  const fields = createVoteFieldsSchema().safeParse(body)
+  const fields = VOTE_FIELDS_SCHEMA.safeParse(body)
   if (!fields.success) {
     return { ok: false, error: fields.error.issues[0]?.message ?? 'invalid vote' }
   }

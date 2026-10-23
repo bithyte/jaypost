@@ -1,7 +1,6 @@
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS } from '../approval/constants.ts'
-import type { VoteReport } from '../approval/index.ts'
 import {
   ATTACHMENT_GRACE_MS,
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
@@ -9,6 +8,7 @@ import {
   CANCELLED_MESSAGE,
   FETCH_GRACE_MS,
   LEGACY_MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
   NOT_PAIRED_MESSAGE,
   NOT_SUPPORTED_MESSAGE,
   RETRY_TOO_OLD_MESSAGE,
@@ -19,7 +19,8 @@ import {
   TOO_OLD_MESSAGE,
   VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
-import { describeEndpoint, resolveApiUrl } from './endpoint.ts'
+import { voteReportSchema } from '../server/schema.ts'
+import { describeEndpoint, isLoopbackEndpoint, resolveApiUrl } from './endpoint.ts'
 import type {
   ApiMethod,
   ApiOptions,
@@ -80,13 +81,15 @@ const KEEPALIVE_MS = 60_000
 
 /**
  * HTTP timeout for a /request or /vote call: the capped approval timeout for every round plus a
- * grace period, and more when the call uploads an attachment.
+ * grace period, and more when the call uploads an attachment, at most `MAX_TIMER_MS`.
  */
 function toFetchTimeoutMs(body: AskBody): number {
   const roundCount = (body.retry ?? 0) + 1
-  return (
+  // Many long rounds would pass the timer limit, which fires at once or throws past it.
+  return Math.min(
     Math.min(body.timeout ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS) * 1000 * roundCount +
-    toSendTimeoutMs(body.attachment !== undefined)
+      toSendTimeoutMs(body.attachment !== undefined),
+    MAX_TIMER_MS,
   )
 }
 
@@ -126,7 +129,11 @@ export async function requestApi(
   if (timedOut && (body.retry ?? 0) > 0 && !('rounds' in result.body)) {
     return { kind: 'failed', reason: 'tooOld', message: RETRY_TOO_OLD_MESSAGE }
   }
-  return { kind: 'ok', outcome: { answer, timedOut } }
+  const rounds = 'rounds' in result.body ? result.body.rounds : undefined
+  return {
+    kind: 'ok',
+    outcome: { answer, timedOut, ...(typeof rounds === 'number' ? { rounds } : {}) },
+  }
 }
 
 /** Runs a vote through /vote and resolves once it is decided. Never throws. */
@@ -142,10 +149,11 @@ export async function voteApi(
   if (result.kind === 'failed') {
     return result
   }
-  if (!isVoteReport(result.body)) {
+  const parsed = voteReportSchema.safeParse(result.body)
+  if (!parsed.success) {
     return unreadable(JSON.stringify(result.body))
   }
-  return { kind: 'voted', report: result.body }
+  return { kind: 'voted', report: parsed.data }
 }
 
 function isTooEarly(timeoutSeconds: number | undefined, elapsedMs: number): boolean {
@@ -217,10 +225,13 @@ function toTransportFailure(endpoint: URL, options: ApiOptions, timeout: AbortSi
       message: `jaypost service didn't answer within ${options.timeoutMs / 1000} s`,
     }
   }
+  const hint = isLoopbackEndpoint(endpoint)
+    ? 'run jaypost status'
+    : 'check the URL and that the service there is running'
   return {
     kind: 'failed',
     reason: 'unreachable',
-    message: `jaypost service not reachable on ${describeEndpoint(endpoint)} (run jaypost status)`,
+    message: `jaypost service not reachable on ${describeEndpoint(endpoint)} (${hint})`,
   }
 }
 
@@ -273,26 +284,6 @@ function isOutcome(body: unknown): body is { answer: string; timedOut: boolean }
     'timedOut' in body &&
     typeof body.timedOut === 'boolean'
   )
-}
-
-/** True for a /vote answer body; extra fields are kept. */
-function isVoteReport(body: unknown): body is VoteReport {
-  if (!isOutcome(body)) {
-    return false
-  }
-  if (!('approved' in body) || typeof body.approved !== 'boolean') {
-    return false
-  }
-  if (!('require' in body) || (body.require !== 'all' && body.require !== 'majority')) {
-    return false
-  }
-  if (!('rounds' in body) || typeof body.rounds !== 'number') {
-    return false
-  }
-  if (!('votes' in body) || typeof body.votes !== 'object' || body.votes === null) {
-    return false
-  }
-  return Object.values(body.votes).every((vote) => vote === null || typeof vote === 'string')
 }
 
 function parseOk(text: string): ApiResult {

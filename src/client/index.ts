@@ -1,7 +1,13 @@
 export { readAttachment } from './attachment.ts'
 export { Caller, toAskBody, toNotifyBody } from './caller.ts'
 export { Client, JaypostError } from './client.ts'
-export { describeEndpoint, findEnvEndpoint, parseEndpointUrl, toLocalEndpoint } from './endpoint.ts'
+export {
+  describeEndpoint,
+  findEnvEndpoint,
+  isLoopbackEndpoint,
+  parseEndpointUrl,
+  toLocalEndpoint,
+} from './endpoint.ts'
 export {
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   ATTACHMENT_TOO_OLD_MESSAGE,
@@ -35,4 +41,5 @@ export type {
   QuestionState,
   ServiceEndpoint,
   VoteOutcome,
+  VoteRequest,
 } from './types.ts'

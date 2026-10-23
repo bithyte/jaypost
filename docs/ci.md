@@ -1,6 +1,6 @@
 # CI (GitHub Actions)
 
-In CI there's no service to run. Set `JAYPOST_MODE=direct` and `jaypost send` talks to the chat app itself, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
+In CI there's usually no service to run. Set `JAYPOST_MODE=direct` and `jaypost send` talks to the chat app itself, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
 
 Run `jaypost setup-ci` once on your machine (`--provider NAME` picks the chat app). It prints a pairing code, waits for you to send it to the bot, then prints the env vars to store as GitHub secrets. It writes no files.
 
@@ -12,6 +12,17 @@ JAYPOST_OWNER_ID=...
 ```
 
 After the owner pairs and the env vars print, `setup-ci` asks `Pair an approver?`. Say yes and it shows a fresh code for that person to send to the bot; repeat for each approver. When you're done it prints their ids as `-u ID` flags to pass to `send request` (see [Several approvers](#several-approvers)). `jaypost setup-ci --approvers-only` skips the owner and the env vars, to add approvers later. On Discord, an approver must be in a server the bot is in before they DM the code.
+
+## Through a service by URL
+
+If the runner can reach a jaypost service, it can use that one instead of direct mode, and the service keeps the only connection to the bot. Leave `JAYPOST_MODE` unset and point `send` at the service with its API token:
+
+```
+JAYPOST_URL=https://jaypost.example.com
+JAYPOST_TOKEN=...
+```
+
+`-u`, `--require` and `--retry` go through the service the same way (see [Several approvers](#several-approvers)). A plain `send request` exits 0 for any answer in service mode, so gate on its output or use a vote, which exits 3 when rejected. Use https for anything that leaves the machine, since the token goes with every call.
 
 ## GitHub Action
 
