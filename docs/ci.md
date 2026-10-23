@@ -11,7 +11,7 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
-After the owner pairs and the env vars print, `setup-ci` points you to `jaypost pair approver` to add approvers. On Discord, an approver must be in a server the bot is in before they DM the code.
+`setup-ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code.
 
 ## GitHub Action
 
@@ -58,6 +58,25 @@ jobs:
 | `provider`   | `telegram`      | `telegram` or `discord`                               |
 | `bot-token`  |                 | from a secret (required)                              |
 | `owner-id`   |                 | from a secret (required)                              |
+| `approvers`  |                 | voter ids from a secret; needs `require` (request)    |
+| `require`    |                 | `all` or `majority`; needs `approvers` (request)      |
+| `retry`      |                 | retries after a timeout, 0 to 100 (request)           |
+
+For a vote, pass `approvers` and `require` together:
+
+```yaml
+- uses: bithyte/jaypost@v0
+  with:
+    text: Deploy ${{ github.ref_name }} to prod?
+    options: 'Yes'
+    default: 'No'
+    approvers: ${{ secrets.PROD_APPROVERS }}
+    require: majority
+    retry: 5
+    provider: ${{ secrets.JAYPOST_PROVIDER }}
+    bot-token: ${{ secrets.JAYPOST_BOT_TOKEN }}
+    owner-id: ${{ secrets.JAYPOST_OWNER_ID }}
+```
 
 The output `answer` is what the owner chose, e.g. `${{ steps.approval.outputs.answer }}`.
 
@@ -110,7 +129,20 @@ In direct mode, `-u ID` sends the question to a paired user instead of the owner
 
 A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
 
-`-u`, `--require` and `--retry` exit 2 in service mode.
+Instead of `-u` flags, `JAYPOST_APPROVERS` can hold the ids, comma or space separated. That keeps them out of the workflow file when it comes from a secret, and a different secret per step gives each step its own approvers:
+
+```yaml
+- run: npx jaypost send request 'Deploy prod?' -o Yes -d No --require majority
+  env:
+    JAYPOST_APPROVERS: ${{ secrets.PROD_APPROVERS }}
+    # plus JAYPOST_MODE, JAYPOST_PROVIDER, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID
+```
+
+Setting it means the same as passing those ids with `-u`: the question is a vote and `--require` defaults to `all`. If any `-u` is given, `-u` wins and the variable is ignored, not merged. A variable that is set but empty exits 2, because a misspelled or missing secret expands to an empty string and would otherwise send a plain question to the owner. `send notify` ignores it.
+
+On GitHub Actions the voter ids, from `-u` or `JAYPOST_APPROVERS`, are masked in the logs (shown as `***`). GitHub masks the secret as a whole but not the single ids inside a list.
+
+`-u`, `--require`, `--retry` and `JAYPOST_APPROVERS` exit 2 in service mode. In the Action, `approvers` and `require` go together.
 
 Other differences from service mode:
 
