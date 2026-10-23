@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -143,6 +143,65 @@ test('test --port sends to that port, over the install and PORT', async () => {
     server.close()
   }
   expect(urls).toEqual(['/request'])
+})
+
+async function listenForRequests(): Promise<{
+  readonly port: number
+  readonly urls: (string | undefined)[]
+  readonly close: () => void
+}> {
+  const urls: (string | undefined)[] = []
+  const server = createServer((request, response) => {
+    urls.push(request.url)
+    request.resume()
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ answer: 'Approve', timedOut: false }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return {
+    port: (server.address() as AddressInfo).port,
+    urls,
+    close: () => server.close(),
+  }
+}
+
+test('test without --port uses the install port over JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const listener = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'))
+  writeFileSync(
+    join(directory, 'jaypost', 'install.json'),
+    JSON.stringify({ target: 'systemd', port: listener.port, version: VERSION }),
+  )
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['test'])).toBe(0)
+  } finally {
+    listener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(listener.urls).toEqual(['/request'])
+})
+
+test('test without --port or an install uses JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const listener = await listenForRequests()
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', String(listener.port))
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['test'])).toBe(0)
+  } finally {
+    listener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(listener.urls).toEqual(['/request'])
 })
 
 test('test rejects a bad port with 2', async () => {

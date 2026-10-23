@@ -5,6 +5,7 @@ import type { PairResult } from '../../src/pairing/index.ts'
 import type { CredentialCheck, ProviderRuntime, SettingValues } from '../../src/provider/index.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
 import type { FakeRuntime } from '../provider/fake.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 
 const CODE = 'ABCDEFGH'
 const ACCEPTED: CredentialCheck = { ok: true, displayName: 'fake' }
@@ -42,12 +43,17 @@ function createProvider(
   return { provider, stop }
 }
 
+/** The recording behind the deps `createDeps` built last; reset by each call. */
+let recording = createRecordingProgress()
+
 function createDeps(
   provider: SetupCiDeps['providers'][number],
   printed: string[],
   over: Partial<SetupCiDeps> = {},
 ): SetupCiDeps {
+  recording = createRecordingProgress()
   return {
+    progress: recording.progress,
     prompt: createPrompts(),
     providers: [provider],
     print: (text) => printed.push(text),
@@ -96,8 +102,77 @@ test("shows the pairing code and the provider's instructions", async () => {
   const running = runSetupCi({}, createDeps(provider, printed))
   await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
   expect(await running).toBe(0)
-  expect(printed).toContain('Pairing code: ABCD-EFGH')
-  expect(printed).toContain('Say ABCDEFGH to fake')
+  expect(recording.events).toContain('note:Pairing code: ABCD-EFGH')
+  expect(recording.events).toContain('note:Say ABCDEFGH to fake')
+  expect(printed).not.toContain('Pairing code: ABCD-EFGH')
+})
+
+test('setup-ci shows the owner pairing as a step and prints the env block on stdout', async () => {
+  const { provider } = createProvider()
+  const printed: string[] = []
+  const running = runSetupCi({}, createDeps(provider, printed))
+  await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
+  expect(await running).toBe(0)
+  expect(recording.events).toEqual([
+    'done:Bot token checked (fake)',
+    'start:Waiting for the owner to pair',
+    'note:Pairing code: ABCD-EFGH',
+    `note:Say ${CODE} to fake`,
+    'succeed:Owner paired',
+  ])
+  expect(printed).toEqual([
+    '',
+    expect.stringContaining('GitHub secrets'),
+    'JAYPOST_MODE=direct',
+    'JAYPOST_PROVIDER=fakepair',
+    'FAKE_KEY=k',
+    'FAKE_OWNER=owner-1',
+  ])
+})
+
+test('setup-ci cancels the owner step on interrupt and fails it when blocked or fatal', async () => {
+  const { provider } = createProvider()
+  const controller = new AbortController()
+  const running = runSetupCi({}, createDeps(provider, [], { signal: controller.signal }))
+  await waitForStart(provider.runtimes)
+  controller.abort()
+  expect(await running).toBe(130)
+  expect(recording.events).toContain('cancel:Waiting for the owner to pair')
+  const blocked = createProvider()
+  const blockedRunning = runSetupCi({}, createDeps(blocked.provider, []))
+  const runtime = await waitForStart(blocked.provider.runtimes)
+  while (runtime.handlers?.pair?.('stranger', 'WRONG') !== 'blocked') {
+    // keep guessing
+  }
+  expect(await blockedRunning).toBe(1)
+  expect(recording.events).toContain('fail:Waiting for the owner to pair')
+  const fatal = createProvider({
+    runtime: { start: (handlers) => handlers.fatal('Fake went away') },
+  })
+  expect(await runSetupCi({}, createDeps(fatal.provider, []))).toBe(1)
+  expect(recording.events).toContain('fail:Waiting for the owner to pair')
+})
+
+test('setup-ci adds an approver step for each yes', async () => {
+  const { provider } = createProvider()
+  const printed: string[] = []
+  const running = runSetupCi(
+    { approversOnly: true },
+    createDeps(provider, printed, {
+      prompt: createConfirms(true, true, false),
+      generateCode: createCodes(),
+    }),
+  )
+  await pairWhenShown(provider.runtimes, 'ABCDEFGH', 'a')
+  await pairWhenShown(provider.runtimes, 'JKLMNPQR', 'b')
+  expect(await running).toBe(0)
+  expect(recording.events.filter((event) => /^(start|succeed):/.test(event))).toEqual([
+    'start:Waiting for an approver to pair',
+    'succeed:Approver paired',
+    'start:Waiting for an approver to pair',
+    'succeed:Approver paired',
+  ])
+  expect(printed).toEqual([APPROVERS_HEADING, '-u a -u b'])
 })
 
 test('pairing handlers answer nothing else', async () => {
@@ -135,7 +210,7 @@ test('asks again after a rejected token', async () => {
   const running = runSetupCi({}, deps)
   await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
   expect(await running).toBe(0)
-  expect(printed).toContain('Fake rejected that key. Try again.')
+  expect(recording.notes()).toContain('Fake rejected that key. Try again.')
   expect(deps.prompt.password).toHaveBeenCalledTimes(2)
 })
 
@@ -196,7 +271,7 @@ test('a fatal provider error exits 1 with its message, secrets masked', async ()
   const prompt = createPrompts()
   vi.mocked(prompt.password).mockResolvedValue('secret-key')
   expect(await runSetupCi({}, createDeps(provider, printed, { prompt }))).toBe(1)
-  expect(printed).toContain('Setup failed: Fake went away, key ***')
+  expect(recording.notes()).toContain('Setup failed: Fake went away, key ***')
   expect(printed.filter((line) => line.startsWith('JAYPOST_'))).toEqual([])
   expect(stop).toHaveBeenCalled()
 })
@@ -221,7 +296,7 @@ test('rejected runtime credentials exit 1 with the reason', async () => {
   })
   const printed: string[] = []
   expect(await runSetupCi({}, createDeps(provider, printed))).toBe(1)
-  expect(printed.join('\n')).toContain('Fake said no')
+  expect(recording.notes().join('\n')).toContain('Fake said no')
   expect(provider.runtimes[0]?.handlers).toBeUndefined()
   expect(stop).toHaveBeenCalled()
 })
@@ -230,7 +305,8 @@ test('an unknown --provider exits 1', async () => {
   const { provider } = createProvider()
   const printed: string[] = []
   expect(await runSetupCi({ provider: 'nope' }, createDeps(provider, printed))).toBe(1)
-  expect(printed).toEqual(['Unknown provider "nope".'])
+  expect(recording.notes()).toEqual(['Unknown provider "nope".'])
+  expect(printed).toEqual([])
 })
 
 const APPROVER_CODES = ['ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ']
@@ -252,12 +328,11 @@ function createConfirms(...answers: readonly boolean[]): Prompts {
 /** Waits until `code` is shown, then sends it as `senderId`. */
 async function pairWhenShown(
   runtimes: readonly FakeRuntime[],
-  printed: readonly string[],
   code: string,
   senderId: string,
 ): Promise<PairResult | undefined> {
-  const shown = `Pairing code: ${code.slice(0, 4)}-${code.slice(4)}`
-  await vi.waitFor(() => expect(printed).toContain(shown))
+  const shown = `note:Pairing code: ${code.slice(0, 4)}-${code.slice(4)}`
+  await vi.waitFor(() => expect(recording.events).toContain(shown))
   return runtimes[0]?.handlers?.pair?.(senderId, code)
 }
 
@@ -272,13 +347,14 @@ test('pairs approvers after the owner and prints their -u line last', async () =
     createDeps(provider, printed, { prompt, generateCode: createCodes() }),
   )
   const [first, second, third] = APPROVER_CODES
-  expect(await pairWhenShown(provider.runtimes, printed, first ?? '', 'o')).toBe('paired')
-  expect(await pairWhenShown(provider.runtimes, printed, second ?? '', 'a')).toBe('paired')
-  expect(await pairWhenShown(provider.runtimes, printed, third ?? '', 'b')).toBe('paired')
+  expect(await pairWhenShown(provider.runtimes, first ?? '', 'o')).toBe('paired')
+  expect(await pairWhenShown(provider.runtimes, second ?? '', 'a')).toBe('paired')
+  expect(await pairWhenShown(provider.runtimes, third ?? '', 'b')).toBe('paired')
   expect(await running).toBe(0)
   expect(prompt.confirm).toHaveBeenCalledWith('Pair an approver?', false)
-  expect(printed.indexOf('FAKE_OWNER=o')).toBeLessThan(printed.indexOf('Approver paired: a'))
-  expect(printed).toContain('Approver paired: b')
+  expect(printed).toContain('FAKE_OWNER=o')
+  expect(recording.notes()).toContain('Approver paired: a')
+  expect(recording.notes()).toContain('Approver paired: b')
   expect(printed.slice(-2)).toEqual([APPROVERS_HEADING, '-u a -u b'])
   expect(stop).toHaveBeenCalledTimes(1)
 })
@@ -304,9 +380,8 @@ test('no approvers prints the same output as before', async () => {
   const running = runSetupCi({}, createDeps(provider, printed, { prompt: createConfirms(false) }))
   await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
   expect(await running).toBe(0)
+  expect(recording.notes()).toEqual(['Pairing code: ABCD-EFGH', `Say ${CODE} to fake`])
   expect(printed).toEqual([
-    'Pairing code: ABCD-EFGH',
-    'Say ABCDEFGH to fake',
     '',
     expect.stringContaining('GitHub secrets'),
     'JAYPOST_MODE=direct',
@@ -324,7 +399,7 @@ test('approvers-only skips the owner and the env block', async () => {
     { approversOnly: true },
     createDeps(provider, printed, { prompt, generateCode: createCodes() }),
   )
-  expect(await pairWhenShown(provider.runtimes, printed, 'ABCDEFGH', 'a')).toBe('paired')
+  expect(await pairWhenShown(provider.runtimes, 'ABCDEFGH', 'a')).toBe('paired')
   expect(await running).toBe(0)
   expect(printed.filter((line) => line.startsWith('JAYPOST_'))).toEqual([])
   expect(printed).not.toContain('FAKE_KEY=k')
@@ -341,10 +416,10 @@ test('approvers use approverPairingInstructions when the provider has it', async
     { approversOnly: true },
     createDeps(provider, printed, { prompt: createConfirms(true, false) }),
   )
-  await pairWhenShown(provider.runtimes, printed, CODE, 'a')
+  await pairWhenShown(provider.runtimes, CODE, 'a')
   expect(await running).toBe(0)
-  expect(printed).toContain(`Invite them, then say ${CODE}`)
-  expect(printed).not.toContain(`Say ${CODE} to fake`)
+  expect(recording.events).toContain(`note:Invite them, then say ${CODE}`)
+  expect(recording.events).not.toContain(`note:Say ${CODE} to fake`)
 })
 
 test('a blocked approver code asks again', async () => {
@@ -355,14 +430,14 @@ test('a blocked approver code asks again', async () => {
     { approversOnly: true },
     createDeps(provider, printed, { prompt, generateCode: createCodes() }),
   )
-  await vi.waitFor(() => expect(printed).toContain('Pairing code: ABCD-EFGH'))
+  await vi.waitFor(() => expect(recording.events).toContain('note:Pairing code: ABCD-EFGH'))
   let result: PairResult | undefined
   while (result !== 'blocked') {
     result = provider.runtimes[0]?.handlers?.pair?.('stranger', 'WRONG')
   }
-  expect(await pairWhenShown(provider.runtimes, printed, 'JKLMNPQR', 'b')).toBe('paired')
+  expect(await pairWhenShown(provider.runtimes, 'JKLMNPQR', 'b')).toBe('paired')
   expect(await running).toBe(0)
-  expect(printed).toContain('Too many wrong pairing codes for that approver.')
+  expect(recording.notes()).toContain('Too many wrong pairing codes for that approver.')
   expect(prompt.confirm).toHaveBeenCalledTimes(3)
   expect(printed.slice(-2)).toEqual([APPROVERS_HEADING, '-u b'])
 })
@@ -379,8 +454,8 @@ test('an interrupt while waiting for an approver prints those paired so far and 
       signal: controller.signal,
     }),
   )
-  await pairWhenShown(provider.runtimes, printed, 'ABCDEFGH', 'a')
-  await vi.waitFor(() => expect(printed).toContain('Pairing code: JKLM-NPQR'))
+  await pairWhenShown(provider.runtimes, 'ABCDEFGH', 'a')
+  await vi.waitFor(() => expect(recording.events).toContain('note:Pairing code: JKLM-NPQR'))
   controller.abort()
   expect(await running).toBe(130)
   expect(printed.slice(-2)).toEqual([APPROVERS_HEADING, '-u a'])
@@ -415,7 +490,8 @@ test('an interrupt before the approver prompt returns 130', async () => {
     createDeps(provider, printed, { prompt, signal: controller.signal }),
   )
   expect(await running).toBe(130)
-  expect(printed).toEqual([''])
+  expect(printed).toEqual([])
+  expect(recording.notes()).toEqual([''])
   expect(prompt.confirm).not.toHaveBeenCalled()
   expect(stop).toHaveBeenCalledTimes(1)
 })
@@ -435,9 +511,10 @@ test('an interrupt during the approver prompt prints those paired so far and ret
     { approversOnly: true },
     createDeps(provider, printed, { prompt, signal: controller.signal }),
   )
-  await pairWhenShown(provider.runtimes, printed, CODE, 'a')
+  await pairWhenShown(provider.runtimes, CODE, 'a')
   expect(await running).toBe(130)
-  expect(printed.slice(-3)).toEqual(['', APPROVERS_HEADING, '-u a'])
+  expect(printed.slice(-2)).toEqual([APPROVERS_HEADING, '-u a'])
+  expect(recording.notes().at(-1)).toBe('')
 })
 
 test('a provider failure while waiting for an approver prints the block and the reason', async () => {
@@ -449,15 +526,12 @@ test('a provider failure while waiting for an approver prints the block and the 
     { approversOnly: true },
     createDeps(provider, printed, { prompt, generateCode: createCodes() }),
   )
-  await pairWhenShown(provider.runtimes, printed, 'ABCDEFGH', 'a')
-  await vi.waitFor(() => expect(printed).toContain('Pairing code: JKLM-NPQR'))
+  await pairWhenShown(provider.runtimes, 'ABCDEFGH', 'a')
+  await vi.waitFor(() => expect(recording.events).toContain('note:Pairing code: JKLM-NPQR'))
   provider.runtimes[0]?.handlers?.fatal('Fake went away, key secret-key')
   expect(await running).toBe(1)
-  expect(printed.slice(-3)).toEqual([
-    APPROVERS_HEADING,
-    '-u a',
-    'Setup failed: Fake went away, key ***',
-  ])
+  expect(printed.slice(-2)).toEqual([APPROVERS_HEADING, '-u a'])
+  expect(recording.notes().at(-1)).toBe('Setup failed: Fake went away, key ***')
 })
 
 test('the runtime starts once and stops once', async () => {
@@ -481,9 +555,9 @@ test('the runtime starts once and stops once', async () => {
       generateCode: createCodes(),
     }),
   )
-  await pairWhenShown(provider.runtimes, printed, 'ABCDEFGH', 'o')
-  await pairWhenShown(provider.runtimes, printed, 'JKLMNPQR', 'a')
-  await pairWhenShown(provider.runtimes, printed, 'STUVWXYZ', 'b')
+  await pairWhenShown(provider.runtimes, 'ABCDEFGH', 'o')
+  await pairWhenShown(provider.runtimes, 'JKLMNPQR', 'a')
+  await pairWhenShown(provider.runtimes, 'STUVWXYZ', 'b')
   expect(await running).toBe(0)
   expect(provider.runtimes).toHaveLength(1)
   expect(starts).toBe(1)

@@ -12,6 +12,11 @@ export type ExecResult = {
 export type ExecOptions = {
   readonly inherit?: boolean
   readonly env?: NodeJS.ProcessEnv
+  /**
+   * Called with each decoded stdout or stderr chunk as it arrives; output is still captured into
+   * the result. Setting it ignores `inherit`, so the output never reaches the terminal directly.
+   */
+  readonly onOutput?: (chunk: string) => void
 }
 
 /** Runs a command with no shell; injectable so tests don't spawn processes. */

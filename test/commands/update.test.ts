@@ -26,6 +26,7 @@ import type {
 } from '../../src/install/index.ts'
 import type { Exec, ExecOptions } from '../../src/system/index.ts'
 import { telegramProvider } from '../../src/telegram/index.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 import { createFakeProvider } from '../provider/fake.ts'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -42,7 +43,7 @@ const TOKEN = 'T'.repeat(43)
 
 let tmp: string
 let paths: InstallPaths
-let out: string[]
+let recording = createRecordingProgress()
 let calls: Call[]
 let server: Server | undefined
 let base: string
@@ -51,7 +52,7 @@ let holdAsset: boolean
 beforeEach(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'update-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
-  out = []
+  recording = createRecordingProgress()
   calls = []
   holdAsset = false
   base = await serve({
@@ -176,7 +177,7 @@ function deps(over: Partial<UpdateDeps> = {}): UpdateDeps {
     arch: 'x64',
     releasesUrl: `${base}/release`,
     npmLatestUrl: `${base}/npm`,
-    print: (text: string) => out.push(text),
+    progress: recording.progress,
     env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
     ...over,
   }
@@ -219,6 +220,10 @@ function npmCli(selfPath: string): CliLocation {
   return { kind: 'npm', selfPath, nodePath: NODE }
 }
 
+function notes(): string[] {
+  return recording.notes()
+}
+
 function lastCall(): Call | undefined {
   return calls.at(-1)
 }
@@ -228,7 +233,11 @@ test('already current exits 0 without touching anything', async () => {
   writeInstall(paths.installFile, { target: 'systemd', port: 9000, version: '0.5.0' })
   const d = deps()
   expect(await runUpdate(d)).toBe(0)
-  expect(out).toEqual(['Already on 0.5.0.'])
+  expect(notes()).toEqual([])
+  expect(recording.events).toEqual([
+    'start:Checking for the latest version',
+    'succeed:Already on 0.5.0',
+  ])
   expect(calls.filter(([command]) => command === 'npm')).toEqual([])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
   expect(d.targets.systemd.upgrade).not.toHaveBeenCalled()
@@ -240,7 +249,7 @@ test('binary systemd install swaps the copy then hands off to it', async () => {
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(copy)).toEqual(NEW_BINARY)
   expect(lastCall()).toEqual([copy, ['update', '--finish'], { inherit: true }])
-  expect(out).toEqual([])
+  expect(notes()).toEqual([])
 })
 
 test('npm systemd install runs npm i -g then hands off with the unit node', async () => {
@@ -331,7 +340,7 @@ test('npm failure exits 1 without handing off', async () => {
   seedNpm()
   const d = deps({ exec: createExec({ [NPM_CLI]: '0.4.0' }, { npm: 1 }) })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual(['Update failed: npm install failed: npm broke'])
+  expect(notes()).toEqual(['Update failed: npm install failed: npm broke'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -339,7 +348,7 @@ test('npm install that leaves the CLI on the old version exits 1 without handing
   seedNpm()
   const d = deps({ exec: createExec({ [NPM_CLI]: '0.4.0' }, { isNpmStale: true }) })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual([
+  expect(notes()).toEqual([
     `Update failed: npm installed jaypost@0.5.0 but ${NPM_CLI} still reports another version`,
   ])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
@@ -367,7 +376,7 @@ test('missing asset exits 1 and leaves the copy', async () => {
     releasesUrl: `${base}/release-without-asset`,
   })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual([`Update failed: no ${ASSET} on release 0.5.0 yet`])
+  expect(notes()).toEqual([`Update failed: no ${ASSET} on release 0.5.0 yet`])
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
   expect(readdirSync(dirname(copy))).toEqual(['jaypost'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
@@ -377,7 +386,7 @@ test('github 403 exits 1 with one line and changes nothing', async () => {
   const copy = seedBinary()
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }), releasesUrl: `${base}/forbidden` })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual(['Update failed: GitHub release lookup failed: HTTP 403'])
+  expect(notes()).toEqual(['Update failed: GitHub release lookup failed: HTTP 403'])
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
   expect(calls).toEqual([])
 })
@@ -386,7 +395,7 @@ test('unsupported platform names the platform', async () => {
   const copy = seedBinary()
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }), platform: 'win32' })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual(['Update failed: no binary for win32-x64'])
+  expect(notes()).toEqual(['Update failed: no binary for win32-x64'])
   expect(readFileSync(copy, 'utf8')).toBe(OLD_BINARY)
 })
 
@@ -394,7 +403,7 @@ test('container install with an old npx CLI asks for npx jaypost@latest', async 
   writeInstall(paths.installFile, { target: 'quadlet', port: 9000, version: '0.4.0' })
   const d = deps({ cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js') })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual([
+  expect(notes()).toEqual([
     `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
   ])
   expect(d.targets.quadlet.upgrade).not.toHaveBeenCalled()
@@ -414,7 +423,7 @@ test('container install already on the latest CLI finishes in-process', async ()
     expect.objectContaining({ version: '0.4.0' }),
   )
   expect(readInstall(paths.installFile)?.version).toBe('0.5.0')
-  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
+  expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -435,7 +444,7 @@ test('nothing installed updates the running binary only', async () => {
   const d = deps()
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(running)).toEqual(NEW_BINARY)
-  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
+  expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
   expect(calls.filter(([, args]) => args.includes('--finish'))).toEqual([])
 })
 
@@ -443,7 +452,7 @@ test('failed handoff prints the retry hint', async () => {
   const copy = seedBinary()
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }, { handoff: 1 }) })
   expect(await runUpdate(d)).toBe(1)
-  expect(out).toEqual([
+  expect(notes()).toEqual([
     'The new version is in place; run "jaypost update" again or "jaypost init".',
   ])
 })
@@ -486,7 +495,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
     version: '0.5.0',
     provider: 'telegram',
   })
-  expect(out).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
+  expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
 })
 
 test('runFinishUpdate without a token file warns and installs without auth', async () => {
@@ -496,7 +505,7 @@ test('runFinishUpdate without a token file warns and installs without auth', asy
   expect(vi.mocked(d.targets.compose.upgrade).mock.calls[0]?.[0]).toMatchObject({
     auth: { kind: 'none' },
   })
-  expect(out).toEqual([
+  expect(notes()).toEqual([
     `No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
     'Updated jaypost 0.4.0 -> 0.5.0.',
   ])
@@ -508,7 +517,7 @@ test('runFinishUpdate failure keeps install.json and exits 1', async () => {
   const d = deps({ version: '0.5.0' })
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)
-  expect(out).toEqual(['Update failed: build failed'])
+  expect(notes()).toEqual(['Update failed: build failed'])
   expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
 })
 
@@ -544,14 +553,132 @@ test('runFinishUpdate refuses a container .env with the old names and leaves it 
   })
   expect(await runFinishUpdate(d)).toBe(1)
   expect(readFileSync(envPath, 'utf8')).toBe(oldEnv)
-  expect(out).toEqual([
+  expect(notes()).toEqual([
     `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
   ])
-  expect(out.join('\n')).not.toContain('old-secret')
+  expect(notes().join('\n')).not.toContain('old-secret')
   expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
 })
 
 test('runFinishUpdate with nothing installed exits 1', async () => {
   expect(await runFinishUpdate(deps({ version: '0.5.0' }))).toBe(1)
-  expect(out).toEqual(['Not installed.'])
+  expect(notes()).toEqual(['Not installed.'])
+})
+
+test('update checks, installs and verifies as a checklist before handing off', async () => {
+  seedNpm()
+  const d = deps({
+    exec: createExec({ [NPM_CLI]: '0.4.0' }, {}, (_command, args) => {
+      if (args.includes('--finish')) {
+        recording.events.push('handoff')
+      }
+    }),
+  })
+  expect(await runUpdate(d)).toBe(0)
+  expect(recording.events).toEqual([
+    'start:Checking for the latest version',
+    'succeed:Latest is 0.5.0',
+    'start:Installing jaypost 0.5.0',
+    'succeed:Installed jaypost 0.5.0',
+    'start:Checking the new version',
+    'succeed:Checked the new version',
+    'handoff',
+  ])
+})
+
+test('update streams npm install output into the install step', async () => {
+  seedNpm()
+  const base = createExec({ [NPM_CLI]: '0.4.0' })
+  const exec: Exec = async (command, args, options) => {
+    if (command === 'npm' && args[0] === 'i') {
+      options?.onOutput?.('added 112 packages\n')
+    }
+    return base(command, args, options)
+  }
+  expect(await runUpdate(deps({ exec }))).toBe(0)
+  expect(recording.events).toContain('output:added 112 packages\n')
+  const events = recording.events
+  expect(events.indexOf('start:Installing jaypost 0.5.0')).toBeLessThan(
+    events.indexOf('output:added 112 packages\n'),
+  )
+  expect(events.indexOf('output:added 112 packages\n')).toBeLessThan(
+    events.indexOf('succeed:Installed jaypost 0.5.0'),
+  )
+})
+
+test('a failed npm install fails the install step before the failure note', async () => {
+  seedNpm()
+  const d = deps({ exec: createExec({ [NPM_CLI]: '0.4.0' }, { npm: 1 }) })
+  expect(await runUpdate(d)).toBe(1)
+  expect(recording.events).toEqual([
+    'start:Checking for the latest version',
+    'succeed:Latest is 0.5.0',
+    'start:Installing jaypost 0.5.0',
+    'fail:Installing jaypost 0.5.0',
+    'note:Update failed: npm install failed: npm broke',
+  ])
+})
+
+test('an interrupt during the install cancels the step', async () => {
+  seedNpm()
+  const controller = new AbortController()
+  // Ctrl-C reaches npm too, so it exits with a failure after the abort.
+  const exec = createExec({ [NPM_CLI]: '0.4.0' }, { npm: 130 }, (command, args) => {
+    if (command === 'npm' && args[0] === 'i') {
+      controller.abort()
+    }
+  })
+  expect(await runUpdate(deps({ exec, signal: controller.signal }))).toBe(130)
+  expect(recording.events.filter((event) => !event.startsWith('output:'))).toEqual([
+    'start:Checking for the latest version',
+    'succeed:Latest is 0.5.0',
+    'start:Installing jaypost 0.5.0',
+    'cancel:Installing jaypost 0.5.0',
+    'note:',
+  ])
+})
+
+test('an interrupt right after the install leaves no step running and exits 130', async () => {
+  seedNpm()
+  const controller = new AbortController()
+  const exec = createExec({ [NPM_CLI]: '0.4.0' }, {}, (command, args) => {
+    if (command === 'npm' && args[0] === 'i') {
+      controller.abort()
+    }
+  })
+  expect(await runUpdate(deps({ exec, signal: controller.signal }))).toBe(130)
+  expect(recording.events).toContain('succeed:Installed jaypost 0.5.0')
+  expect(recording.events.at(-1)).toBe('note:')
+})
+
+test('finish update streams the service upgrade output', async () => {
+  writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
+  const d = deps({ version: '0.5.0' })
+  vi.mocked(d.targets.compose.upgrade).mockImplementation(async (options, previous) => {
+    options.output?.('building image\n')
+    options.print('hint')
+    return { ...previous, version: options.version }
+  })
+  expect(await runFinishUpdate(d)).toBe(0)
+  expect(recording.events).toEqual([
+    `note:No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'start:Updating the compose service',
+    'output:building image\n',
+    'note:hint',
+    'succeed:Updated the compose service',
+    'note:Updated jaypost 0.4.0 -> 0.5.0.',
+  ])
+})
+
+test('finish update failure fails the service step', async () => {
+  writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
+  writeTokenFile(paths.tokenFile, TOKEN)
+  const d = deps({ version: '0.5.0' })
+  vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(recording.events).toEqual([
+    'start:Updating the compose service',
+    'fail:Updating the compose service',
+    'note:Update failed: build failed',
+  ])
 })

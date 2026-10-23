@@ -167,12 +167,12 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
     async readSecrets(record): Promise<Secrets> {
       return readConfigSecrets(resolveConfigFile(record), providers)
     },
-    async remove(record, purge) {
+    async remove(record, purge, print) {
       await systemctl('disable', '--now', SERVICE_NAME)
       rmSync(paths.systemdUnit, { force: true })
       await systemctl('daemon-reload')
       if (purge) {
-        purgeServiceFiles(record, resolveConfigFile(record), paths)
+        purgeServiceFiles(record, resolveConfigFile(record), paths, print)
       }
     },
     async restart() {

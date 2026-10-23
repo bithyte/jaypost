@@ -6,11 +6,13 @@ import type { DirectConfig, DirectSession } from './types.ts'
 
 /**
  * Creates the provider runtime and checks its credentials. Throws the provider's reason when they
- * are rejected, after stopping the runtime.
+ * are rejected, after stopping the runtime. `log` gets the runtime's lines; `logError` gets failed
+ * message edits (`console.error` when not given).
  */
 export async function openDirectSession(
   config: DirectConfig,
   log: (line: string) => void,
+  logError?: (message: string, error: unknown) => void,
 ): Promise<DirectSession> {
   const { provider, settings } = config
   const runtime = provider.createRuntime(settings, log)
@@ -26,7 +28,12 @@ export async function openDirectSession(
     throw new Error(check.reason)
   }
   // No store and no audit: timeout and cancel finalize exactly as the service does.
-  const service = new ApprovalService(runtime)
+  const service = new ApprovalService(
+    runtime,
+    undefined,
+    undefined,
+    logError === undefined ? {} : { logError },
+  )
   const fatalController = new AbortController()
   let fatalMessage: string | undefined
   let started = false
@@ -56,7 +63,7 @@ export async function openDirectSession(
   return {
     // Not async, like ApprovalService.request: an async function would pin the attachment bytes
     // for the whole wait.
-    request: (request, signal, retryCount = 0) => {
+    request: (request, signal, retryCount = 0, onProgress) => {
       if (fatalMessage !== undefined) {
         return Promise.reject(new Error(fatalMessage))
       }
@@ -66,16 +73,20 @@ export async function openDirectSession(
         request,
         retryCount,
         AbortSignal.any([signal, fatalController.signal]),
+        onProgress,
       ).then(rejectOnFatal)
     },
-    vote: (vote, signal) => {
+    vote: (vote, signal, onProgress) => {
       if (fatalMessage !== undefined) {
         return Promise.reject(new Error(fatalMessage))
       }
       start()
-      return runVote(service, vote, AbortSignal.any([signal, fatalController.signal])).then(
-        rejectOnFatal,
-      )
+      return runVote(
+        service,
+        vote,
+        AbortSignal.any([signal, fatalController.signal]),
+        onProgress,
+      ).then(rejectOnFatal)
     },
     notify: async (request) => {
       if (runtime.sendNotification === undefined) {

@@ -10,6 +10,8 @@ import {
   writeInstall,
 } from '../install/index.ts'
 import type { ExistingInstall, InstallPaths, TargetName } from '../install/index.ts'
+import { runStep } from '../progress/index.ts'
+import type { ProgressStep } from '../progress/index.ts'
 import { requireProvider } from '../provider/index.ts'
 import type { Provider, SettingValues } from '../provider/index.ts'
 import {
@@ -46,6 +48,19 @@ const STUCK_SUBJECT = { kind: 'stuck' } as const satisfies Subject
 
 function isUnder(file: string, root: string): boolean {
   return root !== '' && file.startsWith(root.endsWith(sep) ? root : root + sep)
+}
+
+/** Runs `work` as one checklist step that succeeds titled by `describe`; see `runStep`. */
+function runUpdateStep<T>(
+  deps: UpdateDeps,
+  title: string,
+  work: (step: ProgressStep) => Promise<T>,
+  describe: (value: T) => string,
+): Promise<T> {
+  return runStep(deps.progress, title, work, {
+    settle: (step, value) => step.succeed(describe(value)),
+    ...(deps.signal ? { signal: deps.signal } : {}),
+  })
 }
 
 function describeError(error: unknown): string {
@@ -164,23 +179,35 @@ async function reportsLatest(deps: UpdateDeps, subject: Subject, latest: string)
   return reportsVersion(deps, formatCliWords(subject), latest)
 }
 
-/**
- * Installs `latest` globally, then checks that `cliPath` reports it: npm may install into another
- * global root (nvm, a stale unit), and handing off would then run the old CLI.
- */
+/** Installs `latest` globally, streaming npm's output into `step`. */
 async function installNpm(
+  deps: UpdateDeps,
+  subject: Extract<Subject, { kind: 'npm' }>,
+  latest: string,
+  step: ProgressStep,
+): Promise<void> {
+  const { cliPath } = subject
+  const prefix = isUnder(cliPath, resolveFallbackRoot(deps))
+    ? ['--prefix', deps.paths.userNpmPrefix]
+    : []
+  const result = await deps.exec('npm', ['i', '-g', ...prefix, `${PACKAGE_NAME}@${latest}`], {
+    onOutput: step.output,
+  })
+  if (result.code !== 0) {
+    throw new Error(`npm install failed: ${result.stderr.trim()}`)
+  }
+}
+
+/**
+ * Throws unless `cliPath` reports `latest`: npm may install into another global root (nvm, a
+ * stale unit), and handing off would then run the old CLI.
+ */
+async function requireNpmVersion(
   deps: UpdateDeps,
   subject: Extract<Subject, { kind: 'npm' }>,
   latest: string,
 ): Promise<void> {
   const { nodePath, cliPath } = subject
-  const prefix = isUnder(cliPath, resolveFallbackRoot(deps))
-    ? ['--prefix', deps.paths.userNpmPrefix]
-    : []
-  const result = await deps.exec('npm', ['i', '-g', ...prefix, `${PACKAGE_NAME}@${latest}`])
-  if (result.code !== 0) {
-    throw new Error(`npm install failed: ${result.stderr.trim()}`)
-  }
   if (!(await reportsVersion(deps, [nodePath, cliPath], latest))) {
     throw new Error(
       `npm installed ${PACKAGE_NAME}@${latest} but ${cliPath} still reports another version`,
@@ -223,18 +250,27 @@ async function handOff(deps: UpdateDeps, subject: Subject): Promise<number> {
   if (result.code === 0 || result.code === 130) {
     return result.code
   }
-  deps.print('The new version is in place; run "jaypost update" again or "jaypost init".')
+  deps.progress.note('The new version is in place; run "jaypost update" again or "jaypost init".')
   return result.code
 }
 
 async function update(deps: UpdateDeps): Promise<number> {
-  const { print } = deps
+  const print = deps.progress.note
   const existing = findExistingInstall(deps.paths, deps.targets, deps.env)
-  const subject = await resolveSubject(deps, existing)
-  const latest = await fetchLatest(deps, subject)
   const current = existing?.record.version ?? deps.version
+  const { subject, latest } = await runUpdateStep(
+    deps,
+    'Checking for the latest version',
+    async () => {
+      const resolved = await resolveSubject(deps, existing)
+      return { subject: resolved, latest: await fetchLatest(deps, resolved) }
+    },
+    (found) =>
+      compareVersions(current, found.latest.version) >= 0
+        ? `Already on ${current}`
+        : `Latest is ${found.latest.version}`,
+  )
   if (compareVersions(current, latest.version) >= 0) {
-    print(`Already on ${current}.`)
     return 0
   }
   const isSkipped = await reportsLatest(deps, subject, latest.version)
@@ -246,10 +282,26 @@ async function update(deps: UpdateDeps): Promise<number> {
         )
         return 1
       case 'binary':
-        await replaceSubjectBinary(deps, subject.path, latest.release)
+        await runUpdateStep(
+          deps,
+          `Installing jaypost ${latest.version}`,
+          () => replaceSubjectBinary(deps, subject.path, latest.release),
+          () => `Installed jaypost ${latest.version}`,
+        )
         break
       case 'npm':
-        await installNpm(deps, subject, latest.version)
+        await runUpdateStep(
+          deps,
+          `Installing jaypost ${latest.version}`,
+          (step) => installNpm(deps, subject, latest.version, step),
+          () => `Installed jaypost ${latest.version}`,
+        )
+        await runUpdateStep(
+          deps,
+          'Checking the new version',
+          () => requireNpmVersion(deps, subject, latest.version),
+          () => 'Checked the new version',
+        )
         break
     }
   }
@@ -277,10 +329,10 @@ export async function runUpdate(deps: UpdateDeps): Promise<number> {
     return await update(deps)
   } catch (error) {
     if (deps.signal?.aborted) {
-      deps.print('')
+      deps.progress.note('')
       return 130
     }
-    deps.print(`Update failed: ${describeError(error)}`)
+    deps.progress.note(`Update failed: ${describeError(error)}`)
     return 1
   }
 }
@@ -337,7 +389,7 @@ function requireContainerSettings(
  * any file is written. Returns 0 on success, 1 when not installed or on failure, 130 on interrupt.
  */
 export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
-  const { print } = deps
+  const print = deps.progress.note
   const existing = findExistingInstall(deps.paths, deps.targets, deps.env)
   if (!existing) {
     print('Not installed.')
@@ -356,17 +408,24 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
         `No API token file at ${deps.paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
       )
     }
-    const next = await target.upgrade(
-      {
-        version: deps.version,
-        port: record.port,
-        provider,
-        settings,
-        auth,
-        ...(deps.timeZone === undefined ? {} : { timeZone: deps.timeZone }),
-        print,
-      },
-      record,
+    const next = await runUpdateStep(
+      deps,
+      `Updating the ${record.target} service`,
+      (step) =>
+        target.upgrade(
+          {
+            version: deps.version,
+            port: record.port,
+            provider,
+            settings,
+            auth,
+            ...(deps.timeZone === undefined ? {} : { timeZone: deps.timeZone }),
+            print,
+            output: step.output,
+          },
+          record,
+        ),
+      () => `Updated the ${record.target} service`,
     )
     writeInstall(deps.paths.installFile, next)
     print(`Updated jaypost ${record.version} -> ${next.version}.`)

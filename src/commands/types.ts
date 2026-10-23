@@ -3,6 +3,7 @@ import type { AttachmentSource } from '../client/index.ts'
 import type { VoteRule } from '../approval/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
+import type { Progress } from '../progress/index.ts'
 import type { Provider, SettingValues } from '../provider/index.ts'
 import type { StatusInfo } from '../server/index.ts'
 import type { Exec } from '../system/index.ts'
@@ -40,7 +41,12 @@ export type ProviderSettingsOptions = {
 
 /** The settings to use, or rejected: nothing to ask for and the saved ones failed the check. */
 export type ProviderSettingsResult =
-  | { readonly kind: 'accepted'; readonly settings: SettingValues }
+  | {
+      readonly kind: 'accepted'
+      readonly settings: SettingValues
+      /** Account the credential check named; absent when the provider has no settings to check. */
+      readonly displayName?: string
+    }
   | { readonly kind: 'rejected' }
 
 /** Result of one /status call: a parsed answer, a 401, or no usable answer. */
@@ -66,7 +72,8 @@ export type WaitOptions = {
   readonly sleep?: (delayMs: number) => Promise<void>
   /** Limit on waiting for the first /status answer; defaults to `DEFAULT_START_TIMEOUT_MS`. */
   readonly startTimeoutMs?: number
-  readonly print?: (text: string) => void
+  /** Shows the service start and the pairing code as steps. */
+  readonly progress: Progress
 }
 
 /**
@@ -87,7 +94,8 @@ export type InitDeps = {
   readonly providers: readonly Provider[]
   readonly isPortFree: (port: number) => Promise<boolean>
   readonly wait: WaitForPairing
-  readonly print: (text: string) => void
+  /** Checklist for the checks and install; human text goes through `progress.note`. */
+  readonly progress: Progress
   readonly signal?: AbortSignal
   readonly version: string
   /** Defaults to process.env; used to find the systemd config file. */
@@ -115,7 +123,7 @@ export type ResetOwnerDeps = {
   readonly providers: readonly Provider[]
   readonly confirm: Prompts['confirm']
   readonly wait: WaitForPairing
-  readonly print: (text: string) => void
+  readonly progress: Progress
   readonly signal?: AbortSignal
   readonly token: ClientToken
 }
@@ -156,7 +164,7 @@ export type UninstallDeps = {
   readonly targets: Readonly<Record<TargetName, Target>>
   readonly paths: InstallPaths
   readonly confirm: Prompts['confirm']
-  readonly print: (text: string) => void
+  readonly progress: Progress
   readonly signal?: AbortSignal
 }
 
@@ -176,7 +184,8 @@ export type UpdateDeps = {
   readonly arch: string
   readonly releasesUrl: string
   readonly npmLatestUrl: string
-  readonly print: (text: string) => void
+  /** Steps draw on it; the former printed lines are its notes. */
+  readonly progress: Progress
   readonly signal?: AbortSignal
   /** Defaults to process.env; used to find the systemd config file. */
   readonly env?: NodeJS.ProcessEnv
@@ -223,6 +232,25 @@ export type SendDeps = {
   readonly signal: AbortSignal
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
+  /** Live mode waits for the answer in the background and shows the countdown on stderr. */
+  readonly progress: Progress
+  /** Names the provider in the "Sent to ..." line. */
+  readonly providers: readonly Provider[]
+  /** Monotonic clock in ms; defaults to `performance.now`. Tests pin it. */
+  readonly now?: () => number
+  /** Wall clock in ms, read once to place the service's expiry; defaults to `Date.now`. */
+  readonly wallNow?: () => number
+}
+
+/** Everything `runTest` touches outside itself, injected for tests. */
+export type TestDeps = {
+  readonly port: number
+  readonly token: ClientToken
+  readonly progress: Progress
+  readonly providers: readonly Provider[]
+  readonly signal: AbortSignal
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
 }
 
 /** What direct `send` reads and writes; aborting `signal` cancels a pending question. */
@@ -232,6 +260,10 @@ export type DirectSendDeps = {
   readonly signal: AbortSignal
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
+  /** Confirms a sent notification on stderr in a terminal; silent otherwise. */
+  readonly progress: Progress
+  /** Monotonic clock in ms; defaults to `performance.now`. Tests pin it. */
+  readonly now?: () => number
 }
 
 /** Parsed `setup-ci` flags; absent fields mean the user didn't pass them. */
@@ -246,7 +278,10 @@ export type SetupCiDeps = {
   readonly prompt: Prompts
   /** Registered providers; setup-ci asks which one to use when there are several. */
   readonly providers: readonly Provider[]
+  /** Stdout: only the env var block and the approvers line, which scripts read. */
   readonly print: (text: string) => void
+  /** Stderr checklist and notes (everything else setup-ci says). */
+  readonly progress: Progress
   readonly signal?: AbortSignal
   /** The runtime's log; defaults to stderr. */
   readonly log?: (line: string) => void

@@ -175,12 +175,12 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
     async readSecrets(record): Promise<Secrets> {
       return readConfigSecrets(resolveConfigFile(record), providers)
     },
-    async remove(record, purge) {
+    async remove(record, purge, print) {
       // Throws before the plist goes, so a still-loaded agent can be found and removed later.
       await bootout()
       rmSync(paths.launchdPlist, { force: true })
       if (purge) {
-        purgeServiceFiles(record, resolveConfigFile(record), paths)
+        purgeServiceFiles(record, resolveConfigFile(record), paths, print)
       }
     },
     async restart() {

@@ -1,6 +1,8 @@
 import { MODE_ENV_VAR, PROVIDER_ENV_VAR } from '../config/index.ts'
 import { DIRECT_MODE } from '../direct/index.ts'
 import { formatCode, generateCode, Pairing } from '../pairing/index.ts'
+import { runStep } from '../progress/index.ts'
+import type { ProgressStep } from '../progress/index.ts'
 import { findOwnerSetting, findProvider } from '../provider/index.ts'
 import type { Provider, ProviderRuntime, SettingValues } from '../provider/index.ts'
 import { BLOCKED_PAIRING, INTERRUPTED_PAIRING, SETUP_CI_SECRETS_HINT } from './constants.ts'
@@ -22,11 +24,11 @@ export async function runSetupCi(args: SetupCiArgs, deps: SetupCiDeps): Promise<
     return await runSetupCiInner(args, deps, seen)
   } catch (error) {
     if (error instanceof PromptAborted || deps.signal?.aborted) {
-      deps.print('')
+      deps.progress.note('')
       return 130
     }
     const message = error instanceof Error ? error.message : String(error)
-    deps.print(`Setup failed: ${redact(message, seen)}`)
+    deps.progress.note(`Setup failed: ${redact(message, seen)}`)
     return 1
   }
 }
@@ -37,16 +39,17 @@ async function runSetupCiInner(
   seen: string[],
 ): Promise<number> {
   const { print } = deps
+  const note = deps.progress.note
   const provider = await chooseProvider(args, deps)
   if (provider === undefined) {
-    print(`Unknown provider "${args.provider}".`)
+    note(`Unknown provider "${args.provider}".`)
     return 1
   }
   const resolved = await resolveProviderSettings({
     provider,
     saved: {},
     prompt: deps.prompt,
-    print,
+    print: note,
     ...(deps.signal ? { signal: deps.signal } : {}),
     seen,
   })
@@ -58,31 +61,36 @@ async function runSetupCiInner(
   try {
     const check = await runtime.checkCredentials()
     if (!check.ok) {
-      print(`Setup failed: ${check.reason}`)
+      note(`Setup failed: ${check.reason}`)
       return 1
     }
+    deps.progress.done(
+      check.displayName === undefined
+        ? 'Bot token checked'
+        : `Bot token checked (${check.displayName})`,
+    )
     const ownerSetting = findOwnerSetting(provider)
     if (args.approversOnly === true && ownerSetting === undefined) {
-      print(`Setup failed: ${provider.label} has no pairing, so it has no approvers to pair`)
+      note(`Setup failed: ${provider.label} has no pairing, so it has no approvers to pair`)
       return 1
     }
     const waitFor = createPairingWaiter(runtime, deps)
     if (args.approversOnly !== true && ownerSetting !== undefined) {
-      const outcome = await waitFor(describeOwnerPairing(provider, runtime))
+      const outcome = await waitFor(describeOwnerPairing(provider, runtime), OWNER_STEP_TITLES)
       switch (outcome.kind) {
         case 'interrupted':
-          print('')
+          note('')
           return 130
         case 'blocked':
-          print('Too many wrong pairing codes. Run jaypost setup-ci again.')
+          note('Too many wrong pairing codes. Run jaypost setup-ci again.')
           return 1
         case 'fatal':
-          print(`Setup failed: ${redact(outcome.message, seen)}`)
+          note(`Setup failed: ${redact(outcome.message, seen)}`)
           return 1
         case 'paired': {
           const owner = ownerSetting.parse(outcome.senderId)
           if (owner === undefined) {
-            print(`Setup failed: ${provider.label} sent an owner id jaypost can't use`)
+            note(`Setup failed: ${provider.label} sent an owner id jaypost can't use`)
             return 1
           }
           printEnvBlock(provider, { ...settings, [ownerSetting.configKey]: owner }, print)
@@ -115,6 +123,15 @@ function printEnvBlock(
   }
 }
 
+const OWNER_STEP_TITLES = {
+  waiting: 'Waiting for the owner to pair',
+  paired: 'Owner paired',
+}
+const APPROVER_STEP_TITLES = {
+  waiting: 'Waiting for an approver to pair',
+  paired: 'Approver paired',
+}
+
 /** Asks "Pair an approver?" until the answer is no, printing each one that pairs. */
 async function pairApprovers(
   runtime: ProviderRuntime,
@@ -123,6 +140,7 @@ async function pairApprovers(
   seen: string[],
 ): Promise<number> {
   const { print } = deps
+  const note = deps.progress.note
   const approvers: string[] = []
   const instructions = runtime.approverPairingInstructions ?? runtime.pairingInstructions
   if (instructions === undefined) {
@@ -136,37 +154,37 @@ async function pairApprovers(
       if (!(error instanceof PromptAborted)) {
         throw error
       }
-      return interruptApprovers(approvers, print)
+      return interruptApprovers(approvers, deps)
     }
     if (deps.signal?.aborted) {
-      return interruptApprovers(approvers, print)
+      return interruptApprovers(approvers, deps)
     }
     if (!wanted) {
       break
     }
-    const outcome = await waitFor(instructions)
+    const outcome = await waitFor(instructions, APPROVER_STEP_TITLES)
     switch (outcome.kind) {
       case 'interrupted':
-        return interruptApprovers(approvers, print)
+        return interruptApprovers(approvers, deps)
       case 'fatal':
         printApprovers(approvers, print)
-        print(`Setup failed: ${redact(outcome.message, seen)}`)
+        note(`Setup failed: ${redact(outcome.message, seen)}`)
         return 1
       case 'blocked':
-        print('Too many wrong pairing codes for that approver.')
+        note('Too many wrong pairing codes for that approver.')
         break
       case 'paired':
         approvers.push(outcome.senderId)
-        print(`Approver paired: ${outcome.senderId}`)
+        note(`Approver paired: ${outcome.senderId}`)
     }
   }
   printApprovers(approvers, print)
   return 0
 }
 
-function interruptApprovers(approvers: readonly string[], print: (text: string) => void): number {
-  print('')
-  printApprovers(approvers, print)
+function interruptApprovers(approvers: readonly string[], deps: SetupCiDeps): number {
+  deps.progress.note('')
+  printApprovers(approvers, deps.print)
   return 130
 }
 
@@ -189,7 +207,10 @@ async function chooseProvider(args: SetupCiArgs, deps: SetupCiDeps): Promise<Pro
   return selectProvider(deps.providers, deps.prompt.select, undefined)
 }
 
-type PairingWaiter = (instructions: (code: string) => string) => Promise<OwnerPairing>
+type PairingWaiter = (
+  instructions: (code: string) => string,
+  titles: { readonly waiting: string; readonly paired: string },
+) => Promise<OwnerPairing>
 
 function describeOwnerPairing(
   provider: Provider,
@@ -242,17 +263,7 @@ function createPairingWaiter(runtime: ProviderRuntime, deps: SetupCiDeps): Pairi
       },
     })
   }
-  return async (instructions) => {
-    if (signal?.aborted) {
-      return INTERRUPTED_PAIRING
-    }
-    if (failure !== undefined) {
-      return failure
-    }
-    const code = (deps.generateCode ?? generateCode)()
-    deps.print(`Pairing code: ${formatCode(code)}`)
-    deps.print(instructions(code))
-    const pairing = new Pairing(code)
+  const waitForOutcome = async (pairing: Pairing): Promise<OwnerPairing> => {
     let onAbort: (() => void) | undefined
     try {
       return await new Promise<OwnerPairing>((resolve) => {
@@ -269,6 +280,42 @@ function createPairingWaiter(runtime: ProviderRuntime, deps: SetupCiDeps): Pairi
         signal?.removeEventListener('abort', onAbort)
       }
     }
+  }
+  return async (instructions, titles) => {
+    if (signal?.aborted) {
+      return INTERRUPTED_PAIRING
+    }
+    if (failure !== undefined) {
+      return failure
+    }
+    const code = (deps.generateCode ?? generateCode)()
+    const instructionText = instructions(code)
+    return runStep(
+      deps.progress,
+      titles.waiting,
+      () => {
+        // A note, not a step detail: it must print in plain mode and keep long URLs whole.
+        deps.progress.note(`Pairing code: ${formatCode(code)}`)
+        deps.progress.note(instructionText)
+        return waitForOutcome(new Pairing(code))
+      },
+      { settle: (step, outcome) => settleStep(step, outcome, titles.paired) },
+    )
+  }
+}
+
+/** Ends the pairing step to match how the wait ended. */
+function settleStep(step: ProgressStep, outcome: OwnerPairing, pairedTitle: string): void {
+  switch (outcome.kind) {
+    case 'paired':
+      step.succeed(pairedTitle)
+      return
+    case 'interrupted':
+      step.cancel()
+      return
+    case 'blocked':
+    case 'fatal':
+      step.fail()
   }
 }
 

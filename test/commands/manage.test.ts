@@ -13,7 +13,9 @@ import type { StatusInfo } from '../../src/server/index.ts'
 import { UNAUTHORIZED_STATUS, UNREACHABLE_STATUS } from '../../src/commands/constants.ts'
 import { resolveInstallPaths, writeInstall } from '../../src/install/index.ts'
 import type { InstallPaths, Target, TargetName } from '../../src/install/index.ts'
+import { PROVIDERS } from '../../src/provider/index.ts'
 import { telegramProvider } from '../../src/telegram/index.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
@@ -22,12 +24,18 @@ let tmp: string
 let paths: InstallPaths
 let order: string[]
 let out: string[]
+let recording = createRecordingProgress()
+
+function notes(): string[] {
+  return recording.notes()
+}
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'manage-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   order = []
   out = []
+  recording = createRecordingProgress()
 })
 
 function fake(name: TargetName, running = true): Mutable<Target> {
@@ -79,6 +87,7 @@ function base(over = {}) {
     paths,
     providers: [telegramProvider, createFakeProvider()],
     print: (s: string) => out.push(s),
+    progress: recording.progress,
     confirm: vi.fn(async () => true),
     token: NO_CLIENT_TOKEN as ClientToken,
     tokenFile: TOKEN_FILE,
@@ -212,7 +221,7 @@ test('reset-owner without an owner setting returns 1 before prompting', async ()
   })
   const d = { ...base(), wait: vi.fn() }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out).toEqual(["Fake doesn't support re-pairing."])
+  expect(notes()).toEqual(["Fake doesn't support re-pairing."])
   expect(d.confirm).not.toHaveBeenCalled()
   expect(d.targets.systemd.clearOwner).not.toHaveBeenCalled()
 })
@@ -226,7 +235,7 @@ test('reset-owner with an unknown provider returns 1 before prompting', async ()
   })
   const d = { ...base(), wait: vi.fn() }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out).toEqual(['unknown provider "nope"; run `jaypost init`'])
+  expect(notes()).toEqual(['unknown provider "nope"; run `jaypost init`'])
   expect(d.confirm).not.toHaveBeenCalled()
 })
 
@@ -249,7 +258,7 @@ test('reset-owner failure prints generic error and returns 1', async () => {
   })
   const d = { ...base({ targets: targets({ systemd: t }) }), wait: vi.fn() }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out.join('\n')).not.toContain('secret-token-123')
+  expect(notes().join('\n')).not.toContain('secret-token-123')
   expect(d.wait).not.toHaveBeenCalled()
 })
 
@@ -269,7 +278,7 @@ test('reset-owner prompt abort -> 130', async () => {
 
 test('uninstall not installed -> 0', async () => {
   expect(await runUninstall(base())).toBe(0)
-  expect(out.join('\n')).toContain('Not installed')
+  expect(notes().join('\n')).toContain('Not installed')
 })
 
 test('uninstall passes purge answer through and removes install.json', async () => {
@@ -287,6 +296,7 @@ test('uninstall passes purge answer through and removes install.json', async () 
     expect(d.targets.compose.remove).toHaveBeenCalledWith(
       { target: 'compose', port: 9000, version: '1.0.0' },
       purge,
+      expect.any(Function),
     )
     expect(existsSync(paths.installFile)).toBe(false)
   }
@@ -324,7 +334,7 @@ test('uninstall failure: generic error, 1, install.json kept', async () => {
   })
   const d = base({ targets: targets({ systemd: t }) })
   expect(await runUninstall(d)).toBe(1)
-  expect(out.join('\n')).not.toContain('secret-token-123')
+  expect(notes().join('\n')).not.toContain('secret-token-123')
   expect(existsSync(paths.installFile)).toBe(true)
 })
 
@@ -361,12 +371,23 @@ async function startStub(status: number, body: string): Promise<{ port: number; 
   return { port: (stub.address() as AddressInfo).port, seen }
 }
 
-test('test command takes port from install.json first and prints the answer', async () => {
+function testDeps(port: number, token: ClientToken, print: (text: string) => void = () => {}) {
+  return {
+    port,
+    token,
+    progress: createRecordingProgress('silent').progress,
+    providers: PROVIDERS,
+    signal: new AbortController().signal,
+    print,
+    printError: (text: string) => console.error(text),
+  }
+}
+
+test('test command prints the answer', async () => {
   const { runTest } = await import('../../src/commands/index.ts')
   const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
-  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
-  const log = vi.spyOn(console, 'log').mockImplementation(() => {})
-  expect(await runTest(1234, paths.installFile, NO_CLIENT_TOKEN)).toBe(0)
+  const log = vi.fn()
+  expect(await runTest(testDeps(port, NO_CLIENT_TOKEN, log))).toBe(0)
   expect(seen).toEqual([{ url: 'POST /request' }])
   expect(log).toHaveBeenCalledWith('Decline')
 })
@@ -374,16 +395,9 @@ test('test command takes port from install.json first and prints the answer', as
 test('test sends the token and explains a 401', async () => {
   const { runTest } = await import('../../src/commands/index.ts')
   const { port, seen } = await startStub(401, '{"error":"unauthorized"}')
-  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
   const token = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(
-    await runTest(1234, paths.installFile, {
-      kind: 'token',
-      token,
-      source: 'file',
-    }),
-  ).toBe(1)
+  expect(await runTest(testDeps(port, { kind: 'token', token, source: 'file' }))).toBe(1)
   expect(seen).toEqual([{ url: 'POST /request', authorization: `Bearer ${token}` }])
   expect(error).toHaveBeenCalledWith(TOKEN_REJECTED_MESSAGE)
 })
@@ -391,14 +405,8 @@ test('test sends the token and explains a 401', async () => {
 test('test with an unusable token fails before calling', async () => {
   const { runTest } = await import('../../src/commands/index.ts')
   const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
-  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(
-    await runTest(1234, paths.installFile, {
-      kind: 'unusable',
-      message: 'bad token here',
-    }),
-  ).toBe(1)
+  expect(await runTest(testDeps(port, { kind: 'unusable', message: 'bad token here' }))).toBe(1)
   expect(seen).toEqual([])
   expect(error).toHaveBeenCalledWith('bad token here')
 })
@@ -409,9 +417,8 @@ test('test with the service down reports it', async () => {
   await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
   const { port } = probe.address() as AddressInfo
   await new Promise<void>((resolve) => probe.close(() => resolve()))
-  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await runTest(1234, paths.installFile, NO_CLIENT_TOKEN)).toBe(1)
+  expect(await runTest(testDeps(port, NO_CLIENT_TOKEN))).toBe(1)
   expect(error).toHaveBeenCalledWith(
     `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   )
@@ -425,8 +432,8 @@ test('reset-owner restart failure reports Reset failed, not Paired', async () =>
   })
   const d = { ...base({ targets: targets({ systemd: t }) }), wait: vi.fn() }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out.join('\n')).toContain('Reset failed. logs hint')
-  expect(out.join('\n')).not.toContain('Paired')
+  expect(notes().join('\n')).toContain('Reset failed. logs hint')
+  expect(notes().join('\n')).not.toContain('Paired')
   expect(d.wait).not.toHaveBeenCalled()
 })
 
@@ -436,7 +443,7 @@ test('reset-owner wait throwing prints a generic error and returns 1', async () 
     throw new Error('secret-token-123')
   })
   expect(await runResetOwner({ ...base(), wait })).toBe(1)
-  const text = out.join('\n')
+  const text = notes().join('\n')
   expect(text).toContain('Waiting for pairing failed. logs hint')
   expect(text).not.toContain('secret-token-123')
 })
@@ -488,7 +495,7 @@ test('reset-owner with an unusable token fails before clearing the owner', async
     wait: vi.fn(),
   }
   expect(await runResetOwner(d)).toBe(1)
-  expect(out.join('\n')).toContain('bad token here')
+  expect(notes().join('\n')).toContain('bad token here')
   expect(d.confirm).not.toHaveBeenCalled()
   expect(d.wait).not.toHaveBeenCalled()
   expect(d.targets.systemd.clearOwner).not.toHaveBeenCalled()
@@ -501,6 +508,105 @@ test('reset-owner passes the token to the wait and explains unauthorized', async
   const token: ClientToken = { kind: 'token', token: TOKEN, source: 'env' }
   expect(await runResetOwner({ ...base({ token }), wait })).toBe(1)
   expect(wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
-  expect(out.join('\n')).toContain(TOKEN_REJECTED_MESSAGE)
-  expect(out.join('\n')).not.toContain(TOKEN)
+  expect(notes().join('\n')).toContain(TOKEN_REJECTED_MESSAGE)
+  expect(notes().join('\n')).not.toContain(TOKEN)
+})
+
+test('reset-owner runs clear, restart and pairing as a checklist', async () => {
+  seed()
+  const wait = vi.fn(async () => 'paired' as const)
+  expect(await runResetOwner({ ...base(), wait })).toBe(0)
+  expect(wait).toHaveBeenCalledWith(expect.objectContaining({ progress: recording.progress }))
+  expect(recording.events).toEqual([
+    'plan:Clearing the owner|Restarting the service|Waiting for the service to start|Waiting for pairing',
+    'start:Clearing the owner',
+    'succeed:Cleared the owner',
+    'start:Restarting the service',
+    'succeed:Restarted the service',
+    'note:Paired. Try it: jaypost test',
+  ])
+})
+
+test('reset-owner fails the running step before the failure note', async () => {
+  seed()
+  const t = fake('systemd')
+  t.restart = vi.fn(async () => {
+    throw new Error('boom')
+  })
+  const d = { ...base({ targets: targets({ systemd: t }) }), wait: vi.fn() }
+  expect(await runResetOwner(d)).toBe(1)
+  expect(recording.events.slice(-3)).toEqual([
+    'start:Restarting the service',
+    'fail:Restarting the service',
+    'note:Reset failed. logs hint',
+  ])
+})
+
+test('reset-owner cancels the running step on interrupt', async () => {
+  seed()
+  const controller = new AbortController()
+  const t = fake('systemd')
+  t.clearOwner = vi.fn(async () => {
+    controller.abort()
+    throw new Error('aborted')
+  })
+  const d = {
+    ...base({ targets: targets({ systemd: t }), signal: controller.signal }),
+    wait: vi.fn(),
+  }
+  expect(await runResetOwner(d)).toBe(130)
+  expect(recording.events.slice(-3)).toEqual([
+    'start:Clearing the owner',
+    'cancel:Clearing the owner',
+    'note:',
+  ])
+})
+
+test('uninstall with purge shows one removing step', async () => {
+  seed('compose')
+  expect(await runUninstall(base())).toBe(0)
+  expect(recording.events).toEqual([
+    'start:Removing the service and its data',
+    'succeed:Removed the service and its data',
+    'note:Uninstalled.',
+  ])
+})
+
+test('uninstall without purge names only the service', async () => {
+  seed('compose')
+  expect(await runUninstall(base({ confirm: vi.fn(async () => false) }))).toBe(0)
+  expect(recording.events).toEqual([
+    'start:Removing the service',
+    'succeed:Removed the service',
+    'note:Uninstalled.',
+  ])
+})
+
+test('uninstall prints the target hints after the removing step settles', async () => {
+  seed()
+  const t = fake('systemd')
+  t.remove = vi.fn(async (_record, _purge, print) => {
+    print?.('The npm package was left in place; remove it with: npm rm -g jaypost')
+  })
+  expect(await runUninstall(base({ targets: targets({ systemd: t }) }))).toBe(0)
+  expect(recording.events).toEqual([
+    'start:Removing the service and its data',
+    'succeed:Removed the service and its data',
+    'note:The npm package was left in place; remove it with: npm rm -g jaypost',
+    'note:Uninstalled.',
+  ])
+})
+
+test('uninstall fails the removing step before the failure note', async () => {
+  seed()
+  const t = fake('systemd')
+  t.remove = vi.fn(async () => {
+    throw new Error('boom')
+  })
+  expect(await runUninstall(base({ targets: targets({ systemd: t }) }))).toBe(1)
+  expect(recording.events).toEqual([
+    'start:Removing the service and its data',
+    'fail:Removing the service and its data',
+    'note:Uninstall failed. Check the service logs and try again.',
+  ])
 })

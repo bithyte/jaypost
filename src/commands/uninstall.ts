@@ -1,5 +1,6 @@
 import { removeTokenFile } from '../auth/index.ts'
 import { findExistingInstall, removeInstall } from '../install/index.ts'
+import { runStep } from '../progress/index.ts'
 import { PromptAborted } from './prompts.ts'
 import type { UninstallDeps } from './types.ts'
 
@@ -8,7 +9,7 @@ import type { UninstallDeps } from './types.ts'
  * question log. Returns 0 on success or when nothing is installed, 1 on failure, 130 on interrupt.
  */
 export async function runUninstall(deps: UninstallDeps): Promise<number> {
-  const { print } = deps
+  const print = deps.progress.note
   const existing = findExistingInstall(deps.paths, deps.targets)
   if (!existing) {
     print('Not installed.')
@@ -20,10 +21,26 @@ export async function runUninstall(deps: UninstallDeps): Promise<number> {
       'Also delete the saved credentials, API token, paired owner and question log?',
       false,
     )
-    await deps.targets[record.target].remove(record, purge)
-    removeInstall(deps.paths.installFile)
-    if (purge) {
-      removeTokenFile(deps.paths.tokenFile)
+    const subject = purge ? 'the service and its data' : 'the service'
+    // Held until the step settles: printed under the live step, they would read as part of it.
+    const hints: string[] = []
+    await runStep(
+      deps.progress,
+      `Removing ${subject}`,
+      async () => {
+        await deps.targets[record.target].remove(record, purge, (text) => hints.push(text))
+        removeInstall(deps.paths.installFile)
+        if (purge) {
+          removeTokenFile(deps.paths.tokenFile)
+        }
+      },
+      {
+        settle: (step) => step.succeed(`Removed ${subject}`),
+        ...(deps.signal ? { signal: deps.signal } : {}),
+      },
+    )
+    for (const hint of hints) {
+      print(hint)
     }
   } catch (error) {
     if (error instanceof PromptAborted || deps.signal?.aborted) {
