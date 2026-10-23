@@ -22,7 +22,7 @@ All tokens live in `src/styles/global.css` on `:root`.
 
 A perched blue jay in profile: round head with one thick crest swept back low (both its edges are tangent to the head, so it flows into the head with no step), a short beak, and a body and tail drawn as one chat bubble. The bubble's back is one straight line that runs on into the top edge of the short tail, so the bubble looks cut along the tail; the tail's underside meets the belly at a small notch. Two tones: the head (with crest and beak) is solid `#2aabee` and sits in front of the body; the body and tail use a top-to-bottom gradient from `#2aabee` to `#5865f2` (`userSpaceOnUse`, y 2 to 44). A 0.8-unit gap separates them: the body is masked by the head shapes stroked 1.6 wide, so the gap is see-through and works on any background. The eye is cut out of the head the same way.
 
-Source of truth is `public/favicon.svg`. `src/components/Header.astro` inlines the same shapes; change both together. Geometry on a 48x48 grid:
+Source of truth is `public/favicon.svg`. `src/components/Header.astro` inlines the same shapes; change both together. Geometry on a 48x48 grid; the `viewBox` (`10 4.6 35 35`) crops it to the shapes so the logo fills its square, so recompute it if a shape grows or moves:
 
 - crest: `M20.3 6.7 33.43 9.66 32 16 26.15 18.82Z` (tip, front tangent point, head center, rear tangent point; if the tip moves, recompute the tangent points)
 - head: circle at `32,16`, radius `6.5`
