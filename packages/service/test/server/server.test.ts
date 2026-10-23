@@ -20,6 +20,8 @@ import { MAX_BODY_BYTES } from '../../src/server/constants.ts'
 import type { StatusInfo } from '@jaypost/protocol'
 import type { ApiBot, BotRouter } from '../../src/server/index.ts'
 
+const TEST_VERSION = '1.2.3'
+
 type RequestFn = (req: ApprovalRequest, signal?: AbortSignal) => Promise<RequestResult>
 type NotifyFn = (req: NotifyRequest) => Promise<void>
 
@@ -77,6 +79,7 @@ async function start(
   const stub = createStub(vi.fn(request))
   server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service: stub,
       status: status,
       maxTextLength: 3900,
@@ -194,6 +197,7 @@ test('502 on SendError', async () => {
 test('server uses the provider text limit', async () => {
   server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service: createStub(vi.fn<RequestFn>()),
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 10,
@@ -229,6 +233,7 @@ test('GET /openapi.yaml serves the spec with the listening port and text limit',
   expect(res.status).toBe(200)
   expect(res.headers.get('content-type')).toContain('application/yaml')
   const document = parse(await res.text())
+  expect(document.info.version).toBe(TEST_VERSION)
   expect(document.servers).toEqual([{ url }])
   expect(document.components.schemas.ApprovalRequest.properties.text.description).toContain('3900')
 })
@@ -568,7 +573,7 @@ test('a router with several bots sends each call to the bot its token picks', as
       const bot = botsByToken.get(authorization?.replace('Bearer ', '') ?? '')
       return bot === undefined ? { kind: 'unauthorized', reason: 'wrong' } : { kind: 'bot', bot }
     },
-    limits: { maxTextLength: 100, maxAttachmentBytes: 0 },
+    openApi: { version: TEST_VERSION, maxTextLength: 100, maxAttachmentBytes: 0 },
   }
   server = createApiServer(router)
   await server.listen({ port: 0, host: '127.0.0.1' })
@@ -683,6 +688,7 @@ async function startReal(
   const service = new ApprovalService(messenger)
   server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: options.status ?? (() => ({ paired: true, bot: 'b' })),
       maxTextLength: options.maxTextLength ?? 3900,
@@ -845,6 +851,7 @@ test('only async create checks pairing', async () => {
   server = undefined
   const other = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: unpaired,
       maxTextLength: 3900,

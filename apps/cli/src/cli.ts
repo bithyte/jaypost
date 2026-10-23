@@ -16,7 +16,6 @@ import {
   realExec,
   resolveClientToken,
   resolveTokenFile,
-  VERSION,
 } from '@jaypost/store'
 import {
   DEFAULT_PROVIDER,
@@ -79,6 +78,7 @@ import {
 import { resolveMcpEndpoint, resolveMcpPort, runMcp } from '@jaypost/mcp'
 import type { CliLocation, InstallPaths, Target, TargetName } from '@jaypost/install'
 import { PROVIDERS, SERVICE_PROVIDERS } from '@jaypost/providers'
+import { VERSION } from './constants.ts'
 
 const DIGITS_PATTERN = /^\d+$/
 
@@ -263,6 +263,7 @@ function resolveOpenApiProvider(): Provider {
 function runOpenApiCommand(file: string | undefined, flagPort: number | undefined): number {
   const provider = resolveOpenApiProvider()
   const yaml = formatOpenApiYaml({
+    version: VERSION,
     port: resolveMcpPort(flagPort, process.env, resolveInstallPaths().installFile),
     maxTextLength: provider.maxTextLength,
     maxAttachmentBytes: resolveMaxAttachmentBytes(provider),
@@ -580,7 +581,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('start')
     .description('run the service in the foreground')
-    .action(() => runService())
+    .action(() => runService(VERSION))
   program
     .command('status')
     .description('show service and pairing state')
@@ -673,6 +674,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       // Not resolvePort(): that reads config.json, which an agent's container may not have.
       const tokenFile = resolveTokenFile(process.env)
       code = await runMcp({
+        version: VERSION,
         endpoint: resolveMcpEndpoint(options.port, process.env, resolveInstallPaths().installFile),
         readToken: () => resolveClientToken(process.env, tokenFile),
       })

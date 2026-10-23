@@ -9,7 +9,6 @@ export {
   RESERVED_ENV_VARS,
   SECRET_FILE_MODE,
   URL_ENV_VAR,
-  VERSION,
 } from './constants.ts'
 export { resolveConfigDirectory, resolveConfigPath } from './paths.ts'
 export { loadConfig, readConfigFile, updateConfigFile } from './store.ts'

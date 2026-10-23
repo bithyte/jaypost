@@ -23,6 +23,8 @@ import { readHookInput, runHook } from '../src/index.ts'
 import type { HookDeps } from '../src/index.ts'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 
+const TEST_VERSION = '1.2.3'
+
 const ROOT = new URL('../../..', import.meta.url).pathname
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
 const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
@@ -79,6 +81,7 @@ async function startApi(
   const service = new ApprovalService(messenger)
   const server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: options.maxTextLength ?? 3900,

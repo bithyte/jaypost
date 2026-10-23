@@ -10,7 +10,6 @@ import {
   MAX_TIMEOUT_SECONDS,
   MAX_WAIT_SECONDS,
 } from '@jaypost/core'
-import { VERSION } from '@jaypost/store'
 import { statusInfoSchema } from '@jaypost/protocol'
 import { MAX_BODY_BYTES } from './constants.ts'
 import type { OpenApiOptions } from './types.ts'
@@ -168,13 +167,13 @@ function toStatusSchema(status: JsonSchema): JsonSchema {
 
 /** OpenAPI 3.1 document of the HTTP API, for a service on `port` with the given text limit. */
 export function createOpenApiDocument(options: OpenApiOptions) {
-  const { port, maxTextLength, maxAttachmentBytes, maxOptionCount } = options
+  const { version, port, maxTextLength, maxAttachmentBytes, maxOptionCount } = options
   const { $schema: _schema, ...status } = z.toJSONSchema(statusInfoSchema)
   return {
     openapi: '3.1.0',
     info: {
       title: 'jaypost',
-      version: VERSION,
+      version,
       description:
         'Local HTTP API that asks you a question in a chat app with buttons and returns your answer.',
       license: { name: 'Apache-2.0', identifier: 'Apache-2.0' },

@@ -17,6 +17,8 @@ import {
   VOTE_TOO_OLD_MESSAGE,
 } from '../src/index.ts'
 
+const TEST_VERSION = '1.2.3'
+
 const TOKEN = 'A'.repeat(43)
 const FIRST = 'B'.repeat(43)
 const SECOND = 'C'.repeat(43)
@@ -352,6 +354,7 @@ async function startRealServer(): Promise<{
   }
   const app = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,

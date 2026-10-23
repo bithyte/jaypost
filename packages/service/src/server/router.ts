@@ -3,7 +3,7 @@ import type { BotRoute, BotRouter, SingleBotOptions } from './types.ts'
 
 /** Routes every call to the one bot, after checking the token when `auth` has one. */
 export function createSingleBotRouter(options: SingleBotOptions): BotRouter {
-  const { auth, ...bot } = options
+  const { auth, version, ...bot } = options
   const found: BotRoute = { kind: 'bot', bot }
   return {
     route: (authorization) => {
@@ -12,7 +12,8 @@ export function createSingleBotRouter(options: SingleBotOptions): BotRouter {
       }
       return { kind: 'unauthorized', reason: authorization === undefined ? 'missing' : 'wrong' }
     },
-    limits: {
+    openApi: {
+      version,
       maxTextLength: bot.maxTextLength,
       maxAttachmentBytes: bot.maxAttachmentBytes ?? 0,
       ...(bot.maxOptionCount === undefined ? {} : { maxOptionCount: bot.maxOptionCount }),

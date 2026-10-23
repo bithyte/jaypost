@@ -40,7 +40,6 @@ export {
   resolveConfigDirectory,
   resolveConfigPath,
   updateConfigFile,
-  VERSION,
 } from './config/index.ts'
 export type { Config } from './config/index.ts'
 export { findEnvValue } from './config/paths.ts'

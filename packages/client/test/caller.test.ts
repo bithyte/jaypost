@@ -29,6 +29,8 @@ import {
 } from '../src/index.ts'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 
+const TEST_VERSION = '1.2.3'
+
 const TOKEN = 'A'.repeat(43)
 const CALL = { signal: new AbortController().signal }
 const ASK = { text: 'ok?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
@@ -132,6 +134,7 @@ async function startApi(options: { maxAttachmentBytes?: number; notifications?: 
   }
   const app = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,
@@ -580,6 +583,7 @@ async function startBackgroundApi() {
   const service = new ApprovalService(messenger)
   const app = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,

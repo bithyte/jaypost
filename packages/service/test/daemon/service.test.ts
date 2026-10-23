@@ -12,6 +12,8 @@ import type { Provider } from '@jaypost/core'
 import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import type { FakeRuntime } from '@jaypost/testing'
 
+const TEST_VERSION = '1.2.3'
+
 const REQUEST = { text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
 
 let running: RunningService | undefined
@@ -35,6 +37,7 @@ async function start(
   options: { configPath?: string; log?: (line: string) => void; config?: Config } = {},
 ): Promise<{ url: string; runtime: FakeRuntime }> {
   running = await startService({
+    version: TEST_VERSION,
     config: options.config ?? createConfig(provider),
     configPath: options.configPath ?? createConfigPath(),
     fatal: vi.fn(),
@@ -221,6 +224,7 @@ test('rejected credentials throw with the provider reason', async () => {
   })
   await expect(
     startService({
+      version: TEST_VERSION,
       config: createConfig(provider),
       configPath: createConfigPath(),
       fatal: vi.fn(),
@@ -233,6 +237,7 @@ test('owner setting without pairing support is refused at start', async () => {
   const provider = createFakeProvider({ settings: createPairingFakeProvider().settings })
   await expect(
     startService({
+      version: TEST_VERSION,
       config: createConfig(provider),
       configPath: createConfigPath(),
       fatal: vi.fn(),
@@ -437,6 +442,7 @@ test('the service puts the configured token on the api', async () => {
   const token = 'a'.repeat(43)
   const provider = createFakeProvider()
   running = await startService({
+    version: TEST_VERSION,
     config: { ...createConfig(provider), auth: { kind: 'token', token } },
     configPath: createConfigPath(),
     fatal: vi.fn(),

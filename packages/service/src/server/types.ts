@@ -34,18 +34,21 @@ export type BotRoute =
 export type BotRouter = {
   /** Never throws; runs before the body is read. */
   readonly route: (authorization: string | undefined) => BotRoute
-  /** Limits /openapi.yaml shows; it needs no token, so it can't ask a bot. */
-  readonly limits: Omit<OpenApiOptions, 'port'>
+  /** What /openapi.yaml shows besides the port; it needs no token, so it can't ask a bot. */
+  readonly openApi: Omit<OpenApiOptions, 'port'>
 }
 
-/** A daemon's single bot and its API auth. */
+/** A daemon's single bot, its API auth and the version /openapi.yaml shows. */
 export type SingleBotOptions = ApiBot & {
   /** With a token, every route but /openapi.yaml answers 401 unless it is presented. */
   readonly auth: ApiAuth
+  readonly version: string
 }
 
 /** What varies between installs in the OpenAPI document. */
 export type OpenApiOptions = {
+  /** The API's version, which is the version of the jaypost release serving it. */
+  readonly version: string
   readonly port: number
   readonly maxTextLength: number
   /** Attachment size limit in bytes; 0 means the provider doesn't support attachments. */

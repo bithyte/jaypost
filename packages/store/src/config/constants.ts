@@ -1,8 +1,5 @@
-import packageJson from '../../../../apps/cli/package.json' with { type: 'json' }
 import { TOKEN_ENV_VAR } from '../auth/constants.ts'
 
-/** Version of the published jaypost package (apps/cli), read when the module loads; the workspace packages are private. */
-export const VERSION: string = packageJson.version
 /** Env var that names the provider. */
 export const PROVIDER_ENV_VAR = 'JAYPOST_PROVIDER'
 /** Env var that sets the API port. */

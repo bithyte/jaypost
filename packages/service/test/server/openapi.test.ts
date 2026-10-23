@@ -5,6 +5,9 @@ import { DEFAULT_PORT } from '@jaypost/store'
 import { DEFAULT_PROVIDER, requireProvider, resolveMaxAttachmentBytes } from '@jaypost/core'
 import { PROVIDERS } from '@jaypost/providers'
 import { createOpenApiDocument, formatOpenApiYaml } from '../../src/server/index.ts'
+import packageJson from '../../../../apps/cli/package.json' with { type: 'json' }
+
+const TEST_VERSION = '1.2.3'
 
 test('docs/openapi.yaml is up to date (vp run openapi)', () => {
   const provider = requireProvider(PROVIDERS, DEFAULT_PROVIDER)
@@ -13,6 +16,7 @@ test('docs/openapi.yaml is up to date (vp run openapi)', () => {
   const committed = readFileSync(new URL('../../../../docs/openapi.yaml', import.meta.url), 'utf8')
   expect(committed).toBe(
     formatOpenApiYaml({
+      version: packageJson.version,
       port: DEFAULT_PORT,
       maxTextLength,
       maxAttachmentBytes,
@@ -22,7 +26,13 @@ test('docs/openapi.yaml is up to date (vp run openapi)', () => {
 })
 
 test('server url and text limits follow the options', () => {
-  const document = createOpenApiDocument({ port: 9000, maxTextLength: 1234, maxAttachmentBytes: 0 })
+  const document = createOpenApiDocument({
+    version: TEST_VERSION,
+    port: 9000,
+    maxTextLength: 1234,
+    maxAttachmentBytes: 0,
+  })
+  expect(document.info.version).toBe(TEST_VERSION)
   expect(document.servers).toEqual([{ url: 'http://127.0.0.1:9000' }])
   const { ApprovalRequest, NotifyRequest } = document.components.schemas
   for (const body of [ApprovalRequest, NotifyRequest]) {
@@ -40,6 +50,7 @@ test('server url and text limits follow the options', () => {
 
 test('request bodies come from the parser schemas', () => {
   const { ApprovalRequest, NotifyRequest } = createOpenApiDocument({
+    version: TEST_VERSION,
     port: 8787,
     maxTextLength: 3900,
     maxAttachmentBytes: 2048,
@@ -63,12 +74,18 @@ test('request bodies come from the parser schemas', () => {
 })
 
 test('yaml parses back to the document', () => {
-  const options = { port: 8787, maxTextLength: 3900, maxAttachmentBytes: 2048 }
+  const options = {
+    version: TEST_VERSION,
+    port: 8787,
+    maxTextLength: 3900,
+    maxAttachmentBytes: 2048,
+  }
   expect(parse(formatOpenApiYaml(options))).toEqual(createOpenApiDocument(options))
 })
 
 test('bearer auth is declared and required on the api routes', () => {
   const document = createOpenApiDocument({
+    version: TEST_VERSION,
     port: 8787,
     maxTextLength: 3900,
     maxAttachmentBytes: 2048,
@@ -87,6 +104,7 @@ test('bearer auth is declared and required on the api routes', () => {
 
 test('background paths are documented', () => {
   const { paths } = createOpenApiDocument({
+    version: TEST_VERSION,
     port: 8787,
     maxTextLength: 3900,
     maxAttachmentBytes: 2048,
@@ -103,7 +121,12 @@ test('background paths are documented', () => {
   expect(paths['/request/async'].post).not.toHaveProperty('security')
 })
 
-const ATTACHMENT_OPTIONS = { port: 8787, maxTextLength: 3900, maxAttachmentBytes: 2048 }
+const ATTACHMENT_OPTIONS = {
+  version: TEST_VERSION,
+  port: 8787,
+  maxTextLength: 3900,
+  maxAttachmentBytes: 2048,
+}
 
 test('both bodies reference the Attachment component', () => {
   const { ApprovalRequest, NotifyRequest } =
@@ -150,7 +173,12 @@ test('Status has maxAttachmentBytes', () => {
 })
 
 test('Status has maxTextLength and maxOptionCount', () => {
-  const document = createOpenApiDocument({ port: 1, maxTextLength: 10, maxAttachmentBytes: 0 })
+  const document = createOpenApiDocument({
+    version: TEST_VERSION,
+    port: 1,
+    maxTextLength: 10,
+    maxAttachmentBytes: 0,
+  })
   const status = document.components.schemas.Status as {
     readonly oneOf?: readonly { readonly properties?: Record<string, unknown> }[]
     readonly anyOf?: readonly { readonly properties?: Record<string, unknown> }[]
@@ -167,6 +195,7 @@ test('Status has maxTextLength and maxOptionCount', () => {
 
 test('maxOptionCount becomes maxItems on request options', () => {
   const withLimit = createOpenApiDocument({
+    version: TEST_VERSION,
     port: 1,
     maxTextLength: 1800,
     maxAttachmentBytes: 0,
@@ -175,14 +204,24 @@ test('maxOptionCount becomes maxItems on request options', () => {
   expect(withLimit.components.schemas.ApprovalRequest.properties?.options).toMatchObject({
     maxItems: 25,
   })
-  const without = createOpenApiDocument({ port: 1, maxTextLength: 1800, maxAttachmentBytes: 0 })
+  const without = createOpenApiDocument({
+    version: TEST_VERSION,
+    port: 1,
+    maxTextLength: 1800,
+    maxAttachmentBytes: 0,
+  })
   expect(without.components.schemas.ApprovalRequest.properties?.options).not.toHaveProperty(
     'maxItems',
   )
 })
 
 test('/vote is documented with its body and report', () => {
-  const document = createOpenApiDocument({ port: 8787, maxTextLength: 3900, maxAttachmentBytes: 0 })
+  const document = createOpenApiDocument({
+    version: TEST_VERSION,
+    port: 8787,
+    maxTextLength: 3900,
+    maxAttachmentBytes: 0,
+  })
   const { VoteRequest, VoteReport, ApprovalRequest } = document.components.schemas
   expect(document.paths['/vote'].post.responses['200']).toMatchObject({
     content: { 'application/json': { schema: { $ref: '#/components/schemas/VoteReport' } } },

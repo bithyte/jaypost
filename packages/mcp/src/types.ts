@@ -1,8 +1,15 @@
 import type { MessageFormat } from '@jaypost/core'
+import type { CallerOptions } from '@jaypost/client'
 import type { OpenQuestions } from './questions.ts'
 
-/** Tuning for `createMcpServer`; every field is optional. */
+/** What `runMcp` needs: where the service is, and the version to report to MCP clients. */
+export type McpOptions = CallerOptions & {
+  readonly version: string
+}
+
+/** The version `createMcpServer` reports to MCP clients, plus optional tuning. */
 export type McpServerOptions = {
+  readonly version: string
   readonly progressIntervalMs?: number
   /** Where background questions are recorded for the shutdown cancel; default a fresh set. */
   readonly openQuestions?: OpenQuestions

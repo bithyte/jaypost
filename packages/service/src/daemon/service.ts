@@ -4,7 +4,13 @@ import type { Config } from '@jaypost/store'
 import { SERVICE_PROVIDERS } from '@jaypost/providers'
 import { createApiServer, createSingleBotRouter } from '../server/index.ts'
 import { startBot } from './bot.ts'
-import type { ServiceOptions } from './bot.ts'
+import type { BotOptions } from './bot.ts'
+
+/** A bot and the version its API reports. */
+export type ServiceOptions = BotOptions & {
+  /** Shown in /openapi.yaml. */
+  readonly version: string
+}
 
 export type RunningService = {
   readonly server: FastifyInstance
@@ -24,7 +30,7 @@ export type RunningService = {
 export async function startService(options: ServiceOptions): Promise<RunningService> {
   const running = await startBot(options)
   const server = createApiServer(
-    createSingleBotRouter({ ...running.bot, auth: options.config.auth }),
+    createSingleBotRouter({ ...running.bot, auth: options.config.auth, version: options.version }),
   )
   return {
     server,
@@ -37,10 +43,13 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
 }
 
 /**
- * Starts the provider and API. Exits the process with 1 on bad config, rejected credentials, an
- * HTTP server error, or a fatal provider error.
+ * Starts the provider and API, reporting `version` in /openapi.yaml. Exits the process with 1 on
+ * bad config, rejected credentials, an HTTP server error, or a fatal provider error.
  */
-export async function runService(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+export async function runService(
+  version: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
   let config: Config
   try {
     config = loadConfig(env, SERVICE_PROVIDERS)
@@ -52,6 +61,7 @@ export async function runService(env: NodeJS.ProcessEnv = process.env): Promise<
   let running: RunningService
   try {
     running = await startService({
+      version,
       config,
       configPath: resolveConfigPath(env),
       fatal: (message) => {

@@ -15,8 +15,7 @@ import {
   MESSAGE_FORMATS,
 } from '@jaypost/core'
 import { Caller, DEFAULT_ATTACHMENT_NAME } from '@jaypost/client'
-import type { AttachmentSource, CallerOptions, Question, QuestionState } from '@jaypost/client'
-import { VERSION } from '@jaypost/store'
+import type { AttachmentSource, Question, QuestionState } from '@jaypost/client'
 import {
   CANCELLED_QUESTION_TEXT,
   PROGRESS_INTERVAL_MS,
@@ -24,7 +23,7 @@ import {
   STILL_WAITING_TEXT,
 } from './constants.ts'
 import { OpenQuestions } from './questions.ts'
-import type { AskArguments, AttachmentArgument, McpServerOptions } from './types.ts'
+import type { AskArguments, AttachmentArgument, McpOptions, McpServerOptions } from './types.ts'
 
 const ATTACH_SENTENCE =
   'Optionally attach a file (path) or long text (over the text limit, see GET /status maxTextLength; such as a diff or log) to show the user as a document with the message.'
@@ -145,11 +144,11 @@ const askInputSchema = {
 export function createMcpServer(
   caller: Caller,
   signal: AbortSignal,
-  options: McpServerOptions = {},
+  options: McpServerOptions,
 ): McpServer {
   const progressIntervalMs = options.progressIntervalMs ?? PROGRESS_INTERVAL_MS
   const openQuestions = options.openQuestions ?? new OpenQuestions()
-  const server = new McpServer({ name: 'jaypost', version: VERSION })
+  const server = new McpServer({ name: 'jaypost', version: options.version })
   server.registerTool(
     'ask_for_permission',
     {
@@ -286,11 +285,12 @@ export function createMcpServer(
  * background questions it asked that haven't settled (best effort, bounded by
  * `CANCEL_TIMEOUT_MS`), and closes. Resolves 0. Writes nothing to stdout but JSON-RPC.
  */
-export async function runMcp(options: CallerOptions): Promise<number> {
-  const caller = new Caller(options)
+export async function runMcp(options: McpOptions): Promise<number> {
+  const { version, ...callerOptions } = options
+  const caller = new Caller(callerOptions)
   const controller = new AbortController()
   const openQuestions = new OpenQuestions()
-  const server = createMcpServer(caller, controller.signal, { openQuestions })
+  const server = createMcpServer(caller, controller.signal, { version, openQuestions })
   // The SDK transport doesn't notice the end of stdin by itself.
   const stdinDone = new Promise<void>((resolve) => {
     process.stdin.once('end', resolve)

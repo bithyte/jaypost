@@ -24,7 +24,8 @@ import type { PairResult, RuntimeHandlers, SettingValues } from '@jaypost/core'
 import type { StatusInfo } from '@jaypost/protocol'
 import type { ApiBot } from '../server/index.ts'
 
-export type ServiceOptions = {
+/** What `startBot` needs to start one bot. */
+export type BotOptions = {
   readonly config: Config
   readonly configPath: string
   /** The provider can't continue; the caller decides how to exit. */
@@ -50,7 +51,7 @@ export type RunningBot = {
  * state and audit files next to `configPath`. Throws an Error with the provider's reason when
  * credentials are rejected.
  */
-export async function startBot(options: ServiceOptions): Promise<RunningBot> {
+export async function startBot(options: BotOptions): Promise<RunningBot> {
   const { config, configPath } = options
   const log = options.log ?? console.error
   const provider = config.provider

@@ -28,6 +28,8 @@ import { PROVIDERS, telegramProvider } from '@jaypost/providers'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import { createRecordingProgress } from '../progress/recording.ts'
 
+const TEST_VERSION = '1.2.3'
+
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
 const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
 
@@ -109,6 +111,7 @@ async function startApi(
   const service = new ApprovalService(messenger)
   const server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({
         paired: true,

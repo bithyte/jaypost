@@ -4,11 +4,13 @@ import { DEFAULT_PORT } from '@jaypost/store'
 import { DEFAULT_PROVIDER, requireProvider, resolveMaxAttachmentBytes } from '@jaypost/core'
 import { PROVIDERS } from '@jaypost/providers'
 import { formatOpenApiYaml } from '@jaypost/service'
+import { VERSION } from '../src/constants.ts'
 
 const provider = requireProvider(PROVIDERS, DEFAULT_PROVIDER)
 writeFileSync(
   new URL('../../../docs/openapi.yaml', import.meta.url),
   formatOpenApiYaml({
+    version: VERSION,
     port: DEFAULT_PORT,
     maxTextLength: provider.maxTextLength,
     maxAttachmentBytes: resolveMaxAttachmentBytes(provider),

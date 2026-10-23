@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { parse } from 'yaml'
 import { main } from '../src/cli.ts'
-import { VERSION } from '@jaypost/store'
+import { VERSION } from '../src/constants.ts'
 
 afterEach(() => {
   vi.unstubAllEnvs()

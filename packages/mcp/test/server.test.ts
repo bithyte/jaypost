@@ -35,6 +35,8 @@ import {
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import { createMcpServer, OpenQuestions } from '../src/index.ts'
 
+const TEST_VERSION = '1.2.3'
+
 const ROOT = new URL('../../..', import.meta.url).pathname
 const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
 
@@ -140,6 +142,7 @@ async function startApi(
   const service = new ApprovalService(messenger)
   const server = createApiServer(
     createSingleBotRouter({
+      version: TEST_VERSION,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,
@@ -654,7 +657,7 @@ test('a long ask sends progress while it waits', async () => {
   const server = createMcpServer(
     new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
     new AbortController().signal,
-    { progressIntervalMs: 50 },
+    { version: TEST_VERSION, progressIntervalMs: 50 },
   )
   await server.connect(serverTransport)
   const client = new Client({ name: 'test', version: '0.0.0' })
@@ -852,7 +855,7 @@ test('wait_for_answer sends progress while it waits', async () => {
   const server = createMcpServer(
     new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
     new AbortController().signal,
-    { progressIntervalMs: 50 },
+    { version: TEST_VERSION, progressIntervalMs: 50 },
   )
   await server.connect(serverTransport)
   const client = new Client({ name: 'test', version: '0.0.0' })
@@ -931,7 +934,10 @@ test('an unknown id settles the open question', async () => {
   const openQuestions = new OpenQuestions()
   openQuestions.add('nope')
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
-  const server = createMcpServer(caller, new AbortController().signal, { openQuestions })
+  const server = createMcpServer(caller, new AbortController().signal, {
+    version: TEST_VERSION,
+    openQuestions,
+  })
   await server.connect(serverTransport)
   const client = new Client({ name: 'test', version: '0.0.0' })
   clients.push(client)

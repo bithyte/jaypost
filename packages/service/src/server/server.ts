@@ -215,7 +215,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   app.get('/openapi.yaml', async (request, reply) =>
     reply
       .type('application/yaml; charset=utf-8')
-      .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.limits })),
+      .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.openApi })),
   )
   // Replies 503/400/501 itself and returns undefined, or returns what `parse` made of the body.
   // Drops the raw body from the Fastify request so a long wait doesn't keep an attachment's bytes
