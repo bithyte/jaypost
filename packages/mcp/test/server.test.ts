@@ -34,6 +34,7 @@ import {
 } from '@jaypost/client'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import { createMcpServer, OpenQuestions } from '../src/index.ts'
+import type { OpenQuestion } from '../src/index.ts'
 
 const TEST_VERSION = '1.2.3'
 
@@ -218,6 +219,10 @@ async function freePort(): Promise<number> {
   return port
 }
 
+function toOpenQuestion(id: string): OpenQuestion {
+  return { id, project: 'api', text: 'Deploy?', expiresAt: '2026-10-20T06:00:00.000Z' }
+}
+
 const ASK = {
   project_name: 'api',
   text: 'Deploy?',
@@ -225,7 +230,7 @@ const ASK = {
   timeout_option: 'Decline',
 }
 
-test('lists the four tools with their required inputs', async () => {
+test('lists the six tools with their required inputs', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const { tools } = await client.listTools()
@@ -235,12 +240,16 @@ test('lists the four tools with their required inputs', async () => {
   expect(requiredByName).toEqual({
     ask_for_permission: ['project_name', 'text', 'timeout_option'],
     ask_for_permission_in_background: ['project_name', 'text', 'timeout_option'],
+    cancel_question: ['request_id'],
+    list_questions: undefined,
     notify_user: ['project_name', 'text'],
     wait_for_answer: ['request_id'],
   })
   expect(tools.map((tool) => tool.name).toSorted()).toEqual([
     'ask_for_permission',
     'ask_for_permission_in_background',
+    'cancel_question',
+    'list_questions',
     'notify_user',
     'wait_for_answer',
   ])
@@ -547,7 +556,8 @@ test('tool list shows format', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const { tools } = await client.listTools()
-  for (const tool of tools.filter((tool) => tool.name !== 'wait_for_answer')) {
+  const messageTools = ['ask_for_permission', 'ask_for_permission_in_background', 'notify_user']
+  for (const tool of tools.filter((tool) => messageTools.includes(tool.name))) {
     expect(tool.inputSchema.properties?.format).toMatchObject({ enum: ['plain', 'markdown'] })
     expect(tool.inputSchema.required).not.toContain('format')
   }
@@ -849,6 +859,99 @@ test('closing stdin cancels unsettled background questions', async () => {
   expect(service.get(open)).toEqual({ kind: 'cancelled' })
 })
 
+test('cancel_question cancels a pending question', async () => {
+  const { port, service, messenger } = await startApi()
+  const client = await connect(port)
+  const id = await askInBackground(client)
+  expect(await client.callTool({ name: 'cancel_question', arguments: { request_id: id } })).toEqual(
+    {
+      content: [{ type: 'text', text: 'the question was cancelled' }],
+      structuredContent: { state: 'cancelled' },
+    },
+  )
+  expect(service.get(id)).toEqual({ kind: 'cancelled' })
+  expect(messenger.finalized.map(({ settlement }) => settlement.kind)).toEqual(['cancelled'])
+})
+
+test('cancel_question on an answered question returns the answer', async () => {
+  const { port, service } = await startApi()
+  const client = await connect(port)
+  const id = await askInBackground(client)
+  service.tap(id, 0)
+  expect(await client.callTool({ name: 'cancel_question', arguments: { request_id: id } })).toEqual(
+    {
+      content: [{ type: 'text', text: 'Approve' }],
+      structuredContent: { state: 'done', answer: 'Approve', timed_out: false },
+    },
+  )
+})
+
+test('cancel_question with an unknown id is a tool error', async () => {
+  const { port } = await startApi()
+  const client = await connect(port)
+  expect(
+    await client.callTool({ name: 'cancel_question', arguments: { request_id: 'nope' } }),
+  ).toEqual({
+    isError: true,
+    content: [
+      {
+        type: 'text',
+        text: "jaypost doesn't know request nope (the service restarted, or the answer expired after 24 h)",
+      },
+    ],
+  })
+})
+
+test('list_questions shows the questions not yet collected or cancelled', async () => {
+  const { port, service } = await startApi()
+  const client = await connect(port)
+  const collected = await askInBackground(client)
+  const cancelled = await askInBackground(client, { text: 'Migrate?' })
+  const answered = await askInBackground(client, { project_name: 'web', text: 'Merge?' })
+  const open = await askInBackground(client, { text: 'Release?' })
+  const expiresAt = (id: string) => {
+    const state = service.get(id)
+    return state?.kind === 'pending' ? state.expiresAt.toISOString() : ''
+  }
+  const answeredExpiresAt = expiresAt(answered)
+  const openExpiresAt = expiresAt(open)
+  service.tap(collected, 0)
+  await client.callTool({ name: 'wait_for_answer', arguments: { request_id: collected } })
+  await client.callTool({ name: 'cancel_question', arguments: { request_id: cancelled } })
+  service.tap(answered, 1)
+  expect(await client.callTool({ name: 'list_questions', arguments: {} })).toEqual({
+    content: [
+      {
+        type: 'text',
+        text: [
+          `${answered} [web] "Merge?" (expires ${answeredExpiresAt})`,
+          `${open} [api] "Release?" (expires ${openExpiresAt})`,
+        ].join('\n'),
+      },
+    ],
+    structuredContent: {
+      questions: [
+        {
+          request_id: answered,
+          project_name: 'web',
+          text: 'Merge?',
+          expires_at: answeredExpiresAt,
+        },
+        { request_id: open, project_name: 'api', text: 'Release?', expires_at: openExpiresAt },
+      ],
+    },
+  })
+})
+
+test('list_questions with nothing open says so', async () => {
+  const { port } = await startApi()
+  const client = await connect(port)
+  expect(await client.callTool({ name: 'list_questions', arguments: {} })).toEqual({
+    content: [{ type: 'text', text: 'no open questions' }],
+    structuredContent: { questions: [] },
+  })
+})
+
 test('wait_for_answer sends progress while it waits', async () => {
   const { port, service } = await startApi()
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -885,8 +988,8 @@ test('cancelAll gives up after its timeout', async () => {
     paths.push(`${request.method} ${request.url}`)
   })
   const openQuestions = new OpenQuestions()
-  openQuestions.add('a')
-  openQuestions.add('b')
+  openQuestions.add(toOpenQuestion('a'))
+  openQuestions.add(toOpenQuestion('b'))
   openQuestions.settle('b')
   const startedAt = performance.now()
   await openQuestions.cancelAll(
@@ -899,7 +1002,7 @@ test('cancelAll gives up after its timeout', async () => {
 
 test('cancelAll resolves when the service is down', async () => {
   const openQuestions = new OpenQuestions()
-  openQuestions.add('a')
+  openQuestions.add(toOpenQuestion('a'))
   const port = await freePort()
   await expect(
     openQuestions.cancelAll(
@@ -915,7 +1018,7 @@ test('cancelAll skips an unusable token', async () => {
     response.end('{}')
   })
   const openQuestions = new OpenQuestions()
-  openQuestions.add('a')
+  openQuestions.add(toOpenQuestion('a'))
   await openQuestions.cancelAll(
     new Caller({
       endpoint: toLocalEndpoint(port),
@@ -932,7 +1035,7 @@ test('an unknown id settles the open question', async () => {
     readToken: () => ({ kind: 'none' }),
   })
   const openQuestions = new OpenQuestions()
-  openQuestions.add('nope')
+  openQuestions.add(toOpenQuestion('nope'))
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const server = createMcpServer(caller, new AbortController().signal, {
     version: TEST_VERSION,

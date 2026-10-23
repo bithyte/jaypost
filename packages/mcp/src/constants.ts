@@ -12,3 +12,5 @@ export const CANCEL_TIMEOUT_MS = 2000
 export const STILL_WAITING_TEXT = 'still waiting for the user'
 /** `wait_for_answer` text for a cancelled question. */
 export const CANCELLED_QUESTION_TEXT = 'the question was cancelled'
+/** `list_questions` text when this session has no open background questions. */
+export const NO_OPEN_QUESTIONS_TEXT = 'no open questions'

@@ -2,7 +2,7 @@
 
 If you use the [Claude Code plugin](claude-code.md#plugin), it adds this server for you.
 
-`jaypost mcp [--port N]` is a stdio MCP server with four tools that forward to the [HTTP API](http-api.md). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking.
+`jaypost mcp [--port N]` is a stdio MCP server with six tools that forward to the [HTTP API](http-api.md). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking.
 
 `ask_for_permission` asks a question with buttons, a typed reply or both, and waits for the answer or the timeout:
 
@@ -47,6 +47,10 @@ It returns text plus structured content `{ "state": ..., "answer"?: ..., "timed_
 An answer stays readable for 24 h after the question settles. After that, or after a service restart, `wait_for_answer` returns an error saying the service doesn't know the request. It sends progress notifications the same way as `ask_for_permission`. Cancelling a `wait_for_answer` call only stops the wait; the question stays open and you can wait again.
 
 Closing the agent session (the MCP server's stdin) cancels the background questions it asked that haven't been answered, and their Telegram messages get the cancelled line. If the MCP server is killed outright, they stay open until their timeout.
+
+`cancel_question` takes a `request_id` and withdraws a background question you no longer need; its message gets the cancelled line. It returns the same text and structured content as `wait_for_answer`: `{ "state": "cancelled" }`, or the answer if the user got there first. An unknown id is a tool error.
+
+`list_questions` takes no params and lists the background questions this MCP server asked that haven't been collected with `wait_for_answer` or cancelled, so an agent that lost a `request_id` (after context compaction, say) can find it again. It doesn't ask the service, so some may already be answered or timed out; call `wait_for_answer` to read them. Questions from other sessions aren't listed. The structured content is `{ "questions": [{ "request_id", "project_name", "text", "expires_at" }] }`, and the text has one line per question, or `no open questions`.
 
 `notify_user` sends a message that doesn't need an answer and returns `sent` once Telegram accepts it:
 

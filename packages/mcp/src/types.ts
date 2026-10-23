@@ -15,6 +15,14 @@ export type McpServerOptions = {
   readonly openQuestions?: OpenQuestions
 }
 
+/** A background question as `list_questions` shows it; `expiresAt` is when its timeout fires. */
+export type OpenQuestion = {
+  readonly id: string
+  readonly project: string
+  readonly text: string
+  readonly expiresAt: string
+}
+
 /** The `attachment` input of the ask and notify tools: a file path or literal text. */
 export type AttachmentArgument =
   | { readonly path: string; readonly name?: string | undefined }
