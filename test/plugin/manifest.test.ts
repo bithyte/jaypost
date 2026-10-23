@@ -30,10 +30,21 @@ const EXPECTED_HOOKS = {
   ],
   Notification: [
     {
-      matcher: 'idle_prompt|elicitation_dialog|agent_needs_input',
+      matcher: 'elicitation_dialog|agent_needs_input',
       hooks: [{ type: 'command', command: `${WRAPPER_COMMAND} hook` }],
     },
   ],
+  Stop: [
+    {
+      hooks: [
+        { type: 'command', command: `${WRAPPER_COMMAND} hook`, asyncRewake: true, timeout: 3720 },
+      ],
+    },
+  ],
+  UserPromptSubmit: [
+    { hooks: [{ type: 'command', command: `${WRAPPER_COMMAND} hook`, async: true }] },
+  ],
+  SessionEnd: [{ hooks: [{ type: 'command', command: `${WRAPPER_COMMAND} hook` }] }],
 }
 const EXPECTED_MCP_SERVERS = {
   jaypost: { command: '${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin', args: ['mcp'] },

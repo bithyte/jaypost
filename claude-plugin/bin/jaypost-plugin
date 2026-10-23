@@ -17,9 +17,19 @@ case "$1" in
     exec 3<&0 # async lists get /dev/null as stdin, so keep the real one on fd 3
     env -u PORT "$bin" hook <&3 2>/dev/null &
     child=$!
-    trap 'kill -TERM "$child" 2>/dev/null' TERM INT
+    interrupted=
+    trap 'interrupted=1; kill -TERM "$child" 2>/dev/null' TERM INT
     wait "$child"
-    wait "$child" 2>/dev/null # the first wait returns early when a trap fires
+    code=$?
+    if [ -n "$interrupted" ]; then
+      wait "$child" 2>/dev/null # the first wait returns early when a trap fires
+      exit 0
+    fi
+    # 2 is a phone reply to Stop: asyncRewake wakes Claude with what jaypost printed.
+    # Every other failure stays quiet so prompts fall back to the terminal.
+    if [ "$code" -eq 2 ]; then
+      exit 2
+    fi
     exit 0
     ;;
   session-start)

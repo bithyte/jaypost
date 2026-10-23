@@ -90,7 +90,7 @@ Runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents
 jaypost hook [--port N] [--project NAME] [--timeout S]
 ```
 
-A Claude Code hook that sends permission prompts to your chat app. `--project` sets the `[name]` line (default: the project folder), `--timeout` is how long to wait for a tap (default 300). See [Claude Code](claude-code.md#hook-manual-setup).
+A Claude Code hook that sends permission prompts to your chat app and takes your reply to a finished turn as the next prompt. `--project` sets the `[name]` line (default: the project folder), `--timeout` is how long to wait for an answer (default 300, or 3600 for a finished turn). See [Claude Code](claude-code.md#hook-manual-setup).
 
 ### `jaypost log`
 

@@ -136,6 +136,19 @@ test('hook swallows a failing jaypost', async () => {
   expect(result.stderr).toBe('')
 })
 
+test('hook passes a stop reply through with exit 2', async () => {
+  const sandbox = await createSandbox()
+  const result = run(
+    'hook',
+    sandbox,
+    { FAKE_EXIT: '2', FAKE_STDOUT: 'The user replied: next' },
+    '{"hook_event_name":"Stop"}',
+  )
+  expect(result.status).toBe(2)
+  expect(result.stdout).toBe('The user replied: next\n')
+  expect(result.stderr).toBe('')
+})
+
 test('hook without jaypost exits 0 silently', async () => {
   const sandbox = await createSandbox(null)
   const result = run('hook', sandbox, {}, PERMISSION_EVENT)

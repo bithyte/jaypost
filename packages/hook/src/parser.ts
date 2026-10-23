@@ -33,6 +33,17 @@ const SESSION_START_SCHEMA = z.looseObject({
   cwd: z.string().optional(),
 })
 
+const STOP_SCHEMA = z.looseObject({
+  session_id: z.string(),
+  last_assistant_message: z.string().optional(),
+  cwd: z.string().optional(),
+})
+
+const SESSION_SCHEMA = z.looseObject({
+  session_id: z.string(),
+  cwd: z.string().optional(),
+})
+
 function invalid(error: z.ZodError): HookParseResult {
   const issue = error.issues[0]
   if (issue === undefined) {
@@ -97,6 +108,30 @@ export function parseHookEvent(raw: string): HookParseResult {
         return invalid(result.error)
       }
       return parsed({ kind: 'SessionStart', source: result.data.source, cwd: result.data.cwd })
+    }
+    case 'Stop': {
+      const result = STOP_SCHEMA.safeParse(json)
+      if (!result.success) {
+        return invalid(result.error)
+      }
+      return parsed({
+        kind: 'Stop',
+        sessionId: result.data.session_id,
+        lastAssistantMessage: result.data.last_assistant_message ?? '',
+        cwd: result.data.cwd,
+      })
+    }
+    case 'UserPromptSubmit':
+    case 'SessionEnd': {
+      const result = SESSION_SCHEMA.safeParse(json)
+      if (!result.success) {
+        return invalid(result.error)
+      }
+      return parsed({
+        kind: base.data.hook_event_name,
+        sessionId: result.data.session_id,
+        cwd: result.data.cwd,
+      })
     }
     default:
       return {

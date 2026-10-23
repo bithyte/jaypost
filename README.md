@@ -76,7 +76,7 @@ A small service on localhost holds each request open until you tap a button, rep
 
 - [Install](docs/install.md): targets (Podman, Docker, systemd, launchd), standalone binary, config, upgrading
 - [Pairing](docs/pairing.md): pairing, changing owner, Discord setup
-- [Claude Code](docs/claude-code.md): plugin and permission hook
+- [Claude Code](docs/claude-code.md): plugin, permission hook and replies to a finished turn
 - [Agents (MCP)](docs/mcp.md): tools for any MCP client
 - [Shell and Node](docs/scripts.md): `jaypost send` and the `Client`
 - [HTTP API](docs/http-api.md): questions, background questions, notifications, attachments

@@ -109,9 +109,9 @@ test.each(['', 'nope'])('rejects text that is not json %j', (raw) => {
 })
 
 test('rejects an unknown event', () => {
-  expect(parseHookEvent(JSON.stringify({ hook_event_name: 'Stop' }))).toEqual({
+  expect(parseHookEvent(JSON.stringify({ hook_event_name: 'PreCompact' }))).toEqual({
     kind: 'invalid',
-    message: 'unsupported hook event "Stop"',
+    message: 'unsupported hook event "PreCompact"',
   })
 })
 
@@ -150,4 +150,48 @@ test('session start with a non-string source is invalid', () => {
   if (result.kind === 'invalid') {
     expect(result.message).toMatch(/^invalid hook input: source:/)
   }
+})
+
+test('parses a stop event', () => {
+  const raw = JSON.stringify({
+    session_id: 's1',
+    hook_event_name: 'Stop',
+    cwd: '/work/api',
+    stop_hook_active: false,
+    last_assistant_message: 'Done.',
+    background_tasks: [],
+  })
+  expect(parseHookEvent(raw)).toEqual({
+    kind: 'parsed',
+    event: { kind: 'Stop', sessionId: 's1', lastAssistantMessage: 'Done.', cwd: '/work/api' },
+  })
+})
+
+test('a stop without a last message parses with an empty one', () => {
+  expect(parseHookEvent(JSON.stringify({ session_id: 's1', hook_event_name: 'Stop' }))).toEqual({
+    kind: 'parsed',
+    event: { kind: 'Stop', sessionId: 's1', lastAssistantMessage: '', cwd: undefined },
+  })
+})
+
+test('a stop without a session id is invalid', () => {
+  const result = parseHookEvent(JSON.stringify({ hook_event_name: 'Stop' }))
+  expect(result.kind).toBe('invalid')
+  if (result.kind === 'invalid') {
+    expect(result.message).toMatch(/^invalid hook input: session_id:/)
+  }
+})
+
+test.each(['UserPromptSubmit', 'SessionEnd'] as const)('parses a %s event', (name) => {
+  const raw = JSON.stringify({
+    session_id: 's1',
+    hook_event_name: name,
+    cwd: '/work/api',
+    prompt: 'hi',
+    reason: 'clear',
+  })
+  expect(parseHookEvent(raw)).toEqual({
+    kind: 'parsed',
+    event: { kind: name, sessionId: 's1', cwd: '/work/api' },
+  })
 })

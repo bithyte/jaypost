@@ -2,7 +2,7 @@
 import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 'commander'
 import { realpathSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
 import {
@@ -15,6 +15,7 @@ import {
   PORT_ENV_VAR,
   realExec,
   resolveClientToken,
+  resolveConfigDirectory,
   resolveTokenFile,
 } from '@jaypost/store'
 import {
@@ -65,7 +66,7 @@ import type {
 } from './commands/index.ts'
 import { formatOpenApiYaml, resolveApprovers, resolveSendMode, runService } from '@jaypost/service'
 import type { SendMode } from '@jaypost/service'
-import { readHookInput, runHook } from '@jaypost/hook'
+import { readHookInput, runHook, STOP_DIRECTORY_NAME } from '@jaypost/hook'
 import type { HookDeps } from '@jaypost/hook'
 import {
   createTargets,
@@ -249,6 +250,7 @@ function createHookDeps(flagPort: number | undefined, signal: AbortSignal): Hook
     print: (line) => console.log(line),
     printError: (line) => console.error(line),
     env: process.env,
+    stopDirectory: join(resolveConfigDirectory(process.env), STOP_DIRECTORY_NAME),
   }
 }
 
@@ -880,7 +882,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('hook')
     .description(
-      'answer Claude Code permission prompts and forward notifications (reads a hook event on stdin)',
+      'answer Claude Code permission prompts, forward notifications and ask for the next prompt when Claude stops (reads a hook event on stdin)',
     )
     .option(
       '--port <n>',
@@ -890,7 +892,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .option('--project <name>', 'shown as [name] (default: the Claude Code project folder)')
     .option(
       '--timeout <seconds>',
-      'seconds to wait for an answer; default 300, max 86400 (24 h); longer values are capped',
+      'seconds to wait for an answer; default 300 (3600 for Stop), max 86400 (24 h); longer values are capped',
       parseTimeout,
     )
     .action(

@@ -31,7 +31,40 @@
     ],
     "Notification": [
       {
-        "matcher": "idle_prompt|elicitation_dialog|agent_needs_input",
+        "matcher": "elicitation_dialog|agent_needs_input",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec \"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec \"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" hook",
+            "asyncRewake": true,
+            "timeout": 3720
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "exec \"${CLAUDE_PLUGIN_ROOT}/bin/jaypost-plugin\" hook",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
         "hooks": [
           {
             "type": "command",

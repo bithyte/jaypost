@@ -6,6 +6,7 @@ import {
   ASK_IN_TERMINAL_OPTION,
   DENY_MESSAGE,
   DENY_OPTION,
+  DONE_OPTION,
   ELLIPSIS,
   MAX_HEADER_LENGTH,
   MAX_HOOK_TEXT_LENGTH,
@@ -15,6 +16,8 @@ import {
   MULTI_EDIT_SEPARATOR,
   PREVIEW_LABEL,
   PREVIEW_LENGTH,
+  STOP_FOOTER,
+  STOP_HEADER,
   SUGGESTION_PREFIX,
   TOO_LONG_LINE,
 } from './constants.ts'
@@ -25,6 +28,7 @@ import type {
   PermissionDecision,
   PermissionRequestEvent,
   PermissionSuggestion,
+  StopEvent,
 } from './types.ts'
 
 /** The thing being approved, then the context that may be cut or dropped first. */
@@ -87,6 +91,29 @@ export function formatNotificationText(
   const body = hasDistinctTitle ? `${event.title}\n\n${event.message}` : event.message
   const text = hasAgent(event.agentType) ? `${describeActor(event.agentType)}:\n${body}` : body
   return cut(text, maxLength)
+}
+
+/**
+ * Builds the "Claude finished" question, within `maxLength`: Claude's last message, cut first when
+ * it doesn't fit, then how to answer. Done is the only button; a typed reply is the next prompt.
+ * Never throws.
+ */
+export function formatStopQuestion(
+  event: StopEvent,
+  maxLength: number = MAX_HOOK_TEXT_LENGTH,
+): HookQuestion {
+  const footer = `\n\n${STOP_FOOTER}`
+  const message = event.lastAssistantMessage.trim()
+  if (message === '') {
+    return { text: cut(`${STOP_HEADER}.${footer}`, maxLength), options: [DONE_OPTION] }
+  }
+  const header = `${STOP_HEADER}:\n`
+  const room = maxLength - header.length - footer.length
+  // Too small to show any of the message: the footer alone still says how to answer.
+  if (room < 2) {
+    return { text: cut(`${STOP_HEADER}.${footer}`, maxLength), options: [DONE_OPTION] }
+  }
+  return { text: `${header}${cut(message, room)}${footer}`, options: [DONE_OPTION] }
 }
 
 /** Never throws. `offered` is the options sent; an answer outside them is `unknownAnswer`. */

@@ -35,7 +35,28 @@ export type SessionStartEvent = {
   readonly cwd: string | undefined
 }
 
-export type HookEvent = PermissionRequestEvent | NotificationEvent | SessionStartEvent
+/** Claude finished a turn; the hook asks the phone for the next prompt. */
+export type StopEvent = {
+  readonly kind: 'Stop'
+  readonly sessionId: string
+  /** Empty when the event had none. */
+  readonly lastAssistantMessage: string
+  readonly cwd: string | undefined
+}
+
+/** The session moved on without the phone (a prompt typed in the terminal, or the session ended). */
+export type SessionMovedOnEvent = {
+  readonly kind: 'UserPromptSubmit' | 'SessionEnd'
+  readonly sessionId: string
+  readonly cwd: string | undefined
+}
+
+export type HookEvent =
+  | PermissionRequestEvent
+  | NotificationEvent
+  | SessionStartEvent
+  | StopEvent
+  | SessionMovedOnEvent
 
 export type HookParseResult =
   | { readonly kind: 'parsed'; readonly event: HookEvent }
@@ -76,4 +97,10 @@ export type HookDeps = {
   readonly printError: (text: string) => void
   /** For `CLAUDE_PROJECT_DIR`. */
   readonly env: NodeJS.ProcessEnv
+  /** Holds one marker file per session with a Stop question waiting; created when needed. */
+  readonly stopDirectory: string
+  /** Wait before a Stop question is sent, so a prompt typed right away sends nothing. Default 60 s. */
+  readonly stopDelayMs?: number
+  /** How often a waiting Stop question checks its marker. Default 1 s. */
+  readonly stopPollMs?: number
 }

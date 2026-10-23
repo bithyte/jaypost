@@ -29,3 +29,20 @@ export const ELLIPSIS = '…'
 export const MANUAL_HOOK_PATTERN = /(^|[\s/])jaypost(@\S+)? hook(\s|$)/
 /** A hand-written `jaypost mcp` server command line (command and args joined by spaces). */
 export const MANUAL_MCP_PATTERN = /(^|[\s/])jaypost(@\S+)? mcp(\s|$)/
+/** Tapped, or answered on timeout, to let a finished session stop. */
+export const DONE_OPTION = 'Done'
+/** Default wait for a reply to a Stop question; `--timeout` overrides it. */
+export const DEFAULT_STOP_TIMEOUT_SECONDS = 3600
+/** Matches idle_prompt's minute, so a prompt typed at the desk sends nothing to the phone. */
+export const STOP_DELAY_MS = 60_000
+export const STOP_POLL_MS = 1000
+export const STOP_HEADER = 'Claude finished'
+export const STOP_FOOTER = 'Reply with the next prompt, or tap Done.'
+/** Starts what Claude reads when a phone reply wakes it. */
+export const REPLY_PREFIX = 'The user replied from their phone with the next prompt:\n\n'
+/** Exit code that makes an `asyncRewake` hook wake Claude with its output. */
+export const REWAKE_EXIT_CODE = 2
+/** Claude Code session ids are UUIDs; anything else can't name a marker file. */
+export const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+/** Folder under the jaypost config directory that holds the Stop markers. */
+export const STOP_DIRECTORY_NAME = 'stop'

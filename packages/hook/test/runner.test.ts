@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -104,10 +105,13 @@ function createDeps(
     readonly signal?: AbortSignal
     readonly env?: NodeJS.ProcessEnv
     readonly token?: ClientToken
+    readonly stopDirectory?: string
+    readonly stopDelayMs?: number
   } = {},
 ) {
   const out: string[] = []
   const errors: string[] = []
+  const stopDirectory = options.stopDirectory ?? createStopDirectory()
   const deps: HookDeps = {
     endpoint: toLocalEndpoint(port),
     token: options.token ?? NO_CLIENT_TOKEN,
@@ -116,8 +120,17 @@ function createDeps(
     print: (text) => out.push(text),
     printError: (text) => errors.push(text),
     env: options.env ?? {},
+    stopDirectory,
+    stopDelayMs: options.stopDelayMs ?? 0,
+    stopPollMs: 10,
   }
-  return { deps, out, errors }
+  return { deps, out, errors, stopDirectory }
+}
+
+function createStopDirectory(): string {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-hook-stop-'))
+  temporaryDirectories.push(directory)
+  return join(directory, 'stop')
 }
 
 async function waitFor(condition: () => boolean): Promise<void> {
@@ -588,10 +601,10 @@ test('aborted stdin read exits 1 quietly', async () => {
 
 test('unknown event exits 1', async () => {
   const { port } = await startApi()
-  const { deps, out, errors } = createDeps(port, JSON.stringify({ hook_event_name: 'Stop' }))
+  const { deps, out, errors } = createDeps(port, JSON.stringify({ hook_event_name: 'PreCompact' }))
   expect(await runHook({}, deps)).toBe(1)
   expect(out).toEqual([])
-  expect(errors).toEqual(['jaypost: unsupported hook event "Stop"'])
+  expect(errors).toEqual(['jaypost: unsupported hook event "PreCompact"'])
 })
 
 test('the cli writes exactly one json line on allow', async () => {
@@ -889,4 +902,237 @@ test('the cli prints the session start check as one json line', async () => {
   expect(output.stdout.endsWith('\n')).toBe(true)
   expect(output.stdout.trimEnd().split('\n')).toHaveLength(1)
   expect(JSON.parse(output.stdout)).toEqual({ systemMessage: unreachableLine(port) })
+})
+
+const SESSION_ID = '0b5f1c2e-7d4a-4f1e-9c3b-2a6d8e9f0a1b'
+
+const STOP_EVENT = JSON.stringify({
+  session_id: SESSION_ID,
+  hook_event_name: 'Stop',
+  cwd: '/work/api',
+  stop_hook_active: false,
+  last_assistant_message: 'Refactor done, tests pass.',
+})
+
+function sessionEvent(name: 'UserPromptSubmit' | 'SessionEnd', sessionId = SESSION_ID): string {
+  return JSON.stringify({ session_id: sessionId, hook_event_name: name, cwd: '/work/api' })
+}
+
+test('stop sends the last message with a done button and a text reply', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  expect(messenger.sent[0]).toEqual({
+    id: expect.any(String),
+    text: '[api]\n\nClaude finished:\nRefactor done, tests pass.\n\nReply with the next prompt, or tap Done.',
+    options: ['Done'],
+  })
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  expect(await pending).toBe(0)
+})
+
+test('a typed reply is printed and exits 2 to wake claude', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out, errors } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  service.reply(messenger.sent[0]?.id ?? '', 'now update the changelog')
+  expect(await pending).toBe(2)
+  expect(out).toEqual([
+    'The user replied from their phone with the next prompt:\n\nnow update the changelog',
+  ])
+  expect(errors).toEqual([])
+})
+
+test('done lets the session stop and prints nothing', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out, errors } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  expect(await pending).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('a stop timeout answers done and prints nothing', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, out, errors } = createDeps(port, STOP_EVENT)
+  expect(await runHook({ timeout: 0.2 }, deps)).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'timedOut', answer: 'Done' }])
+})
+
+test('without --timeout a stop waits an hour', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const id = messenger.sent[0]?.id ?? ''
+  const state = service.get(id)
+  expect(state?.kind).toBe('pending')
+  const expiresInMs = state?.kind === 'pending' ? state.expiresAt.getTime() - Date.now() : 0
+  expect(expiresInMs).toBeGreaterThan(3590_000)
+  expect(expiresInMs).toBeLessThanOrEqual(3600_000)
+  service.tap(id, 0)
+  await pending
+})
+
+test('a prompt typed in the terminal cancels the waiting question', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, out, errors, stopDirectory } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const submit = createDeps(port, sessionEvent('UserPromptSubmit'), { stopDirectory })
+  expect(await runHook({}, submit.deps)).toBe(0)
+  expect(await pending).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+})
+
+test('a prompt typed during the delay sends nothing', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, stopDirectory } = createDeps(port, STOP_EVENT, { stopDelayMs: 60_000 })
+  const pending = runHook({}, deps)
+  await waitFor(() => existsSync(join(stopDirectory, SESSION_ID)))
+  const submit = createDeps(port, sessionEvent('UserPromptSubmit'), { stopDirectory })
+  expect(await runHook({}, submit.deps)).toBe(0)
+  expect(await pending).toBe(0)
+  expect(messenger.sent).toEqual([])
+})
+
+test('the session ending cancels the waiting question', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, stopDirectory } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const end = createDeps(port, sessionEvent('SessionEnd'), { stopDirectory })
+  expect(await runHook({}, end.deps)).toBe(0)
+  expect(await pending).toBe(0)
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+})
+
+test('a newer stop in the same session cancels the older question', async () => {
+  const { port, service, messenger } = await startApi()
+  const first = createDeps(port, STOP_EVENT)
+  const firstPending = runHook({}, first.deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const second = createDeps(port, STOP_EVENT, { stopDirectory: first.stopDirectory })
+  const secondPending = runHook({}, second.deps)
+  expect(await firstPending).toBe(0)
+  await waitFor(() => messenger.sent.length === 2)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+  service.reply(messenger.sent[1]?.id ?? '', 'next')
+  expect(await secondPending).toBe(2)
+})
+
+test('a stop in another session leaves the question alone', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, stopDirectory } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  const other = createDeps(port, sessionEvent('UserPromptSubmit', 'other-session'), {
+    stopDirectory,
+  })
+  expect(await runHook({}, other.deps)).toBe(0)
+  service.reply(messenger.sent[0]?.id ?? '', 'keep going')
+  expect(await pending).toBe(2)
+})
+
+test('a finished stop removes its marker', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, stopDirectory } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  expect(readFileSync(join(stopDirectory, SESSION_ID), 'utf8')).toMatch(/^[0-9a-f-]{36}\n$/)
+  service.tap(messenger.sent[0]?.id ?? '', 0)
+  await pending
+  expect(readdirSync(stopDirectory)).toEqual([])
+})
+
+test('a finished stop keeps the marker of the stop that replaced it', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, stopDirectory } = createDeps(port, STOP_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  writeFileSync(join(stopDirectory, SESSION_ID), 'newer\n')
+  expect(await pending).toBe(0)
+  expect(readFileSync(join(stopDirectory, SESSION_ID), 'utf8')).toBe('newer\n')
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+})
+
+test('abort cancels the stop question quietly', async () => {
+  const { port, messenger } = await startApi()
+  const controller = new AbortController()
+  const { deps, out, errors, stopDirectory } = createDeps(port, STOP_EVENT, {
+    signal: controller.signal,
+  })
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  controller.abort()
+  expect(await pending).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
+  expect(readdirSync(stopDirectory)).toEqual([])
+})
+
+test('stop with the service down exits 1 with the reachability message', async () => {
+  const port = await freePort()
+  const { deps, out, errors } = createDeps(port, STOP_EVENT)
+  expect(await runHook({}, deps)).toBe(1)
+  expect(out).toEqual([])
+  expect(errors).toEqual([expect.stringContaining(`127.0.0.1:${port}`)])
+})
+
+test('a stop session id that is not a plain id exits 1', async () => {
+  const { port, messenger } = await startApi()
+  const event = JSON.stringify({ session_id: '../x', hook_event_name: 'Stop' })
+  const { deps, errors } = createDeps(port, event)
+  expect(await runHook({}, deps)).toBe(1)
+  expect(errors).toEqual(['jaypost: session id "../x" isn\'t usable'])
+  expect(messenger.sent).toEqual([])
+})
+
+test('a stop marker that cannot be written exits 1', async () => {
+  const { port, messenger } = await startApi()
+  const parent = createStopDirectory()
+  await mkdir(join(parent, '..'), { recursive: true })
+  await writeFile(parent, 'a file, not a folder')
+  const { deps, errors } = createDeps(port, STOP_EVENT, { stopDirectory: parent })
+  expect(await runHook({}, deps)).toBe(1)
+  expect(errors).toEqual([expect.stringMatching(/^jaypost: couldn't write the stop marker: /)])
+  expect(messenger.sent).toEqual([])
+})
+
+test('a prompt with no stop waiting does nothing', async () => {
+  const port = await freePort()
+  const { deps, out, errors } = createDeps(port, sessionEvent('UserPromptSubmit'), {
+    token: { kind: 'unusable', message: 'bad token' },
+  })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('abort while the stop question is being sent still cancels it', async () => {
+  const { port, messenger } = await startApi()
+  const controller = new AbortController()
+  const send = messenger.sendRequest.bind(messenger)
+  messenger.sendRequest = async (id, message, options) => {
+    controller.abort()
+    return send(id, message, options)
+  }
+  const { deps } = createDeps(port, STOP_EVENT, { signal: controller.signal })
+  expect(await runHook({}, deps)).toBe(0)
+  await waitFor(() => messenger.finalized.length === 1)
+  expect(messenger.finalized).toEqual([{ kind: 'cancelled' }])
 })

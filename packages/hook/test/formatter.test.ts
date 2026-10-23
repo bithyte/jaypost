@@ -8,11 +8,13 @@ import {
   decidePermission,
   formatNotificationText,
   formatPermissionQuestion,
+  formatStopQuestion,
 } from '../src/index.ts'
 import type {
   NotificationEvent,
   PermissionRequestEvent,
   PermissionSuggestion,
+  StopEvent,
 } from '../src/index.ts'
 
 const ADD_RULES: PermissionSuggestion = {
@@ -419,4 +421,43 @@ test('an offered answer that is not a known button is unknown', () => {
     kind: 'unknownAnswer',
     answer: 'Other',
   })
+})
+
+function stop(lastAssistantMessage: string): StopEvent {
+  return { kind: 'Stop', sessionId: 's1', lastAssistantMessage, cwd: '/work/api' }
+}
+
+test('a stop question shows the last message and how to answer', () => {
+  expect(formatStopQuestion(stop('All tests pass.'))).toEqual({
+    text: 'Claude finished:\nAll tests pass.\n\nReply with the next prompt, or tap Done.',
+    options: ['Done'],
+  })
+})
+
+test('a stop question cuts the last message to fit', () => {
+  const question = formatStopQuestion(stop('x'.repeat(5000)), 200)
+  expect(question.text).toHaveLength(200)
+  expect(question.text).toMatch(
+    /^Claude finished:\nx+…\n\nReply with the next prompt, or tap Done\.$/,
+  )
+})
+
+test('a stop question keeps the cut message valid utf-16', () => {
+  const footer = '\n\nReply with the next prompt, or tap Done.'
+  const room = 100 - 'Claude finished:\n'.length - footer.length
+  const message = `${'x'.repeat(room - 2)}😀😀`
+  expect(formatStopQuestion(stop(message), 100).text).not.toMatch(LONE_SURROGATE_PATTERN)
+})
+
+test.each(['', '  \n'])('a stop with no last message %j says claude finished', (message) => {
+  expect(formatStopQuestion(stop(message))).toEqual({
+    text: 'Claude finished.\n\nReply with the next prompt, or tap Done.',
+    options: ['Done'],
+  })
+})
+
+test('a stop question with no room for the message drops it', () => {
+  expect(formatStopQuestion(stop('All tests pass.'), 60).text).toBe(
+    'Claude finished.\n\nReply with the next prompt, or tap Done.',
+  )
 })
