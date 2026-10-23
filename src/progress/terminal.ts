@@ -267,10 +267,25 @@ export function createProgress(options: ProgressOptions): Progress {
       printPermanent([markedLine(DONE_SYMBOL, 'green', title)])
     },
     start,
+    // Not cut to the width like rail lines, so long URLs stay whole. An empty note only ends a
+    // line, such as the one ^C was echoed on, so it gets no rail.
     note: (text) => {
-      printAbove(`${text}\n`)
+      if (text === '') {
+        printAbove('\n')
+        return
+      }
+      printAbove(`${formatOnRail(text, useColor)}\n`)
     },
   }
+}
+
+/** Every line of `text` behind the checklist rail, dimmed when `useColor`; never cut to a width. */
+export function formatOnRail(text: string, useColor: boolean): string {
+  const rail = useColor ? styleText('dim', RAIL, { validateStream: false }) : RAIL
+  return text
+    .split('\n')
+    .map((line) => rail + line)
+    .join('\n')
 }
 
 function isSet(value: string | undefined): boolean {

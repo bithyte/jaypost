@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   SILENT_PROGRESS,
   createProgress,
+  formatOnRail,
   type ProgressMode,
   type ProgressStream,
 } from '../../src/progress/index.ts'
@@ -189,16 +190,16 @@ test('a note printed while a step runs stays once above the redrawn region', () 
   vi.advanceTimersByTime(360)
   const screen = finalScreen(stream.chunks)
   expect(screen).toEqual([
-    'Pairing code: 482-913',
-    'https://example.test/very/long/pairing/url/that/overflows',
+    '│  Pairing code: 482-913',
+    '│  https://example.test/very/long/pairing/url/that/overflows',
     '◓ Waiting 0:00',
     '○ Next',
   ])
   expect(stream.chunks.join('').split('Pairing code: 482-913')).toHaveLength(2)
   step.succeed('Paired')
   expect(finalScreen(stream.chunks)).toEqual([
-    'Pairing code: 482-913',
-    'https://example.test/very/long/pairing/url/that/overflows',
+    '│  Pairing code: 482-913',
+    '│  https://example.test/very/long/pairing/url/that/overflows',
     '◇ Paired 0:00',
     '○ Next',
   ])
@@ -209,9 +210,9 @@ test('a note while a step runs prints above the live region', () => {
   progress.plan(['Next'])
   const step = progress.start('Running')
   progress.note('heads up')
-  expect(finalScreen(stream.chunks)).toEqual(['heads up', '◒ Running 0:00', '○ Next'])
+  expect(finalScreen(stream.chunks)).toEqual(['│  heads up', '◒ Running 0:00', '○ Next'])
   step.succeed()
-  expect(finalScreen(stream.chunks)).toEqual(['heads up', '◇ Running 0:00', '○ Next'])
+  expect(finalScreen(stream.chunks)).toEqual(['│  heads up', '◇ Running 0:00', '○ Next'])
 })
 
 test('lines are cut to the terminal width', () => {
@@ -284,7 +285,13 @@ test('plain mode prints cancel and note lines', () => {
   const { stream, progress } = setup('plain')
   progress.note('hello')
   progress.start('Waiting').cancel('Cancelled')
-  expect(stream.chunks.join('')).toBe('hello\n◆ Cancelled\n')
+  expect(stream.chunks.join('')).toBe('│  hello\n◆ Cancelled\n')
+})
+
+test('an empty note prints a bare line feed without the rail', () => {
+  const { stream, progress } = setup('plain')
+  progress.note('')
+  expect(stream.chunks.join('')).toBe('\n')
 })
 
 test('NO_COLOR leaves no color codes but keeps cursor movement', () => {
@@ -343,4 +350,9 @@ test('the silent progress writes nothing', () => {
   progress.start('x').succeed()
   progress.note('y')
   expect(stream.chunks).toEqual([])
+})
+
+test('formatOnRail puts every line on the rail and dims it only with color', () => {
+  expect(formatOnRail('yes\nship it', false)).toBe('│  yes\n│  ship it')
+  expect(formatOnRail('yes', true)).toBe('\x1b[2m│  \x1b[22myes')
 })

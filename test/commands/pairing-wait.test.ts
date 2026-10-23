@@ -61,7 +61,7 @@ test('waitForPairing prints the whole pairing text in plain mode', async () => {
   })
   expect(result).toBe('paired')
   expect(chunks.join('').replace(/ \d+:\d\d/g, '')).toBe(
-    `◇ Service is up\n${formatPairingText(unpaired)}\n◇ Paired\n`,
+    `◇ Service is up\n${formatPairingText(unpaired).replace(/^/gm, '│  ')}\n◇ Paired\n`,
   )
 })
 

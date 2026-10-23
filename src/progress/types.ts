@@ -28,7 +28,7 @@ export type Progress = {
   readonly done: (title: string) => void
   /** Throws `RangeError` while another step runs. A function title is redrawn each frame. */
   readonly start: (title: string | (() => string)) => ProgressStep
-  /** Prints permanent text above the live region. */
+  /** Prints permanent text above the live region, each line on the rail; `''` prints a bare line feed. */
   readonly note: (text: string) => void
 }
 

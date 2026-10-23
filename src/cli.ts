@@ -33,7 +33,7 @@ import {
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
-import { createProgress, resolveProgressMode } from './progress/index.ts'
+import { createProgress, formatOnRail, resolveProgressMode } from './progress/index.ts'
 import type { Progress } from './progress/index.ts'
 import { MAX_RETRY_COUNT } from './commands/constants.ts'
 import type {
@@ -182,6 +182,16 @@ function createStderrProgress(fallback: 'plain' | 'silent' = 'silent'): Progress
   return createProgress({ stream: process.stderr, mode, env: process.env })
 }
 
+// stdout on a terminal too means nobody captures the answer, so it can sit on the checklist rail.
+// Piped or captured, it stays bare for scripts.
+function createAnswerPrint(progress: Progress): (text: string) => void {
+  if (progress.mode !== 'live' || process.stdout.isTTY !== true) {
+    return (text) => console.log(text)
+  }
+  const useColor = (process.env.NO_COLOR ?? '') === ''
+  return (text) => console.log(formatOnRail(text, useColor))
+}
+
 function createSendDeps(
   flagPort: number | undefined,
   signal: AbortSignal,
@@ -191,7 +201,7 @@ function createSendDeps(
     port: resolveMcpPort(flagPort, process.env, resolveInstallPaths().installFile),
     token: resolveClientToken(process.env, resolveTokenFile(process.env)),
     signal,
-    print: (text) => console.log(text),
+    print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
     progress,
     providers: PROVIDERS,
@@ -203,7 +213,7 @@ function createDirectSendDeps(signal: AbortSignal, progress: Progress): DirectSe
     env: process.env,
     providers: PROVIDERS,
     signal,
-    print: (text) => console.log(text),
+    print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
     progress,
   }
@@ -571,7 +581,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           progress,
           providers: PROVIDERS,
           signal: controller.signal,
-          print: (text) => console.log(text),
+          print: createAnswerPrint(progress),
           printError: (text) => console.error(text),
         })
       // Off a terminal the sync ask has no handler, as before: a signal ends the process.
