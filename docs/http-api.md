@@ -42,6 +42,7 @@ Reply to the question's message in Telegram; if it's the only open text question
 | `project`       | string   | no                 | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                               |
 | `format`        | string   | no                 | `plain` (default) or `markdown`. See [Formatting](formatting.md).                                                              |
 | `attachment`    | object   | no                 | One file sent with the question. See [Attachments](#attachments).                                                            |
+| `retry`         | integer  | no                 | 0 to 100. Asks again after a timeout up to this many times; the answer then has `rounds`. Not on `/request/async`.          |
 
 The cap used to be 300, so a `timeout: 900` was clamped to 300 before and now waits the full 900 s.
 
@@ -57,7 +58,7 @@ Errors are JSON `{ "error": "..." }`:
 | 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).                                                              |
 | 502    | Message couldn't be sent.                                                                                                                                  |
 | 500    | Internal error, or the request was cancelled.                                                                                                              |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status` or `/openapi.yaml`.                                                         |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status` or `/openapi.yaml`.                                                |
 | 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
@@ -117,6 +118,36 @@ Errors are JSON `{ "error": "..." }`:
 | 503    | Not paired yet.                                                                                    |
 | 405    | Method isn't POST.                                                                                 |
 | 500    | Internal error.                                                                                    |
+
+## Votes
+
+`POST /vote` asks several people the same yes/no question, one message each, and stays open until the vote is decided. The body is a `/request` body whose `options` are `[approve, reject]`, with `timeoutOption` the reject answer and no `allowText`, plus:
+
+| Field     | Type     | Required | Notes                                                                                                  |
+| --------- | -------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `voters`  | string[] | no       | User ids, 1 to 25. Default: the owner. Each one must have started a chat with the bot.                 |
+| `require` | string   | no       | `all` (default) or `majority`. A tie rejects.                                                           |
+| `retry`   | integer  | no       | 0 to 100. Rounds after the first; each re-asks only voters who haven't voted. Running out rejects.     |
+
+```
+curl -s -X POST http://127.0.0.1:8787/vote \
+  -H 'content-type: application/json' \
+  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -d '{"text":"Publish v123?","options":["Yes","No"],"timeoutOption":"No","voters":["111","222","333"],"require":"majority"}'
+```
+
+```json
+{
+  "answer": "Yes",
+  "timedOut": false,
+  "approved": true,
+  "require": "majority",
+  "votes": { "111": "Yes", "222": "Yes", "333": null },
+  "rounds": 1
+}
+```
+
+`votes` has `null` for anyone who didn't vote, and `timedOut` means the rounds ran out. Errors are the same as `/request`, except a `502` also names the voter whose message couldn't be sent (`{"error":"failed to send message","voter":"222"}`); the messages already sent are cancelled. Disconnecting cancels every open message. This is what `jaypost send request -u ... --require ...` calls in service mode.
 
 ## Attachments
 

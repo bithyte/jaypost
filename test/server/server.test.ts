@@ -35,13 +35,20 @@ afterEach(async () => {
   await s.close()
 })
 
-function createStub(
-  request: RequestFn,
-): Pick<ApprovalService, 'request' | 'start' | 'get' | 'waitFor' | 'cancel'> {
+function createStub(request: RequestFn): ApiBot['service'] {
   const unexpected = (): never => {
     throw new Error('unexpected call')
   }
-  return { request, start: unexpected, get: unexpected, waitFor: unexpected, cancel: unexpected }
+  return {
+    request,
+    start: unexpected,
+    get: unexpected,
+    waitFor: unexpected,
+    cancel: unexpected,
+    send: unexpected,
+    close: unexpected,
+    update: unexpected,
+  }
 }
 
 async function start(
@@ -58,6 +65,7 @@ async function start(
       status: status,
       maxTextLength: 3900,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth,
       maxAttachmentBytes,
       ...(notify === undefined ? {} : { notifications: { notify } }),
@@ -173,6 +181,7 @@ test('server uses the provider text limit', async () => {
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 10,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth: NO_AUTH,
     }),
   )
@@ -531,6 +540,7 @@ test('a router with several bots sends each call to the bot its token picks', as
     status: () => ({ paired: true }),
     maxTextLength,
     providerName: 'test',
+    resolveVoters: () => ({ kind: 'noOwner' }),
   })
   const botsByToken = new Map([
     [TOKEN, toBot(askFirst, 100)],
@@ -604,15 +614,33 @@ test('held requests have no server-side time limit', async () => {
 
 class RecordingMessenger implements Messenger {
   sent: { id: string; text: string }[] = []
+  recipients: (string | undefined)[] = []
   finalized: { text: string; ending: MessageEnding }[] = []
   failSend = false
 
-  async sendRequest(id: string, message: FormattedText): Promise<MessageReference> {
+  async sendRequest(
+    id: string,
+    message: FormattedText,
+    _options: readonly string[],
+    _allowText: boolean,
+    _attachment: unknown,
+    recipient: string | undefined,
+  ): Promise<MessageReference> {
     if (this.failSend) {
       throw new Error('telegram down')
     }
     this.sent.push({ id, text: message.text })
+    this.recipients.push(recipient)
     return { chatId: 1, messageId: this.sent.length }
+  }
+
+  idOf(recipient: string | undefined): string {
+    const index = this.recipients.lastIndexOf(recipient)
+    const id = this.sent[index]?.id
+    if (id === undefined) {
+      throw new Error(`nothing sent to ${String(recipient)}`)
+    }
+    return id
   }
 
   async finalize(
@@ -631,6 +659,7 @@ async function startReal(
     readonly maxAttachmentBytes?: number
     readonly maxTextLength?: number
     readonly maxOptionCount?: number
+    readonly resolveVoters?: ApiBot['resolveVoters']
   } = {},
 ) {
   const messenger = new RecordingMessenger()
@@ -641,6 +670,7 @@ async function startReal(
       status: options.status ?? (() => ({ paired: true, bot: 'b' })),
       maxTextLength: options.maxTextLength ?? 3900,
       providerName: 'test',
+      resolveVoters: options.resolveVoters ?? (() => ({ kind: 'noOwner' })),
       auth: options.auth ?? NO_AUTH,
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
@@ -802,6 +832,7 @@ test('only async create checks pairing', async () => {
       status: unpaired,
       maxTextLength: 3900,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth: NO_AUTH,
     }),
   )
@@ -967,4 +998,143 @@ test('a request over maxOptionCount answers 400', async () => {
   })
   expect(response.status).toBe(400)
   expect(await response.json()).toEqual({ error: 'options must have at most 25 entries' })
+})
+
+// Voters as sent, the owner `o` when there are none, and `bad` refused.
+const resolveTestVoters: ApiBot['resolveVoters'] = (voters) => {
+  if (voters === undefined) {
+    return { kind: 'voters', voters: ['o'] }
+  }
+  const invalid = voters.find((voter) => voter === 'bad')
+  return invalid === undefined ? { kind: 'voters', voters } : { kind: 'invalid', voter: invalid }
+}
+
+const postVote = (url: string, body: unknown) =>
+  fetch(`${url}/vote`, { method: 'POST', body: JSON.stringify(body) })
+
+async function waitForSent(messenger: RecordingMessenger, count: number): Promise<void> {
+  await vi.waitFor(() => expect(messenger.sent.length).toBeGreaterThanOrEqual(count))
+}
+
+test('POST /vote asks every voter and reports the tally', async () => {
+  const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
+  const response = postVote(url, { ...valid, voters: ['1', '2', '3'], require: 'majority' })
+  await waitForSent(messenger, 3)
+  expect(messenger.recipients).toEqual(['1', '2', '3'])
+  service.tap(messenger.idOf('1'), 0)
+  service.tap(messenger.idOf('2'), 0)
+  const res = await response
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({
+    answer: 'Approve',
+    timedOut: false,
+    approved: true,
+    require: 'majority',
+    votes: { '1': 'Approve', '2': 'Approve', '3': null },
+    rounds: 1,
+  })
+})
+
+test('POST /vote without voters asks the owner and requires all', async () => {
+  const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
+  const response = postVote(url, valid)
+  await waitForSent(messenger, 1)
+  service.tap(messenger.idOf('o'), 1)
+  expect(await (await response).json()).toEqual({
+    answer: 'Decline',
+    timedOut: false,
+    approved: false,
+    require: 'all',
+    votes: { o: 'Decline' },
+    rounds: 1,
+  })
+})
+
+test('POST /vote re-asks voters who timed out and rejects once the rounds run out', async () => {
+  const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
+  const res = await postVote(url, { ...valid, timeout: 0.1, voters: ['1'], retry: 1 })
+  expect(await res.json()).toMatchObject({ approved: false, timedOut: true, rounds: 2 })
+  expect(messenger.recipients).toEqual(['1', '1'])
+})
+
+test('POST /vote answers 400 for bodies that are not a vote', async () => {
+  const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
+  for (const [body, error] of [
+    [{ ...valid, voters: ['1', 'bad'] }, 'invalid user id "bad"'],
+    [
+      { ...valid, options: ['A', 'B', 'Decline'] },
+      'a vote needs exactly two options: approve, then reject',
+    ],
+    [{ ...valid, timeoutOption: 'Approve' }, 'timeoutOption must be the second option'],
+    [{ ...valid, allowText: true }, "a vote can't allow text replies"],
+    [{ ...valid, voters: [] }, 'voters must be a non-empty array'],
+    [{ ...valid, voters: [' '] }, 'voters must contain only non-empty strings'],
+    [{ ...valid, require: 'some' }, 'require must be "all" or "majority"'],
+    [{ ...valid, retry: -1 }, 'retry must be an integer 0-100'],
+  ] as const) {
+    const res = await postVote(url, body)
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error })
+  }
+  expect(messenger.sent).toEqual([])
+})
+
+test('POST /vote without voters answers 400 when the provider has no owner', async () => {
+  const { url } = await startReal()
+  const res = await postVote(url, valid)
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({
+    error: 'voters is required, since this provider has no owner',
+  })
+})
+
+test('POST /vote answers 502 naming the voter it could not reach', async () => {
+  const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
+  messenger.failSend = true
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const res = await postVote(url, { ...valid, voters: ['1'] })
+  expect(res.status).toBe(502)
+  expect(await res.json()).toEqual({ error: 'failed to send message', voter: '1' })
+  expect(error).toHaveBeenCalledWith('failed to send message to 1 via test')
+  error.mockRestore()
+})
+
+test('POST /vote answers 503 while unpaired, and GET /vote is 405', async () => {
+  const { url } = await startReal({ status: unpaired, resolveVoters: resolveTestVoters })
+  expect((await postVote(url, valid)).status).toBe(503)
+  const res = await fetch(`${url}/vote`)
+  expect(res.status).toBe(405)
+  expect(res.headers.get('allow')).toBe('POST')
+})
+
+test('POST /request with retry re-asks after a timeout and reports the rounds', async () => {
+  const { url, messenger } = await startReal()
+  const res = await post(url, JSON.stringify({ ...valid, timeout: 0.1, retry: 2 }))
+  expect(await res.json()).toEqual({ answer: 'Decline', timedOut: true, rounds: 3 })
+  expect(messenger.finalized.map((message) => message.ending.kind)).toEqual([
+    'reasked',
+    'reasked',
+    'timedOut',
+  ])
+})
+
+test('POST /request with retry stops once answered', async () => {
+  const { url, messenger, service } = await startReal()
+  const response = post(url, JSON.stringify({ ...valid, retry: 2 }))
+  await waitForSent(messenger, 1)
+  service.tap(messenger.idOf(undefined), 0)
+  expect(await (await response).json()).toEqual({ answer: 'Approve', timedOut: false, rounds: 1 })
+})
+
+test('a bad retry is a 400, and /request/async refuses retry', async () => {
+  const { url, messenger } = await startReal()
+  for (const retry of [-1, 1.5, 101, '2']) {
+    const res = await post(url, JSON.stringify({ ...valid, retry }))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error: 'retry must be an integer 0-100' })
+  }
+  const res = await postAsync(url, JSON.stringify({ ...valid, retry: 1 }))
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({ error: "retry isn't supported on /request/async" })
+  expect(messenger.sent).toEqual([])
 })

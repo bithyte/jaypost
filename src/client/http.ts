@@ -1,6 +1,7 @@
 import { request as httpRequest } from 'node:http'
 import { request as httpsRequest } from 'node:https'
 import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS } from '../approval/constants.ts'
+import type { VoteReport } from '../approval/index.ts'
 import {
   ATTACHMENT_GRACE_MS,
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
@@ -10,11 +11,13 @@ import {
   LEGACY_MAX_TIMEOUT_SECONDS,
   NOT_PAIRED_MESSAGE,
   NOT_SUPPORTED_MESSAGE,
+  RETRY_TOO_OLD_MESSAGE,
   SEND_FAILED_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TIMEOUT_TOO_OLD_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
   TOO_OLD_MESSAGE,
+  VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
 import { describeEndpoint, resolveApiUrl } from './endpoint.ts'
 import type {
@@ -27,6 +30,8 @@ import type {
   AskResult,
   Failure,
   StateBody,
+  VoteBody,
+  VoteOutcome,
 } from './types.ts'
 
 /** POSTs JSON to the service; see `callApi`. */
@@ -74,13 +79,14 @@ export async function callApi(
 const KEEPALIVE_MS = 60_000
 
 /**
- * HTTP timeout for a /request call: the capped approval timeout plus a grace period, and more
- * when the call uploads an attachment.
+ * HTTP timeout for a /request or /vote call: the capped approval timeout for every round plus a
+ * grace period, and more when the call uploads an attachment.
  */
-function toFetchTimeoutMs(timeoutSeconds: number | undefined, hasAttachment = false): number {
+function toFetchTimeoutMs(body: AskBody): number {
+  const roundCount = (body.retry ?? 0) + 1
   return (
-    Math.min(timeoutSeconds ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS) * 1000 +
-    toSendTimeoutMs(hasAttachment)
+    Math.min(body.timeout ?? DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS) * 1000 * roundCount +
+    toSendTimeoutMs(body.attachment !== undefined)
   )
 }
 
@@ -91,7 +97,9 @@ export function toSendTimeoutMs(hasAttachment: boolean): number {
 
 /**
  * Asks a question through /request. Fails with `TIMEOUT_TOO_OLD_MESSAGE` when a request over
- * 300 s times out early, since only a service without long timeouts caps it at 300 s. Never throws.
+ * 300 s times out early, since only a service without long timeouts caps it at 300 s, and with
+ * `RETRY_TOO_OLD_MESSAGE` when one with `retry` times out without `rounds` in the answer, since
+ * only a service without retries leaves it out. Never throws.
  */
 export async function requestApi(
   endpoint: URL,
@@ -102,7 +110,7 @@ export async function requestApi(
   const startMs = now()
   const result = await postApi(endpoint, '/request', body, {
     ...options,
-    timeoutMs: toFetchTimeoutMs(body.timeout, body.attachment !== undefined),
+    timeoutMs: toFetchTimeoutMs(body),
   })
   const elapsedMs = now() - startMs
   if (result.kind === 'failed') {
@@ -115,7 +123,29 @@ export async function requestApi(
   if (timedOut && isTooEarly(body.timeout, elapsedMs)) {
     return { kind: 'failed', reason: 'tooOld', message: TIMEOUT_TOO_OLD_MESSAGE }
   }
+  if (timedOut && (body.retry ?? 0) > 0 && !('rounds' in result.body)) {
+    return { kind: 'failed', reason: 'tooOld', message: RETRY_TOO_OLD_MESSAGE }
+  }
   return { kind: 'ok', outcome: { answer, timedOut } }
+}
+
+/** Runs a vote through /vote and resolves once it is decided. Never throws. */
+export async function voteApi(
+  endpoint: URL,
+  body: VoteBody,
+  options: Omit<ApiOptions, 'timeoutMs'>,
+): Promise<VoteOutcome> {
+  const result = await postApi(endpoint, '/vote', body, {
+    ...options,
+    timeoutMs: toFetchTimeoutMs(body),
+  })
+  if (result.kind === 'failed') {
+    return result
+  }
+  if (!isVoteReport(result.body)) {
+    return unreadable(JSON.stringify(result.body))
+  }
+  return { kind: 'voted', report: result.body }
 }
 
 function isTooEarly(timeoutSeconds: number | undefined, elapsedMs: number): boolean {
@@ -245,6 +275,26 @@ function isOutcome(body: unknown): body is { answer: string; timedOut: boolean }
   )
 }
 
+/** True for a /vote answer body; extra fields are kept. */
+function isVoteReport(body: unknown): body is VoteReport {
+  if (!isOutcome(body)) {
+    return false
+  }
+  if (!('approved' in body) || typeof body.approved !== 'boolean') {
+    return false
+  }
+  if (!('require' in body) || (body.require !== 'all' && body.require !== 'majority')) {
+    return false
+  }
+  if (!('rounds' in body) || typeof body.rounds !== 'number') {
+    return false
+  }
+  if (!('votes' in body) || typeof body.votes !== 'object' || body.votes === null) {
+    return false
+  }
+  return Object.values(body.votes).every((vote) => vote === null || typeof vote === 'string')
+}
+
 function parseOk(text: string): ApiResult {
   try {
     return { kind: 'ok', body: JSON.parse(text) }
@@ -259,7 +309,7 @@ export function describeUnauthorized(sentToken: boolean): string {
 }
 
 function toStatusFailure(status: number, path: ApiPath, text: string, sentToken: boolean): Failure {
-  const error = readErrorField(text)
+  const error = readStringField(text, 'error')
   if (status === 401) {
     return { kind: 'failed', reason: 'unauthorized', message: describeUnauthorized(sentToken) }
   }
@@ -268,6 +318,9 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
   }
   if (status === 404 && path === '/notify') {
     return { kind: 'failed', reason: 'tooOld', message: TOO_OLD_MESSAGE }
+  }
+  if (status === 404 && path === '/vote') {
+    return { kind: 'failed', reason: 'tooOld', message: VOTE_TOO_OLD_MESSAGE }
   }
   if (status === 404 && path === '/request/async') {
     return { kind: 'failed', reason: 'tooOld', message: BACKGROUND_TOO_OLD_MESSAGE }
@@ -293,7 +346,12 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
     return { kind: 'failed', reason: 'notPaired', message: NOT_PAIRED_MESSAGE }
   }
   if (status === 502) {
-    return { kind: 'failed', reason: 'sendFailed', message: SEND_FAILED_MESSAGE }
+    const voter = readStringField(text, 'voter')
+    return {
+      kind: 'failed',
+      reason: 'sendFailed',
+      message: voter === undefined ? SEND_FAILED_MESSAGE : `couldn't send the message to ${voter}`,
+    }
   }
   return {
     kind: 'failed',
@@ -302,11 +360,12 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
   }
 }
 
-function readErrorField(text: string): string | undefined {
+function readStringField(text: string, key: string): string | undefined {
   try {
     const parsed: unknown = JSON.parse(text)
-    if (typeof parsed === 'object' && parsed !== null && 'error' in parsed) {
-      return typeof parsed.error === 'string' ? parsed.error : undefined
+    if (typeof parsed === 'object' && parsed !== null && Object.hasOwn(parsed, key)) {
+      const value: unknown = Reflect.get(parsed, key)
+      return typeof value === 'string' ? value : undefined
     }
   } catch {
     // not JSON, caller falls back to the raw text

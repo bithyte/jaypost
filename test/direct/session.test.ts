@@ -70,7 +70,11 @@ test('request resolves with the tapped option', async () => {
   const runtime = requireRuntime(provider.runtimes)
   const id = await waitForSent(runtime)
   expect(runtime.handlers?.answer(id, 0)).toBe('accepted')
-  expect(await pending).toEqual({ kind: 'completed', outcome: { answer: 'Yes', timedOut: false } })
+  expect(await pending).toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Yes', timedOut: false },
+    roundCount: 1,
+  })
   await session.stop()
 })
 
@@ -78,7 +82,11 @@ test('request times out with the default and finalizes as timed out', async () =
   const { recorded, opened } = createSession()
   const session = await opened
   const result = await session.request(createRequest(0.01), new AbortController().signal)
-  expect(result).toEqual({ kind: 'completed', outcome: { answer: 'No', timedOut: true } })
+  expect(result).toEqual({
+    kind: 'completed',
+    outcome: { answer: 'No', timedOut: true },
+    roundCount: 1,
+  })
   expect(recorded.finalized).toEqual([
     { reference: { n: 1 }, ending: { kind: 'timedOut', answer: 'No' } },
   ])

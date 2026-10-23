@@ -66,7 +66,7 @@ For systemd and launchd the npm package stays; `uninstall` prints the command to
 jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
 ```
 
-Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` only work in [direct mode](ci.md). See [From the shell](scripts.md#from-the-shell).
+Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` run a vote or re-ask after a timeout; see [Several approvers](ci.md#several-approvers). See [From the shell](scripts.md#from-the-shell).
 
 ### `jaypost send notify`
 

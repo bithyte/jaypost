@@ -8,9 +8,11 @@ export {
   BACKGROUND_TOO_OLD_MESSAGE,
   DEFAULT_ATTACHMENT_NAME,
   INVALID_URL_MESSAGE,
+  RETRY_TOO_OLD_MESSAGE,
   TIMEOUT_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
+  VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
 export { describeUnauthorized } from './http.ts'
 export type {
@@ -19,6 +21,7 @@ export type {
   AttachmentBody,
   AttachmentInput,
   AttachmentSource,
+  Ballot,
   CallerOptions,
   CallOptions,
   ClientOptions,
@@ -31,4 +34,5 @@ export type {
   Question,
   QuestionState,
   ServiceEndpoint,
+  VoteOutcome,
 } from './types.ts'

@@ -9,11 +9,20 @@ import {
   MAX_ATTACHMENT_NAME_LENGTH,
   MAX_OPTION_LENGTH,
   MAX_PROJECT_LENGTH,
+  MAX_RETRY_COUNT,
   MAX_TIMEOUT_SECONDS,
+  MAX_VOTER_COUNT,
   MAX_WAIT_SECONDS,
+  VOTE_RULES,
 } from './constants.ts'
 import { formatProjectText } from './formatter.ts'
-import type { Attachment, ParseResult, WaitParseResult } from './types.ts'
+import type {
+  Attachment,
+  ParseResult,
+  RetryParseResult,
+  VoteParseResult,
+  WaitParseResult,
+} from './types.ts'
 
 const TEXT_ERROR = 'text must be a non-empty string'
 const OPTIONS_ERROR = 'options must be a non-empty array'
@@ -27,6 +36,9 @@ const ATTACHMENT_ERROR = 'attachment must be an object'
 const ATTACHMENT_NAME_ERROR = 'attachment.name must be a non-empty string'
 const ATTACHMENT_TEXT_ERROR = 'attachment.text must be a string'
 const ATTACHMENT_DATA_ERROR = 'attachment.data must be base64'
+const RETRY_ERROR = `retry must be an integer 0-${MAX_RETRY_COUNT}`
+const VOTERS_ERROR = 'voters must be a non-empty array'
+const VOTER_ERROR = 'voters must contain only non-empty strings'
 
 /** Non-empty (after trim) text; shared by /request and /notify. Length is checked by `checkProjectText`. */
 export function createTextSchema() {
@@ -290,4 +302,84 @@ export function parseWaitSeconds(raw: unknown): WaitParseResult {
   }
   // Math.max turns '-0' into 0.
   return { ok: true, seconds: Math.max(0, Math.min(seconds, MAX_WAIT_SECONDS)) }
+}
+
+/** Optional `retry`: re-asks after a timeout, an integer 0 to `MAX_RETRY_COUNT`. */
+export function createRetrySchema() {
+  return z
+    .number({ error: RETRY_ERROR })
+    .int(RETRY_ERROR)
+    .min(0, RETRY_ERROR)
+    .max(MAX_RETRY_COUNT, RETRY_ERROR)
+    .optional()
+}
+
+/**
+ * Schema of the fields a /vote body adds to a /request body; also the source of the OpenAPI spec.
+ * Unknown keys are kept, since they belong to the question.
+ */
+export function createVoteFieldsSchema() {
+  return z.looseObject({
+    voters: z
+      .array(z.string({ error: VOTER_ERROR }).trim().min(1, VOTER_ERROR), { error: VOTERS_ERROR })
+      .min(1, VOTERS_ERROR)
+      .max(MAX_VOTER_COUNT, `voters must have at most ${MAX_VOTER_COUNT} entries`)
+      .optional(),
+    require: z.enum(VOTE_RULES, { error: 'require must be "all" or "majority"' }).optional(),
+    retry: createRetrySchema(),
+  })
+}
+
+/**
+ * Reads `retry` from a body `parseApprovalRequest` accepted. Never throws; absent means
+ * undefined.
+ */
+export function parseRetryCount(body: unknown): RetryParseResult {
+  const raw = typeof body === 'object' && body !== null && 'retry' in body ? body.retry : undefined
+  const result = createRetrySchema().safeParse(raw)
+  return result.success
+    ? { ok: true, retryCount: result.data }
+    : { ok: false, error: result.error.issues[0]?.message ?? RETRY_ERROR }
+}
+
+/**
+ * Validates a /vote body: a /request body whose `options` are `[approve, reject]`, with
+ * `timeoutOption` the reject answer and no `allowText`, plus optional `voters`, `require` (default
+ * `all`) and `retry` (default 0). Voter ids are trimmed, not checked against the provider. Never
+ * throws; returns the first problem as `error`.
+ */
+export function parseVoteRequest(
+  body: unknown,
+  maxTextLength: number,
+  maxAttachmentBytes: number,
+  maxOptionCount?: number,
+): VoteParseResult {
+  const parsed = parseApprovalRequest(body, maxTextLength, maxAttachmentBytes, maxOptionCount)
+  if (!parsed.ok) {
+    return parsed
+  }
+  const request = parsed.value
+  if (request.allowText) {
+    return { ok: false, error: "a vote can't allow text replies" }
+  }
+  if (request.options.length !== 2) {
+    return { ok: false, error: 'a vote needs exactly two options: approve, then reject' }
+  }
+  if (request.timeoutOption !== request.options[1]) {
+    return { ok: false, error: 'timeoutOption must be the second option' }
+  }
+  const fields = createVoteFieldsSchema().safeParse(body)
+  if (!fields.success) {
+    return { ok: false, error: fields.error.issues[0]?.message ?? 'invalid vote' }
+  }
+  const { voters, require, retry } = fields.data
+  return {
+    ok: true,
+    value: {
+      request,
+      ...(voters === undefined ? {} : { voters }),
+      rule: require ?? 'all',
+      retryCount: retry ?? 0,
+    },
+  }
 }

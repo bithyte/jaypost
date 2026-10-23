@@ -1,7 +1,17 @@
 import Fastify from 'fastify'
 import type { FastifyError, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
-import { parseApprovalRequest, parseWaitSeconds, SendError } from '../approval/index.ts'
-import type { ApprovalRequest, RequestState } from '../approval/index.ts'
+import {
+  askWithRetries,
+  parseApprovalRequest,
+  parseRetryCount,
+  parseVoteRequest,
+  parseWaitSeconds,
+  runVote,
+  SendError,
+  toVoteReport,
+  VoterSendError,
+} from '../approval/index.ts'
+import type { ApprovalRequest, RequestState, Vote } from '../approval/index.ts'
 import { UNAUTHORIZED_ERROR } from '../auth/index.ts'
 import { parseNotifyRequest } from '../notify/index.ts'
 import {
@@ -25,16 +35,94 @@ function toStateBody(id: string, state: RequestState) {
   }
 }
 
-function hasAttachmentKey(json: unknown): boolean {
-  return typeof json === 'object' && json !== null && Object.hasOwn(json, 'attachment')
+function hasKey(json: unknown, key: string): boolean {
+  return typeof json === 'object' && json !== null && Object.hasOwn(json, key)
+}
+
+/** Aborts once the client goes away before the reply is written. */
+function abortOnClose(reply: FastifyReply): AbortSignal {
+  const controller = new AbortController()
+  reply.raw.on('close', () => {
+    if (!reply.raw.writableEnded) {
+      controller.abort()
+    }
+  })
+  // The client may have gone while the body was being read, before 'close' was observed.
+  if (reply.raw.destroyed) {
+    controller.abort()
+  }
+  return controller.signal
+}
+
+type Parsed<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string }
+
+/** A /request body: the question and its re-asks, if any. */
+function parseAsk(
+  bot: ApiBot,
+  json: unknown,
+): Parsed<{ readonly request: ApprovalRequest; readonly retryCount: number | undefined }> {
+  const parsed = parseApprovalRequest(
+    json,
+    bot.maxTextLength,
+    bot.maxAttachmentBytes ?? 0,
+    bot.maxOptionCount,
+  )
+  if (!parsed.ok) {
+    return parsed
+  }
+  const retry = parseRetryCount(json)
+  if (!retry.ok) {
+    return retry
+  }
+  return { ok: true, value: { request: parsed.value, retryCount: retry.retryCount } }
+}
+
+/** A /request/async body; `retry` is refused, since nothing would re-ask a background question. */
+function parseBackgroundAsk(bot: ApiBot, json: unknown): Parsed<ApprovalRequest> {
+  const parsed = parseApprovalRequest(
+    json,
+    bot.maxTextLength,
+    bot.maxAttachmentBytes ?? 0,
+    bot.maxOptionCount,
+  )
+  if (parsed.ok && hasKey(json, 'retry')) {
+    return { ok: false, error: "retry isn't supported on /request/async" }
+  }
+  return parsed
+}
+
+/** A /vote body with its voters resolved by the bot's provider. */
+function parseVote(bot: ApiBot, json: unknown): Parsed<Vote> {
+  const parsed = parseVoteRequest(
+    json,
+    bot.maxTextLength,
+    bot.maxAttachmentBytes ?? 0,
+    bot.maxOptionCount,
+  )
+  if (!parsed.ok) {
+    return parsed
+  }
+  const { request, voters, rule, retryCount } = parsed.value
+  const resolved = bot.resolveVoters(voters)
+  switch (resolved.kind) {
+    case 'invalid':
+      return { ok: false, error: `invalid user id ${JSON.stringify(resolved.voter)}` }
+    case 'noOwner':
+      return { ok: false, error: 'voters is required, since this provider has no owner' }
+    case 'voters':
+      return { ok: true, value: { request, voters: resolved.voters, rule, retryCount } }
+  }
 }
 
 /**
  * Builds the HTTP API (POST /request, POST /request/async, GET and DELETE /request/:id,
- * POST /notify, GET /status, GET /openapi.yaml) without listening. Every route but /openapi.yaml
- * asks `router` for the call's bot first and answers 401 when there is none, before parsing the
- * body. Aborting the connection cancels a pending /request; background questions outlive their
- * connections. Errors return JSON bodies. A bot without notifications answers POST /notify 501.
+ * POST /vote, POST /notify, GET /status, GET /openapi.yaml) without listening. Every route but
+ * /openapi.yaml asks `router` for the call's bot first and answers 401 when there is none, before
+ * parsing the body. Aborting the connection cancels a pending /request or /vote; background
+ * questions outlive their connections. Errors return JSON bodies. A bot without notifications
+ * answers POST /notify 501.
  */
 export function createApiServer(router: BotRouter): FastifyInstance {
   const botsByRequest = new WeakMap<FastifyRequest, ApiBot>()
@@ -60,7 +148,12 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   app.setNotFoundHandler((request, reply) => {
     // Not new URL(): it throws on targets like '//'.
     const path = request.url.split('?')[0]
-    if (path === '/request' || path === '/request/async' || path === '/notify') {
+    if (
+      path === '/request' ||
+      path === '/request/async' ||
+      path === '/vote' ||
+      path === '/notify'
+    ) {
       return reply.code(405).header('Allow', 'POST').send({ error: 'method not allowed' })
     }
     if (path !== undefined && REQUEST_ID_PATH_PATTERN.test(path)) {
@@ -72,6 +165,11 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     return reply.code(404).send({ error: 'not found' })
   })
   app.setErrorHandler((error: FastifyError, request, reply) => {
+    if (error instanceof VoterSendError) {
+      // Names only the voter, never the cause.
+      console.error(`${error.message} via ${botsByRequest.get(request)?.providerName ?? 'unknown'}`)
+      return reply.code(502).send({ error: 'failed to send message', voter: error.voter })
+    }
     if (error instanceof SendError) {
       // Log the message only; the cause can hold provider internals.
       console.error(`${error.message} via ${botsByRequest.get(request)?.providerName ?? 'unknown'}`)
@@ -119,13 +217,15 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       .type('application/yaml; charset=utf-8')
       .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.limits })),
   )
-  // Replies 503/400/501 itself and returns undefined, or returns the validated request. Drops the
-  // raw body from the Fastify request so a long wait doesn't keep an attachment's bytes alive.
-  const readApprovalRequest = (
+  // Replies 503/400/501 itself and returns undefined, or returns what `parse` made of the body.
+  // Drops the raw body from the Fastify request so a long wait doesn't keep an attachment's bytes
+  // alive; the parsed JSON goes out of scope on return for the same reason.
+  const readBody = <T>(
     bot: ApiBot,
     request: FastifyRequest<{ Body: string | undefined }>,
     reply: FastifyReply,
-  ): ApprovalRequest | undefined => {
+    parse: (bot: ApiBot, json: unknown) => Parsed<T>,
+  ): T | undefined => {
     const body = request.body
     request.body = undefined
     if (!bot.status().paired) {
@@ -139,17 +239,11 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       reply.code(400).send({ error: 'body must be valid JSON' })
       return undefined
     }
-    const attachmentLimit = bot.maxAttachmentBytes ?? 0
-    if (attachmentLimit === 0 && hasAttachmentKey(json)) {
+    if ((bot.maxAttachmentBytes ?? 0) === 0 && hasKey(json, 'attachment')) {
       reply.code(501).send({ error: ATTACHMENTS_UNSUPPORTED_ERROR })
       return undefined
     }
-    const parsed = parseApprovalRequest(
-      json,
-      bot.maxTextLength,
-      attachmentLimit,
-      bot.maxOptionCount,
-    )
+    const parsed = parse(bot, json)
     if (!parsed.ok) {
       reply.code(400).send({ error: parsed.error })
       return undefined
@@ -158,33 +252,31 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   }
   app.post<{ Body: string | undefined }>('/request', guard, async (request, reply) => {
     const bot = requireBot(request)
-    let approval = readApprovalRequest(bot, request, reply)
-    if (approval === undefined) {
+    let ask = readBody(bot, request, reply, parseAsk)
+    if (ask === undefined) {
       return reply
     }
-    const controller = new AbortController()
-    reply.raw.on('close', () => {
-      if (!reply.raw.writableEnded) {
-        controller.abort()
-      }
-    })
-    // The client may have gone while the body was being read, before 'close' was observed.
-    if (reply.raw.destroyed) {
-      controller.abort()
-    }
-    const pending = bot.service.request(approval, controller.signal)
+    const signal = abortOnClose(reply)
+    const { retryCount } = ask
+    const pending =
+      retryCount === undefined
+        ? bot.service.request(ask.request, signal)
+        : askWithRetries(bot.service, ask.request, retryCount, signal)
     // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
-    approval = undefined
+    ask = undefined
     const result = await pending
     if (result.kind === 'cancelled') {
       // Normally because the client is gone, so this write is a no-op.
       return reply.code(500).send({ error: 'request was cancelled' })
     }
-    return result.outcome
+    // `rounds` tells a client that sent `retry` that this service re-asks.
+    return 'roundCount' in result
+      ? { ...result.outcome, rounds: result.roundCount }
+      : result.outcome
   })
   app.post<{ Body: string | undefined }>('/request/async', guard, async (request, reply) => {
     const bot = requireBot(request)
-    const approval = readApprovalRequest(bot, request, reply)
+    const approval = readBody(bot, request, reply, parseBackgroundAsk)
     if (approval === undefined) {
       return reply
     }
@@ -193,6 +285,21 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       .code(202)
       .header('Location', `/request/${id}`)
       .send(toStateBody(id, { kind: 'pending', expiresAt }))
+  })
+  app.post<{ Body: string | undefined }>('/vote', guard, async (request, reply) => {
+    const bot = requireBot(request)
+    let vote = readBody(bot, request, reply, parseVote)
+    if (vote === undefined) {
+      return reply
+    }
+    const { rule } = vote
+    const pending = runVote(bot.service, vote, abortOnClose(reply))
+    vote = undefined
+    const result = await pending
+    if (result.kind === 'cancelled') {
+      return reply.code(500).send({ error: 'request was cancelled' })
+    }
+    return toVoteReport(result, rule)
   })
   app.get<{ Params: { id: string }; Querystring: { wait?: unknown } }>(
     '/request/:id',
@@ -209,16 +316,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
         state = service.get(id)
       } else {
         // Only stops this wait; the question stays open when the poller goes away.
-        const controller = new AbortController()
-        reply.raw.on('close', () => {
-          if (!reply.raw.writableEnded) {
-            controller.abort()
-          }
-        })
-        if (reply.raw.destroyed) {
-          controller.abort()
-        }
-        state = await service.waitFor(id, wait.seconds * 1000, controller.signal)
+        state = await service.waitFor(id, wait.seconds * 1000, abortOnClose(reply))
       }
       if (state === undefined) {
         return reply.code(404).send({ error: UNKNOWN_REQUEST_ERROR })
@@ -253,7 +351,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       return reply.code(400).send({ error: 'body must be valid JSON' })
     }
     const attachmentLimit = bot.maxAttachmentBytes ?? 0
-    if (attachmentLimit === 0 && hasAttachmentKey(json)) {
+    if (attachmentLimit === 0 && hasKey(json, 'attachment')) {
       return reply.code(501).send({ error: ATTACHMENTS_UNSUPPORTED_ERROR })
     }
     const parsed = parseNotifyRequest(json, bot.maxTextLength, attachmentLimit)

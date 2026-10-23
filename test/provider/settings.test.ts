@@ -7,6 +7,7 @@ import {
   PROVIDERS,
   requireProvider,
   resolveMaxAttachmentBytes,
+  resolveVoters,
 } from '../../src/provider/index.ts'
 import { MAX_ATTACHMENT_BYTES } from '../../src/approval/index.ts'
 import { createFakeProvider } from './fake.ts'
@@ -51,4 +52,31 @@ test('resolveMaxAttachmentBytes caps a larger provider value', () => {
   expect(resolveMaxAttachmentBytes(createFakeProvider({ maxAttachmentBytes: 50_000_000 }))).toBe(
     MAX_ATTACHMENT_BYTES,
   )
+})
+
+test('resolveVoters parses ids the way taps report them and drops duplicates', () => {
+  expect(resolveVoters(telegram, {}, ['0111', ' 111', '222'])).toEqual({
+    kind: 'voters',
+    voters: ['111', '222'],
+  })
+})
+
+test('resolveVoters without voters gives the owner, or noOwner before pairing', () => {
+  expect(resolveVoters(telegram, { ownerId: 42 }, undefined)).toEqual({
+    kind: 'voters',
+    voters: ['42'],
+  })
+  expect(resolveVoters(telegram, {}, undefined)).toEqual({ kind: 'noOwner' })
+})
+
+test('resolveVoters names the first id the owner setting refuses', () => {
+  expect(resolveVoters(telegram, {}, ['1', 'abc', 'x'])).toEqual({ kind: 'invalid', voter: 'abc' })
+})
+
+test('resolveVoters keeps ids as given without an owner setting', () => {
+  expect(resolveVoters(createFakeProvider(), {}, ['a', 'a', 'b'])).toEqual({
+    kind: 'voters',
+    voters: ['a', 'b'],
+  })
+  expect(resolveVoters(createFakeProvider(), {}, undefined)).toEqual({ kind: 'noOwner' })
 })

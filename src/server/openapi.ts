@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   createApprovalRequestSchema,
   createAttachmentSchema,
+  createVoteFieldsSchema,
   DEFAULT_TIMEOUT_SECONDS,
   MAX_OPTION_LENGTH,
   MAX_TIMEOUT_SECONDS,
@@ -42,6 +43,44 @@ const BODY_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
   timeout: {
     description: `Seconds to wait. Default ${DEFAULT_TIMEOUT_SECONDS}, max ${MAX_TIMEOUT_SECONDS} (24 h); larger values are clamped.`,
   },
+}
+
+const VOTE_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
+  voters: {
+    description:
+      'User ids to ask, one message each; default the owner. Each must have started a chat with the bot. Duplicates count once.',
+  },
+  require: { description: '`all` voters must approve (default), or a `majority` of them.' },
+  retry: {
+    description:
+      'Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds rejects.',
+  },
+}
+
+/** The `retry` property of the vote fields, also accepted by POST /request. */
+function toRetrySchema(): JsonSchema {
+  const retry = z.toJSONSchema(createVoteFieldsSchema(), { io: 'input' }).properties?.retry
+  return {
+    ...(typeof retry === 'object' ? retry : {}),
+    description:
+      'Ask again after a timeout up to this many times; the answer then has `rounds`. `/request/async` answers 400 to it.',
+  }
+}
+
+/** The fields a /vote body adds to ApprovalRequest, with `retry` described for votes. */
+function toVoteFieldsSchema(): JsonSchema {
+  const {
+    $schema: _schema,
+    additionalProperties: _additional,
+    ...json
+  } = z.toJSONSchema(createVoteFieldsSchema(), { io: 'input' })
+  const properties = Object.fromEntries(
+    Object.entries(json.properties ?? {}).map(([name, property]) => [
+      name,
+      typeof property === 'object' ? { ...property, ...VOTE_DESCRIPTIONS[name] } : property,
+    ]),
+  )
+  return { ...json, properties }
 }
 
 const ATTACHMENT_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
@@ -100,6 +139,11 @@ function toBodySchema(schema: z.ZodType, maxTextLength: number): JsonSchema {
   return { ...json, properties: { ...properties, attachment: attachmentReference() } }
 }
 
+/** The /request body with `retry`, which POST /request/async refuses. */
+function toApprovalRequestSchema(body: JsonSchema): JsonSchema {
+  return { ...body, properties: { ...body.properties, retry: toRetrySchema() } }
+}
+
 /** Adds descriptions of the limit fields to both branches of the generated Status schema. */
 function toStatusSchema(status: JsonSchema): JsonSchema {
   const descriptions: Readonly<Record<string, string>> = {
@@ -152,7 +196,8 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           },
           responses: {
             '200': {
-              description: 'The tapped or typed answer, or `timeoutOption` on timeout.',
+              description:
+                'The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked.',
               content: {
                 'application/json': { schema: { $ref: '#/components/schemas/Outcome' } },
               },
@@ -247,6 +292,47 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           },
         },
       },
+      '/vote': {
+        post: {
+          operationId: 'vote',
+          summary: 'Ask several people the same yes/no question and wait for the decision',
+          description:
+            'Sends one message per voter and stays open until the vote is decided or its rounds run out. `options` must be `[approve, reject]` and `timeoutOption` the reject answer, without `allowText`. Once decided, every open message is closed with the result. Disconnecting cancels every open message.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/VoteRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: "The decision and each voter's answer.",
+              content: {
+                'application/json': { schema: { $ref: '#/components/schemas/VoteReport' } },
+              },
+            },
+            '400': { $ref: '#/components/responses/BadRequest' },
+            '401': { $ref: '#/components/responses/Unauthorized' },
+            '413': { $ref: '#/components/responses/PayloadTooLarge' },
+            '500': errorResponse('Internal error, or the vote was cancelled.'),
+            '501': { $ref: '#/components/responses/NotSupported' },
+            '502': {
+              description:
+                "A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.",
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { error: { type: 'string' }, voter: { type: 'string' } },
+                    required: ['error', 'voter'],
+                  },
+                },
+              },
+            },
+            '503': { $ref: '#/components/responses/NotPaired' },
+          },
+        },
+      },
       '/notify': {
         post: {
           operationId: 'notify',
@@ -320,10 +406,15 @@ export function createOpenApiDocument(options: OpenApiOptions) {
         },
       },
       schemas: {
-        ApprovalRequest: toBodySchema(
-          createApprovalRequestSchema(maxTextLength, maxAttachmentBytes, maxOptionCount),
-          maxTextLength,
+        ApprovalRequest: toApprovalRequestSchema(
+          toBodySchema(
+            createApprovalRequestSchema(maxTextLength, maxAttachmentBytes, maxOptionCount),
+            maxTextLength,
+          ),
         ),
+        VoteRequest: {
+          allOf: [{ $ref: '#/components/schemas/ApprovalRequest' }, toVoteFieldsSchema()],
+        },
         Attachment: toAttachmentSchema(maxAttachmentBytes),
         Outcome: {
           type: 'object',
@@ -333,8 +424,35 @@ export function createOpenApiDocument(options: OpenApiOptions) {
               description: 'The tapped option, the typed reply, or `timeoutOption`.',
             },
             timedOut: { type: 'boolean' },
+            rounds: {
+              type: 'integer',
+              minimum: 1,
+              description: 'Rounds asked; present only when the body had `retry`.',
+            },
           },
           required: ['answer', 'timedOut'],
+        },
+        VoteReport: {
+          type: 'object',
+          properties: {
+            answer: {
+              type: 'string',
+              description: 'The first option when approved, else the second.',
+            },
+            timedOut: {
+              type: 'boolean',
+              description: 'The rounds ran out undecided, which rejects.',
+            },
+            approved: { type: 'boolean' },
+            require: { type: 'string', enum: ['all', 'majority'] },
+            votes: {
+              type: 'object',
+              description: "Each voter's answer, `null` when they never voted.",
+              additionalProperties: { type: ['string', 'null'] },
+            },
+            rounds: { type: 'integer', minimum: 1 },
+          },
+          required: ['answer', 'timedOut', 'approved', 'require', 'votes', 'rounds'],
         },
         PendingRequest: {
           type: 'object',

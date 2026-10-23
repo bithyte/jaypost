@@ -146,6 +146,7 @@ async function startApi(
       maxTextLength: 3900,
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth: options.auth ?? NO_AUTH,
       ...(options.notifications === false
         ? {}

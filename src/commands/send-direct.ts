@@ -1,5 +1,5 @@
 import type { ApprovalRequest } from '../approval/index.ts'
-import { parseApprovalRequest, SendError, VoterSendError } from '../approval/index.ts'
+import { parseApprovalRequest, SendError, toVoteReport, VoterSendError } from '../approval/index.ts'
 import {
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   readAttachment,
@@ -10,7 +10,7 @@ import type { AttachmentBody, AttachmentSource } from '../client/index.ts'
 import { loadDirectConfig, openDirectSession } from '../direct/index.ts'
 import type { DirectConfig, DirectSession } from '../direct/index.ts'
 import { parseNotifyRequest } from '../notify/index.ts'
-import { findOwnerSetting, resolveMaxAttachmentBytes } from '../provider/index.ts'
+import { resolveMaxAttachmentBytes, resolveVoters } from '../provider/index.ts'
 import {
   DECLINED_EXIT_CODE,
   DIRECT_CANCELLED_MESSAGE,
@@ -87,21 +87,21 @@ async function runDirectVote(
   config: DirectConfig,
   deps: DirectSendDeps,
 ): Promise<number> {
-  const parse = findOwnerSetting(config.provider)?.parse
-  const normalized: string[] = []
-  for (const voter of args.voters ?? [ownerVoter(config)]) {
-    const value = parse === undefined ? voter : parse(voter)
-    if (value === undefined) {
-      deps.printError(`jaypost: invalid user id ${JSON.stringify(voter)}`)
-      return 1
-    }
-    // The form a tap's sender id takes, so `0111` and ` 111` are the same voter as `111`.
-    normalized.push(String(value))
+  // loadDirectConfig requires the owner, so `noOwner` can't happen.
+  const resolved = resolveVoters(config.provider, config.settings, args.voters)
+  if (resolved.kind === 'noOwner') {
+    throw new Error('direct config has no owner')
   }
-  const voters = [...new Set(normalized)]
+  if (resolved.kind === 'invalid') {
+    deps.printError(`jaypost: invalid user id ${JSON.stringify(resolved.voter)}`)
+    return 1
+  }
   const rule = args.rule ?? 'all'
   const result = await withSession(config, deps, (session) =>
-    session.vote({ request, voters, rule, retryCount: args.retryCount ?? 0 }, deps.signal),
+    session.vote(
+      { request, voters: resolved.voters, rule, retryCount: args.retryCount ?? 0 },
+      deps.signal,
+    ),
   )
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
@@ -111,18 +111,8 @@ async function runDirectVote(
     deps.printError(`jaypost: ${DIRECT_CANCELLED_MESSAGE}`)
     return 1
   }
-  deps.print(formatVoteResult(result.value, rule, args.json))
+  deps.print(formatVoteResult(toVoteReport(result.value, rule), args.json))
   return result.value.approved ? 0 : DECLINED_EXIT_CODE
-}
-
-/** The owner's id as a string; `loadDirectConfig` guarantees the setting is present. */
-function ownerVoter(config: DirectConfig): string {
-  const key = findOwnerSetting(config.provider)?.configKey
-  const value = key === undefined ? undefined : config.settings[key]
-  if (value === undefined) {
-    throw new Error('direct config has no owner')
-  }
-  return String(value)
 }
 
 /**

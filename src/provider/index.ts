@@ -8,6 +8,7 @@ export {
   listSecretValues,
   requireProvider,
   resolveMaxAttachmentBytes,
+  resolveVoters,
 } from './settings.ts'
 export type {
   CredentialCheck,
@@ -19,4 +20,5 @@ export type {
   SettingValue,
   SettingValues,
   SetupText,
+  VoterIds,
 } from './types.ts'

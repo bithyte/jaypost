@@ -24,7 +24,7 @@ paths:
               $ref: "#/components/schemas/ApprovalRequest"
       responses:
         "200":
-          description: The tapped or typed answer, or `timeoutOption` on timeout.
+          description: The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked.
           content:
             application/json:
               schema:
@@ -130,6 +130,54 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/UnknownRequest"
+  /vote:
+    post:
+      operationId: vote
+      summary: Ask several people the same yes/no question and wait for the decision
+      description: Sends one message per voter and stays open until the vote is decided or its rounds run out. `options` must be `[approve, reject]` and `timeoutOption` the reject answer, without `allowText`. Once decided, every open message is closed with the result. Disconnecting cancels every open message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoteRequest"
+      responses:
+        "200":
+          description: The decision and each voter's answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoteReport"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          description: Internal error, or the vote was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          $ref: "#/components/responses/NotSupported"
+        "502":
+          description: A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  voter:
+                    type: string
+                required:
+                  - error
+                  - voter
+        "503":
+          $ref: "#/components/responses/NotPaired"
   /notify:
     post:
       operationId: notify
@@ -234,9 +282,38 @@ components:
           description: Seconds to wait. Default 300, max 86400 (24 h); larger values are clamped.
         attachment:
           $ref: "#/components/schemas/Attachment"
+        retry:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Ask again after a timeout up to this many times; the answer then has `rounds`. `/request/async` answers 400 to it.
       required:
         - text
         - timeoutOption
+    VoteRequest:
+      allOf:
+        - $ref: "#/components/schemas/ApprovalRequest"
+        - type: object
+          properties:
+            voters:
+              minItems: 1
+              maxItems: 25
+              type: array
+              items:
+                type: string
+                minLength: 1
+              description: User ids to ask, one message each; default the owner. Each must have started a chat with the bot. Duplicates count once.
+            require:
+              type: string
+              enum:
+                - all
+                - majority
+              description: "`all` voters must approve (default), or a `majority` of them."
+            retry:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds rejects.
     Attachment:
       type: object
       properties:
@@ -262,9 +339,46 @@ components:
           description: The tapped option, the typed reply, or `timeoutOption`.
         timedOut:
           type: boolean
+        rounds:
+          type: integer
+          minimum: 1
+          description: Rounds asked; present only when the body had `retry`.
       required:
         - answer
         - timedOut
+    VoteReport:
+      type: object
+      properties:
+        answer:
+          type: string
+          description: The first option when approved, else the second.
+        timedOut:
+          type: boolean
+          description: The rounds ran out undecided, which rejects.
+        approved:
+          type: boolean
+        require:
+          type: string
+          enum:
+            - all
+            - majority
+        votes:
+          type: object
+          description: Each voter's answer, `null` when they never voted.
+          additionalProperties:
+            type:
+              - string
+              - "null"
+        rounds:
+          type: integer
+          minimum: 1
+      required:
+        - answer
+        - timedOut
+        - approved
+        - require
+        - votes
+        - rounds
     PendingRequest:
       type: object
       properties:

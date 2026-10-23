@@ -120,3 +120,12 @@ export type Provider = {
   readonly setup: ProviderSetup
   readonly createRuntime: (settings: SettingValues, log: (line: string) => void) => ProviderRuntime
 }
+
+/**
+ * Voter ids in the form a tap's sender id takes, or the first id the owner setting can't parse, or
+ * `noOwner` when the owner was asked for and there is none.
+ */
+export type VoterIds =
+  | { readonly kind: 'voters'; readonly voters: readonly string[] }
+  | { readonly kind: 'invalid'; readonly voter: string }
+  | { readonly kind: 'noOwner' }

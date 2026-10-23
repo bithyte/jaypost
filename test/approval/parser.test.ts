@@ -1,5 +1,10 @@
 import { expect, test } from 'vite-plus/test'
-import { parseApprovalRequest, parseWaitSeconds } from '../../src/approval/index.ts'
+import {
+  parseApprovalRequest,
+  parseRetryCount,
+  parseVoteRequest,
+  parseWaitSeconds,
+} from '../../src/approval/index.ts'
 
 const LIMIT = 1000
 const base = { text: 'This is a test', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
@@ -428,4 +433,40 @@ test('more options than maxOptionCount is rejected', () => {
   })
   expect(parseApprovalRequest(body, 100, 0, 3).ok).toBe(true)
   expect(parseApprovalRequest(body, 100, 0).ok).toBe(true)
+})
+
+test('parseRetryCount reads retry, absent meaning none', () => {
+  expect(parseRetryCount({ ...base, retry: 3 })).toEqual({ ok: true, retryCount: 3 })
+  expect(parseRetryCount(base)).toEqual({ ok: true, retryCount: undefined })
+})
+
+test.each([-1, 1.5, 101, '1', null])('parseRetryCount rejects retry %j', (retry) => {
+  expect(parseRetryCount({ ...base, retry })).toEqual({
+    ok: false,
+    error: 'retry must be an integer 0-100',
+  })
+})
+
+test('parseVoteRequest defaults to all and no retries, voters as sent', () => {
+  const result = parseVoteRequest(base, 3900, LIMIT)
+  expect(result).toMatchObject({ ok: true, value: { rule: 'all', retryCount: 0 } })
+  expect(result.ok && result.value).not.toHaveProperty('voters')
+  expect(
+    parseVoteRequest({ ...base, voters: [' 1 ', '2'], require: 'majority', retry: 2 }, 3900, LIMIT),
+  ).toMatchObject({ ok: true, value: { voters: ['1', '2'], rule: 'majority', retryCount: 2 } })
+})
+
+test('parseVoteRequest reports the question problem before the vote shape', () => {
+  expect(parseVoteRequest({ ...base, text: '' }, 3900, LIMIT)).toEqual({
+    ok: false,
+    error: 'text must be a non-empty string',
+  })
+})
+
+test('parseVoteRequest caps the voter count', () => {
+  const voters = Array.from({ length: 26 }, (_, index) => String(index))
+  expect(parseVoteRequest({ ...base, voters }, 3900, LIMIT)).toEqual({
+    ok: false,
+    error: 'voters must have at most 25 entries',
+  })
 })

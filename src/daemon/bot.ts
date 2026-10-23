@@ -5,8 +5,8 @@ import type { Config } from '../config/index.ts'
 import { NotificationService } from '../notify/index.ts'
 import { formatCode, generateCode as generateDefaultCode, Pairing } from '../pairing/index.ts'
 import type { PairResult } from '../pairing/index.ts'
-import { findOwnerSetting, resolveMaxAttachmentBytes } from '../provider/index.ts'
-import type { RuntimeHandlers } from '../provider/index.ts'
+import { findOwnerSetting, resolveMaxAttachmentBytes, resolveVoters } from '../provider/index.ts'
+import type { RuntimeHandlers, SettingValues } from '../provider/index.ts'
 import { QUIET_COMMANDS, QuietService } from '../quiet/index.ts'
 import type { ApiBot, StatusInfo } from '../server/index.ts'
 import { resolveStatePath, StateStore } from '../state/index.ts'
@@ -77,6 +77,8 @@ export async function startBot(options: ServiceOptions): Promise<RunningBot> {
     return recovery
   }
   const ownerSetting = findOwnerSetting(provider)
+  // Gains the owner once someone pairs, so /vote can default to them.
+  let settings: SettingValues = config.settings
   let pairing: Pairing | undefined
   let instructions: string | undefined
   if (ownerSetting !== undefined && !Object.hasOwn(config.settings, ownerSetting.configKey)) {
@@ -112,6 +114,7 @@ export async function startBot(options: ServiceOptions): Promise<RunningBot> {
         if (owner === undefined) {
           throw new Error('owner not parseable')
         }
+        settings = { ...settings, [ownerSetting.configKey]: owner }
         updateConfigFile(configPath, { [ownerSetting.configKey]: owner })
       } catch {
         log(
@@ -139,6 +142,7 @@ export async function startBot(options: ServiceOptions): Promise<RunningBot> {
     bot: {
       service,
       status,
+      resolveVoters: (voters) => resolveVoters(provider, settings, voters),
       maxTextLength: provider.maxTextLength,
       providerName: provider.name,
       maxAttachmentBytes: resolveMaxAttachmentBytes(provider),

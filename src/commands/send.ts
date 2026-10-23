@@ -1,13 +1,19 @@
-import type { VoteResult, VoteRule } from '../approval/index.ts'
+import type { VoteReport } from '../approval/index.ts'
 import { Caller } from '../client/index.ts'
 import type { Message, Question } from '../client/index.ts'
+import { DECLINED_EXIT_CODE } from './constants.ts'
 import type { SendDeps, SendNotifyArgs, SendRequestArgs } from './types.ts'
 
 /**
  * Asks on Telegram and prints the answer (or `{ answer, timedOut }` with `json`). Returns 0 once
- * answered or timed out, 1 on any failure, with the reason on stderr.
+ * answered or timed out, 1 on any failure, with the reason on stderr. With voters or a rule it
+ * runs a vote through the service instead, and returns 0 when approved, `DECLINED_EXIT_CODE` when
+ * rejected (running out of rounds included), 1 on failure.
  */
 export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Promise<number> {
+  if (args.voters !== undefined || args.rule !== undefined) {
+    return runSendVote(args, deps)
+  }
   const result = await toCaller(deps).ask(toQuestion(args), { signal: deps.signal })
   if (result.kind === 'failed') {
     deps.printError(`jaypost: ${result.message}`)
@@ -15,6 +21,20 @@ export async function runSendRequest(args: SendRequestArgs, deps: SendDeps): Pro
   }
   deps.print(formatAnswer(result.answer, result.timedOut, args.json))
   return 0
+}
+
+async function runSendVote(args: SendRequestArgs, deps: SendDeps): Promise<number> {
+  const ballot = {
+    ...(args.voters === undefined ? {} : { voters: args.voters }),
+    ...(args.rule === undefined ? {} : { rule: args.rule }),
+  }
+  const result = await toCaller(deps).vote(toQuestion(args), ballot, { signal: deps.signal })
+  if (result.kind === 'failed') {
+    deps.printError(`jaypost: ${result.message}`)
+    return 1
+  }
+  deps.print(formatVoteResult(result.report, args.json))
+  return result.report.approved ? 0 : DECLINED_EXIT_CODE
 }
 
 /** Sends a notification; prints nothing on success. Returns 0 once sent, 1 on any failure. */
@@ -42,6 +62,7 @@ export function toQuestion(args: SendRequestArgs): Question {
     ...(args.project === undefined ? {} : { project: args.project }),
     ...(args.format === undefined ? {} : { format: args.format }),
     ...(args.attachment === undefined ? {} : { attachment: args.attachment }),
+    ...(args.retryCount === undefined ? {} : { retry: args.retryCount }),
   }
 }
 
@@ -60,24 +81,7 @@ export function formatAnswer(answer: string, timedOut: boolean, json: boolean | 
   return json === true ? JSON.stringify({ answer, timedOut }) : answer
 }
 
-/**
- * The line a decided vote prints: the bare answer, or with `json` the answer, whether the rounds
- * ran out, the decision, the rule and each voter's answer (`null` when none) with the round count.
- */
-export function formatVoteResult(
-  result: Extract<VoteResult, { kind: 'decided' }>,
-  rule: VoteRule,
-  json: boolean | undefined,
-): string {
-  if (json !== true) {
-    return result.answer
-  }
-  return JSON.stringify({
-    answer: result.answer,
-    timedOut: result.timedOut,
-    approved: result.approved,
-    require: rule,
-    votes: Object.fromEntries(result.votes.map((vote) => [vote.voter, vote.answer ?? null])),
-    rounds: result.roundCount,
-  })
+/** The line a decided vote prints: the bare answer, or with `json` the whole report. */
+export function formatVoteResult(report: VoteReport, json: boolean | undefined): string {
+  return json === true ? JSON.stringify(report) : report.answer
 }

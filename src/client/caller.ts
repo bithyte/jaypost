@@ -3,12 +3,21 @@ import { statusInfoSchema } from '../server/schema.ts'
 import type { StatusInfo } from '../server/types.ts'
 import { checkAttachmentLimit, readAttachment } from './attachment.ts'
 import { FETCH_GRACE_MS } from './constants.ts'
-import { callApi, isStateBody, postApi, requestApi, toSendTimeoutMs, unreadable } from './http.ts'
+import {
+  callApi,
+  isStateBody,
+  postApi,
+  requestApi,
+  toSendTimeoutMs,
+  unreadable,
+  voteApi,
+} from './http.ts'
 import type {
   ApiOptions,
   AskBody,
   AttachmentBody,
   AttachmentSource,
+  Ballot,
   CallOptions,
   CallerOptions,
   Done,
@@ -19,6 +28,8 @@ import type {
   Question,
   QuestionState,
   StateBody,
+  VoteBody,
+  VoteOutcome,
 } from './types.ts'
 
 type Session = { readonly endpoint: URL; readonly token?: string }
@@ -56,6 +67,27 @@ export class Caller {
       return result
     }
     return { kind: 'done', answer: result.outcome.answer, timedOut: result.outcome.timedOut }
+  }
+
+  /**
+   * Asks every voter on `ballot` the two-way `question` (`options` is `[approve, reject]` and
+   * `timeoutOption` the reject answer) and resolves once the vote is decided.
+   */
+  async vote(question: Question, ballot: Ballot, call: CallOptions): Promise<VoteOutcome> {
+    const session = this.#begin()
+    if (session.kind === 'failed') {
+      return session
+    }
+    const attachment = await this.#attach(question.attachment, session, call.signal)
+    if (attachment.kind === 'failed') {
+      return attachment
+    }
+    const body: VoteBody = {
+      ...toAskBody(question, attachment.body),
+      ...(ballot.voters === undefined ? {} : { voters: ballot.voters }),
+      ...(ballot.rule === undefined ? {} : { require: ballot.rule }),
+    }
+    return voteApi(session.endpoint, body, this.#apiOptions(session, call.signal))
   }
 
   /** Starts a question the owner answers later; collect it with `waitFor`. */
@@ -262,6 +294,7 @@ export function toAskBody(question: Question, attachment: AttachmentBody | undef
     ...(question.project === undefined ? {} : { project: question.project }),
     ...(question.format === undefined ? {} : { format: question.format }),
     ...(attachment === undefined ? {} : { attachment }),
+    ...(question.retry === undefined ? {} : { retry: question.retry }),
   }
 }
 

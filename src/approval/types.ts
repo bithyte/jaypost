@@ -1,5 +1,6 @@
 import type { FormattedText } from '../format/index.ts'
 import type { RequestRecord } from '../state/index.ts'
+import type { ApprovalService } from './service.ts'
 
 /** A file sent along with a message; `content` is never empty and `name` is a safe file name. */
 export type Attachment = {
@@ -242,6 +243,42 @@ export type Vote = {
   readonly retryCount: number
 }
 
+/** What `askWithRetries` resolves to: `request`'s result, with the rounds asked once completed. */
+export type RetryResult =
+  | { readonly kind: 'completed'; readonly outcome: Outcome; readonly roundCount: number }
+  | { readonly kind: 'cancelled' }
+
+/** A /vote body once validated; `voters` is as sent, absent meaning the owner. */
+export type VoteRequest = {
+  readonly request: ApprovalRequest
+  readonly voters?: readonly string[]
+  readonly rule: VoteRule
+  readonly retryCount: number
+}
+
+/** Outcome of validating a /vote body; `error` is the client-facing message. */
+export type VoteParseResult =
+  | { readonly ok: true; readonly value: VoteRequest }
+  | { readonly ok: false; readonly error: string }
+
+/** Outcome of validating `retry`; absent means no re-asks were asked for. */
+export type RetryParseResult =
+  | { readonly ok: true; readonly retryCount: number | undefined }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * A decided vote as JSON, over HTTP and from `send request --json`: `votes` maps each voter to
+ * their answer, `null` when they never voted.
+ */
+export type VoteReport = {
+  readonly answer: string
+  readonly timedOut: boolean
+  readonly approved: boolean
+  readonly require: VoteRule
+  readonly votes: Readonly<Record<string, string | null>>
+  readonly rounds: number
+}
+
 /** One voter's answer; `undefined` when they never voted. */
 export type VoterAnswer = {
   readonly voter: string
@@ -268,6 +305,9 @@ export type RoundEnd =
   | { readonly kind: 'decided'; readonly approved: boolean }
   | { readonly kind: 'timedOut' }
   | { readonly kind: 'cancelled' }
+
+/** What a vote needs from the service: sending, closing and editing messages. */
+export type VoteService = Pick<ApprovalService, 'send' | 'close' | 'update'>
 
 /** A vote message sent to `voter`. */
 export type VoterQuestion = SentQuestion & { readonly voter: string }

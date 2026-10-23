@@ -334,15 +334,18 @@ test('send --attach-name without --attach exits 2', async () => {
 
 const REQUEST_ARGS = ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No']
 
-test('vote and retry flags need direct mode', async () => {
+test('vote and retry flags reach the service without direct mode', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
   vi.stubEnv('JAYPOST_MODE', '')
+  // An invalid token makes send exit 1 before any network call; a usage error would be 2.
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   for (const flags of [
     ['-u', '1'],
     ['--require', 'all'],
     ['--retry', '2'],
   ]) {
-    expect(await main([...REQUEST_ARGS, ...flags])).toBe(2)
+    expect(await main([...REQUEST_ARGS, ...flags, '--port', '1'])).toBe(1)
   }
 })
 

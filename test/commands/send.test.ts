@@ -1,13 +1,14 @@
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import type { FormattedText } from '../../src/format/index.ts'
 import type { AddressInfo } from 'node:net'
 import type { FastifyInstance } from 'fastify'
-import { afterEach, expect, test } from 'vite-plus/test'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { ApprovalService, MAX_ATTACHMENT_BYTES } from '../../src/approval/index.ts'
 import type {
   Attachment,
@@ -29,9 +30,11 @@ const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
 
 class RecordingMessenger implements Messenger {
   sent: { id: string; text: string }[] = []
+  recipients: (string | undefined)[] = []
   messages: FormattedText[] = []
   attachments: (Attachment | undefined)[] = []
   finalized: MessageEnding[] = []
+  failSend = false
 
   async sendRequest(
     id: string,
@@ -39,8 +42,13 @@ class RecordingMessenger implements Messenger {
     _options: readonly string[],
     _allowText: boolean,
     attachment: Attachment | undefined,
+    recipient: string | undefined,
   ): Promise<MessageReference> {
+    if (this.failSend) {
+      throw new Error('telegram down')
+    }
     this.sent.push({ id, text: message.text })
+    this.recipients.push(recipient)
     this.attachments.push(attachment)
     this.messages.push(message)
     return REFERENCE
@@ -99,6 +107,7 @@ async function startApi(
       maxTextLength: 3900,
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       providerName: 'test',
+      resolveVoters: (voters) => ({ kind: 'voters', voters: voters ?? ['owner'] }),
       auth: options.auth ?? NO_AUTH,
       ...(options.notifications === false
         ? {}
@@ -147,6 +156,29 @@ async function freePort(): Promise<number> {
 }
 
 const ASK = { text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
+
+/** A service that answers every call with `status` and `body`, as an older jaypost would. */
+async function startFakeService(status: number, body: unknown): Promise<number> {
+  const server = createServer((request, response) => {
+    request.resume()
+    request.on('end', () => {
+      response.writeHead(status, { 'content-type': 'application/json' })
+      response.end(JSON.stringify(body))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  fakeServers.push(server)
+  return (server.address() as AddressInfo).port
+}
+
+const fakeServers: Server[] = []
+afterEach(async () => {
+  await Promise.all(
+    fakeServers
+      .splice(0)
+      .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  )
+})
 
 test('request prints the tapped answer', async () => {
   const { port, service, messenger } = await startApi()
@@ -432,4 +464,74 @@ test('send notify --attach - stops at the size cap on an endless stdin', async (
     `jaypost: attachment from stdin is over ${MAX_ATTACHMENT_BYTES} bytes\n`,
   )
   expect(notifier.sent).toEqual([])
+})
+
+test('a vote goes through the service and exits 0 when approved', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out, errors } = createDeps(port)
+  const pending = runSendRequest({ ...ASK, voters: ['1', '2'], rule: 'majority', json: true }, deps)
+  await waitFor(() => messenger.sent.length === 2)
+  expect(messenger.recipients).toEqual(['1', '2'])
+  for (const sent of messenger.sent) {
+    service.tap(sent.id, 0)
+  }
+  expect(await pending).toBe(0)
+  expect(out).toEqual([
+    '{"answer":"Approve","timedOut":false,"approved":true,"require":"majority","votes":{"1":"Approve","2":"Approve"},"rounds":1}',
+  ])
+  expect(errors).toEqual([])
+})
+
+test('a rejected vote through the service exits 3 and prints the reject answer', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out } = createDeps(port)
+  const pending = runSendRequest({ ...ASK, rule: 'all' }, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  expect(messenger.recipients).toEqual(['owner'])
+  service.tap(messenger.sent[0]?.id ?? '', 1)
+  expect(await pending).toBe(3)
+  expect(out).toEqual(['Decline'])
+})
+
+test('a vote names the voter the service could not reach', async () => {
+  const { port, messenger } = await startApi()
+  messenger.failSend = true
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { deps, errors } = createDeps(port)
+  expect(await runSendRequest({ ...ASK, voters: ['7'] }, deps)).toBe(1)
+  error.mockRestore()
+  expect(errors).toEqual(["jaypost: couldn't send the message to 7"])
+})
+
+test('a vote against a service without /vote says it is too old', async () => {
+  const port = await startFakeService(404, { error: 'not found' })
+  const { deps, errors } = createDeps(port)
+  expect(await runSendRequest({ ...ASK, voters: ['1'] }, deps)).toBe(1)
+  expect(errors).toEqual([
+    'jaypost: jaypost service is too old for votes (run jaypost init to upgrade)',
+  ])
+})
+
+test('retry re-asks through the service', async () => {
+  const { port, messenger } = await startApi()
+  const { deps, out } = createDeps(port)
+  expect(await runSendRequest({ ...ASK, timeout: 0.1, retryCount: 1 }, deps)).toBe(0)
+  expect(out).toEqual(['Decline'])
+  expect(messenger.finalized.map((ending) => ending.kind)).toEqual(['reasked', 'timedOut'])
+})
+
+test('retry against a service that ignores it says it is too old once it times out', async () => {
+  const port = await startFakeService(200, { answer: 'Decline', timedOut: true })
+  const { deps, errors } = createDeps(port)
+  expect(await runSendRequest({ ...ASK, retryCount: 1 }, deps)).toBe(1)
+  expect(errors).toEqual([
+    'jaypost: jaypost service is too old to re-ask after a timeout (run jaypost init to upgrade)',
+  ])
+})
+
+test('retry against a service that ignores it keeps an answer that came in time', async () => {
+  const port = await startFakeService(200, { answer: 'Approve', timedOut: false })
+  const { deps, out } = createDeps(port)
+  expect(await runSendRequest({ ...ASK, retryCount: 1 }, deps)).toBe(0)
+  expect(out).toEqual(['Approve'])
 })

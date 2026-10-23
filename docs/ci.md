@@ -96,7 +96,7 @@ So `-d No` works as a gate: the step fails unless someone approves. In service m
 
 ## Several approvers
 
-In direct mode, `-u ID` sends the question to a paired user instead of the owner. Repeat it for each approver, and each one gets their own message. `--require` sets how the votes decide:
+`-u ID` sends the question to a paired user instead of the owner. Repeat it for each approver, and each one gets their own message. `--require` sets how the votes decide:
 
 - `all` (the default with `-u`): approved when every approver answers the `-o` button, rejected on the first `-d`.
 - `majority`: approved when more than half of the listed approvers answer `-o`, rejected once that can't happen. A tie rejects.
@@ -110,7 +110,7 @@ In direct mode, `-u ID` sends the question to a paired user instead of the owner
 
 A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
 
-`-u`, `--require` and `--retry` exit 2 in service mode.
+All of this works in service mode too, through the service's [`POST /vote`](http-api.md#votes) and `retry`, with the same exit codes and output. A service older than this release can't do it, and `send` says so instead of asking once.
 
 Other differences from service mode:
 

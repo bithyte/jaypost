@@ -279,6 +279,9 @@ async function startRealServer(): Promise<{
     get: unexpected,
     waitFor: unexpected,
     cancel: unexpected,
+    send: unexpected,
+    close: unexpected,
+    update: unexpected,
   }
   const app = createApiServer(
     createSingleBotRouter({
@@ -286,6 +289,7 @@ async function startRealServer(): Promise<{
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth: NO_AUTH,
       maxAttachmentBytes: 1000,
       notifications: {

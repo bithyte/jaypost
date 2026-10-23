@@ -1,4 +1,4 @@
-import type { ApprovalRequest, RequestResult, Vote, VoteResult } from '../approval/index.ts'
+import type { ApprovalRequest, RetryResult, Vote, VoteResult } from '../approval/index.ts'
 import type { NotifyRequest } from '../notify/index.ts'
 import type { Provider, SettingValues } from '../provider/index.ts'
 
@@ -24,7 +24,7 @@ export type DirectSession = {
     request: ApprovalRequest,
     signal: AbortSignal,
     retryCount?: number,
-  ) => Promise<RequestResult>
+  ) => Promise<RetryResult>
   /**
    * Runs a vote with the same rejections as `request`, except a failed send rejects with
    * `VoterSendError`. `retryCount` is part of the vote.

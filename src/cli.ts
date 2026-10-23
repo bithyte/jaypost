@@ -6,7 +6,7 @@ import { resolve } from 'node:path'
 import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
 import { parseSince } from './audit/index.ts'
-import { VOTE_RULES } from './approval/index.ts'
+import { MAX_RETRY_COUNT, VOTE_RULES } from './approval/index.ts'
 import type { VoteRule } from './approval/index.ts'
 import { resolveClientToken, resolveTokenFile } from './auth/index.ts'
 import { DEFAULT_ATTACHMENT_NAME } from './client/index.ts'
@@ -32,7 +32,6 @@ import {
   waitForPairing,
   writeAll,
 } from './commands/index.ts'
-import { MAX_RETRY_COUNT } from './commands/constants.ts'
 import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
 import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
 import { runService } from './daemon/index.ts'
@@ -564,16 +563,15 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '-u, --user <id>',
-      'send to this paired user instead of the owner; repeat per approver (direct mode)',
+      'send to this paired user instead of the owner; repeat per approver',
       collect,
     )
     .addOption(
-      new Option(
-        '--require <rule>',
-        'votes needed to approve: all or majority (direct mode)',
-      ).choices(VOTE_RULES),
+      new Option('--require <rule>', 'votes needed to approve: all or majority').choices(
+        VOTE_RULES,
+      ),
     )
-    .option('--retry <count>', 're-ask up to N times after a timeout (direct mode)', parseRetry)
+    .option('--retry <count>', 're-ask up to N times after a timeout', parseRetry)
     .option('--project <name>', 'shown as [name] above the question')
     .addOption(
       new Option('--format <format>', 'how to read TEXT: plain (default) or markdown').choices(
@@ -615,11 +613,6 @@ export async function main(argv: readonly string[]): Promise<number> {
       ) => {
         const mode = requireSendMode(request)
         const isVote = options.user !== undefined || options.require !== undefined
-        if (mode.kind !== 'direct' && (isVote || options.retry !== undefined)) {
-          request.error('error: -u, --require and --retry need JAYPOST_MODE=direct', {
-            exitCode: 2,
-          })
-        }
         if (
           isVote &&
           (options.allowText === true ||

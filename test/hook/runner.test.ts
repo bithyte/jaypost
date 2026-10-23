@@ -80,6 +80,7 @@ async function startApi(
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: options.maxTextLength ?? 3900,
       providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
       auth: options.auth ?? NO_AUTH,
       notifications: new NotificationService(notifier),
     }),

@@ -2,6 +2,7 @@ import type { z } from 'zod'
 import type { ApprovalService } from '../approval/index.ts'
 import type { ApiAuth } from '../auth/index.ts'
 import type { NotificationService } from '../notify/index.ts'
+import type { VoterIds } from '../provider/index.ts'
 import type { statusInfoSchema } from './schema.ts'
 
 /** Body of /status: paired, or the pairing code to send to the bot. */
@@ -12,8 +13,13 @@ export type StatusInfo = Readonly<z.infer<typeof statusInfoSchema>>
  * limits. The daemon serves one; a relay can serve several, picked by the caller's token.
  */
 export type ApiBot = {
-  readonly service: Pick<ApprovalService, 'request' | 'start' | 'get' | 'waitFor' | 'cancel'>
+  readonly service: Pick<
+    ApprovalService,
+    'request' | 'start' | 'get' | 'waitFor' | 'cancel' | 'send' | 'close' | 'update'
+  >
   readonly status: () => StatusInfo
+  /** Voter ids for /vote as the provider reads them; without `voters`, the owner. */
+  readonly resolveVoters: (voters: readonly string[] | undefined) => VoterIds
   readonly maxTextLength: number
   /** Named in the log when a send fails. */
   readonly providerName: string

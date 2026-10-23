@@ -1,3 +1,4 @@
+import type { VoteReport, VoteRule } from '../approval/index.ts'
 import type { ClientToken } from '../auth/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 
@@ -67,6 +68,8 @@ export type AskRequest = {
   readonly format?: MessageFormat
   /** One file sent with the question. Needs a service that supports attachments. */
   readonly attachment?: AttachmentInput
+  /** Asks again after a timeout up to this many times, 0 to 100. Needs a service with retries. */
+  readonly retry?: number
   /** Aborting it cancels the question; the chat message is edited to a "cancelled" line. */
   readonly signal?: AbortSignal
 }
@@ -89,7 +92,13 @@ export type Notification = {
 export type ApiMethod = 'GET' | 'POST' | 'DELETE'
 
 /** Service endpoints the clients call. */
-export type ApiPath = '/request' | '/notify' | '/request/async' | '/status' | `/request/${string}`
+export type ApiPath =
+  | '/request'
+  | '/notify'
+  | '/request/async'
+  | '/vote'
+  | '/status'
+  | `/request/${string}`
 
 /** Outcome of a call to the local service; `message` is ready to show the caller. */
 export type ApiResult = { readonly kind: 'ok'; readonly body: unknown } | Failure
@@ -112,6 +121,13 @@ export type AskBody = {
   readonly project?: string
   readonly format?: MessageFormat
   readonly attachment?: AttachmentBody
+  readonly retry?: number
+}
+
+/** The body of a /vote call: a two-way question and who votes on it. */
+export type VoteBody = AskBody & {
+  readonly voters?: readonly string[]
+  readonly require?: VoteRule
 }
 
 /** The body of a /notify call. */
@@ -129,6 +145,9 @@ export type AskOptions = Omit<ApiOptions, 'timeoutMs'> & {
 
 /** Outcome of `requestApi`; `message` is ready to show the caller. */
 export type AskResult = { readonly kind: 'ok'; readonly outcome: Answer } | Failure
+
+/** Outcome of `voteApi` and `Caller.vote`; `message` is ready to show the caller. */
+export type VoteOutcome = { readonly kind: 'voted'; readonly report: VoteReport } | Failure
 
 /** The body of GET /request/<id>. */
 export type StateBody =
@@ -167,6 +186,15 @@ export type CallOptions = { readonly signal: AbortSignal }
 /** `AskRequest` without the per-call bits; the attachment is read and checked before sending. */
 export type Question = Omit<AskRequest, 'attachment' | 'signal'> & {
   readonly attachment?: AttachmentSource
+}
+
+/**
+ * Who votes on a two-way question and how: `voters` default to the owner and `rule` to `all`.
+ * Ids are the provider's user ids.
+ */
+export type Ballot = {
+  readonly voters?: readonly string[]
+  readonly rule?: VoteRule
 }
 
 export type Message = Omit<Notification, 'attachment' | 'signal'> & {

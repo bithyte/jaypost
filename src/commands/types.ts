@@ -199,11 +199,11 @@ export type SendRequestArgs = {
   readonly json?: boolean
   /** A file to send with the question. */
   readonly attachment?: AttachmentSource
-  /** Direct mode: user ids who vote; setting this or `rule` makes the question a vote. */
+  /** User ids who vote; setting this or `rule` makes the question a vote. */
   readonly voters?: readonly string[]
-  /** Direct mode: how the votes decide; defaults to `all`. */
+  /** How the votes decide; defaults to `all`. */
   readonly rule?: VoteRule
-  /** Direct mode: re-ask after a timeout up to this many times. */
+  /** Re-ask after a timeout up to this many times. */
   readonly retryCount?: number
 }
 

@@ -26,6 +26,12 @@ export const TIMEOUT_TOO_OLD_MESSAGE =
 /** Shown when the service has no /request/async. */
 export const BACKGROUND_TOO_OLD_MESSAGE =
   'jaypost service is too old for background questions (run jaypost init to upgrade)'
+/** Shown when a question with `retry` timed out without the service saying it re-asked. */
+export const RETRY_TOO_OLD_MESSAGE =
+  'jaypost service is too old to re-ask after a timeout (run jaypost init to upgrade)'
+/** Shown when the service has no /vote. */
+export const VOTE_TOO_OLD_MESSAGE =
+  'jaypost service is too old for votes (run jaypost init to upgrade)'
 /** Extra time a call with an attachment gets, for the upload and the service's send. */
 export const ATTACHMENT_GRACE_MS = 120_000
 /** Name for an attachment with no name of its own, such as text piped to the CLI. */

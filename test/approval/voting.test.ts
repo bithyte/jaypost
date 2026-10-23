@@ -582,6 +582,7 @@ test('askWithRetries re-asks until answered', async () => {
   expect(await result).toEqual({
     kind: 'completed',
     outcome: { answer: 'Yes', timedOut: false },
+    roundCount: 2,
   })
   expect(endingsOf('1')).toEqual([{ kind: 'reasked' }, { kind: 'answered', answer: 'Yes' }])
 })
@@ -599,6 +600,7 @@ test('askWithRetries reports a timeout once the last round runs out', async () =
   expect(await result).toEqual({
     kind: 'completed',
     outcome: { answer: 'No', timedOut: true },
+    roundCount: 2,
   })
   expect(endingsOf('1')).toEqual([{ kind: 'reasked' }, { kind: 'timedOut', answer: 'No' }])
 })
@@ -616,6 +618,7 @@ test('askWithRetries with no retries behaves like request', async () => {
   expect(await result).toEqual({
     kind: 'completed',
     outcome: { answer: 'No', timedOut: true },
+    roundCount: 1,
   })
   expect(endingsOf('1')).toEqual([{ kind: 'timedOut', answer: 'No' }])
 })
