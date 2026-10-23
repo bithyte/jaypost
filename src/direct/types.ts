@@ -35,3 +35,9 @@ export type DirectSession = {
   /** Stops the runtime; never rejects, safe when it never started. */
   readonly stop: () => Promise<void>
 }
+
+/** Where the approvers came from: `listed` ids, a set but `empty` env var, or `none` given. */
+export type ApproverList =
+  | { readonly kind: 'listed'; readonly voters: readonly string[] }
+  | { readonly kind: 'empty' }
+  | { readonly kind: 'none' }

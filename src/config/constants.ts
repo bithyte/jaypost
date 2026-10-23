@@ -10,6 +10,8 @@ export const PORT_ENV_VAR = 'JAYPOST_PORT'
 export const HOST_ENV_VAR = 'JAYPOST_HOST'
 /** Env var that selects the send mode (`direct` or `service`). */
 export const MODE_ENV_VAR = 'JAYPOST_MODE'
+/** Env var that lists the approver ids, separated by commas or whitespace. */
+export const APPROVERS_ENV_VAR = 'JAYPOST_APPROVERS'
 /** Port used when neither the env nor the config file sets one. */
 export const DEFAULT_PORT = 8787
 /** Loopback only; the container image overrides it with JAYPOST_HOST=0.0.0.0. */
