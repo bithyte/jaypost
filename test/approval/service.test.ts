@@ -274,6 +274,26 @@ test('finalize failure still returns the answer', async () => {
   expect(spy.mock.calls[0]).toContain(err)
 })
 
+test('a finalize failure goes to logError when given', async () => {
+  const m = new FakeMessenger()
+  const logged: unknown[][] = []
+  const svc = new ApprovalService(
+    m,
+    () => at,
+    () => 'id1',
+    { logError: (message, error) => logged.push([message, error]) },
+  )
+  const err = new Error('edit failed')
+  m.finalizeError = err
+  const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const r = svc.request(req)
+  await flush()
+  svc.tap('id1', 0)
+  await r
+  expect(logged).toEqual([['failed to finalize approval message', err]])
+  expect(spy).not.toHaveBeenCalled()
+})
+
 test('no finalize part: request still settles', async () => {
   const sendRequest = vi.fn(async () => ({ n: 1 }))
   const svc = new ApprovalService(

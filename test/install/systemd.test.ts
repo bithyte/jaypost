@@ -33,8 +33,11 @@ let prefixOut: string
 let rootOut: string
 let failRestart: boolean
 
-const fakeExec: Exec = async (cmd, args) => {
+const fakeExec: Exec = async (cmd, args, options) => {
   calls.push([cmd, args])
+  if (cmd === 'npm' && args[0] === 'i') {
+    options?.onOutput?.('STEP 1/7\n')
+  }
   if (cmd === 'npm' && args[0] === 'prefix') {
     return { code: 0, stdout: prefixOut + '\n', stderr: '' }
   }
@@ -118,6 +121,13 @@ test('installs from npm into a user prefix when global prefix is not writable', 
   expect(rec.cliPath).toBe(
     join(paths.userNpmPrefix, 'lib', 'node_modules', 'jaypost', 'dist', 'cli.js'),
   )
+})
+
+test('systemd install streams npm install output to the output callback', async () => {
+  const { t } = make()
+  const chunks: string[] = []
+  await t.install({ ...base, output: (chunk) => chunks.push(chunk) })
+  expect(chunks).toEqual(['STEP 1/7\n'])
 })
 
 test('installs globally when prefix is writable', async () => {
@@ -364,6 +374,19 @@ test('purge hint names the user prefix when the fallback was used', async () => 
   expect(log).toHaveBeenCalledWith(
     'The npm package was left in place; remove it with: npm rm -g jaypost',
   )
+  log.mockRestore()
+})
+
+test('purge hint goes to the given print instead of stdout', async () => {
+  const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+  const { t } = make()
+  const rec = await t.install(base)
+  const printed: string[] = []
+  await t.remove({ ...rec, cliPath: '/usr/lib/node_modules/jaypost/dist/cli.js' }, true, (text) =>
+    printed.push(text),
+  )
+  expect(printed).toEqual(['The npm package was left in place; remove it with: npm rm -g jaypost'])
+  expect(log).not.toHaveBeenCalled()
   log.mockRestore()
 })
 

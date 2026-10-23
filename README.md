@@ -36,7 +36,7 @@ It asks for your chat app and token, installs a small background service and pri
 Check it works:
 
 ```
-jaypost test
+jaypost ping
 ```
 
 Using Claude Code? Install the plugin and permission prompts go to your phone:
@@ -48,14 +48,14 @@ Using Claude Code? Install the plugin and permission prompts go to your phone:
 
 ## Ask from anywhere
 
-| From              | How                                                    | Docs                               |
-| ----------------- | ------------------------------------------------------ | ---------------------------------- |
-| Claude Code       | plugin, or `jaypost hook` in your settings             | [Claude Code](docs/claude-code.md) |
-| Any MCP agent     | `claude mcp add jaypost -- jaypost mcp`                | [Agents (MCP)](docs/mcp.md)        |
-| Shell             | `jaypost send request 'Deploy?' -o Approve -d Decline` | [Shell and Node](docs/scripts.md)  |
-| Node              | `await new Client().request({ ... })`                  | [Shell and Node](docs/scripts.md)  |
-| curl, n8n, others | `POST http://127.0.0.1:8787/request`                   | [HTTP API](docs/http-api.md)       |
-| GitHub Actions    | `uses: bithyte/jaypost@v0`, no service needed          | [CI](docs/ci.md)                   |
+| From              | How                                               | Docs                               |
+| ----------------- | ------------------------------------------------- | ---------------------------------- |
+| Claude Code       | plugin, or `jaypost hook` in your settings        | [Claude Code](docs/claude-code.md) |
+| Any MCP agent     | `claude mcp add jaypost -- jaypost mcp`           | [Agents (MCP)](docs/mcp.md)        |
+| Shell             | `jaypost request 'Deploy?' -o Approve -d Decline` | [Shell and Node](docs/scripts.md)  |
+| Node              | `await new Client().request({ ... })`             | [Shell and Node](docs/scripts.md)  |
+| curl, n8n, others | `POST http://127.0.0.1:8787/request`              | [HTTP API](docs/http-api.md)       |
+| GitHub Actions    | `uses: bithyte/jaypost@v0`, no service needed     | [CI](docs/ci.md)                   |
 
 ## How it works
 

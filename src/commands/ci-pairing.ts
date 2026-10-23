@@ -1,4 +1,6 @@
 import { formatCode, generateCode, Pairing } from '../pairing/index.ts'
+import { runStep } from '../progress/index.ts'
+import type { ProgressStep } from '../progress/index.ts'
 import { findProvider } from '../provider/index.ts'
 import type { CredentialCheck, Provider, ProviderRuntime } from '../provider/index.ts'
 import { BLOCKED_PAIRING, INTERRUPTED_PAIRING } from './constants.ts'
@@ -8,8 +10,8 @@ import type { OpenedRuntime, OwnerPairing, PairingWaiter, SetupCiDeps } from './
 
 /**
  * Runs `run` with a fresh list for every secret value seen, so error text can be shown with them
- * masked. An interrupt (a `PromptAborted` or an aborted `deps.signal`) prints an empty line and
- * returns 130; any other error prints `Setup failed: <message>` and returns 1.
+ * masked. An interrupt (a `PromptAborted` or an aborted `deps.signal`) notes an empty line and
+ * returns 130; any other error notes `Setup failed: <message>` and returns 1.
  */
 export async function runCiPairing(
   deps: SetupCiDeps,
@@ -20,18 +22,18 @@ export async function runCiPairing(
     return await run(seen)
   } catch (error) {
     if (error instanceof PromptAborted || deps.signal?.aborted) {
-      deps.print('')
+      deps.progress.note('')
       return 130
     }
     const message = error instanceof Error ? error.message : String(error)
-    deps.print(`Setup failed: ${redact(message, seen)}`)
+    deps.progress.note(`Setup failed: ${redact(message, seen)}`)
     return 1
   }
 }
 
 /**
  * Picks the provider (`providerName`, the only registered one, or the user's pick), asks for its
- * settings, creates the runtime and checks its credentials. Returns `failed` after printing why;
+ * settings, creates the runtime and checks its credentials. Returns `failed` after noting why;
  * otherwise the caller owns the runtime and must stop it.
  */
 export async function openPairingRuntime(
@@ -39,17 +41,17 @@ export async function openPairingRuntime(
   deps: SetupCiDeps,
   seen: string[],
 ): Promise<OpenedRuntime> {
-  const { print } = deps
+  const note = deps.progress.note
   const provider = await chooseProvider(providerName, deps)
   if (provider === undefined) {
-    print(`Unknown provider "${providerName}".`)
+    note(`Unknown provider "${providerName}".`)
     return { kind: 'failed' }
   }
   const resolved = await resolveProviderSettings({
     provider,
     saved: {},
     prompt: deps.prompt,
-    print,
+    print: note,
     ...(deps.signal ? { signal: deps.signal } : {}),
     seen,
   })
@@ -66,10 +68,15 @@ export async function openPairingRuntime(
     throw error
   }
   if (!check.ok) {
-    print(`Setup failed: ${check.reason}`)
+    note(`Setup failed: ${check.reason}`)
     await stopRuntime(runtime)
     return { kind: 'failed' }
   }
+  deps.progress.done(
+    check.displayName === undefined
+      ? 'Bot token checked'
+      : `Bot token checked (${check.displayName})`,
+  )
   return { kind: 'opened', provider, settings, runtime }
 }
 
@@ -112,17 +119,7 @@ export function createPairingWaiter(runtime: ProviderRuntime, deps: SetupCiDeps)
       },
     })
   }
-  return async (instructions) => {
-    if (signal?.aborted) {
-      return INTERRUPTED_PAIRING
-    }
-    if (failure !== undefined) {
-      return failure
-    }
-    const code = (deps.generateCode ?? generateCode)()
-    deps.print(`Pairing code: ${formatCode(code)}`)
-    deps.print(instructions(code))
-    const pairing = new Pairing(code)
+  const waitForOutcome = async (pairing: Pairing): Promise<OwnerPairing> => {
     let onAbort: (() => void) | undefined
     try {
       return await new Promise<OwnerPairing>((resolve) => {
@@ -139,6 +136,42 @@ export function createPairingWaiter(runtime: ProviderRuntime, deps: SetupCiDeps)
         signal?.removeEventListener('abort', onAbort)
       }
     }
+  }
+  return async (instructions, titles) => {
+    if (signal?.aborted) {
+      return INTERRUPTED_PAIRING
+    }
+    if (failure !== undefined) {
+      return failure
+    }
+    const code = (deps.generateCode ?? generateCode)()
+    const instructionText = instructions(code)
+    return runStep(
+      deps.progress,
+      titles.waiting,
+      () => {
+        // A note, not a step detail: it must print in plain mode and keep long URLs whole.
+        deps.progress.note(`Pairing code: ${formatCode(code)}`)
+        deps.progress.note(instructionText)
+        return waitForOutcome(new Pairing(code))
+      },
+      { settle: (step, outcome) => settleStep(step, outcome, titles.paired) },
+    )
+  }
+}
+
+/** Ends the pairing step to match how the wait ended. */
+function settleStep(step: ProgressStep, outcome: OwnerPairing, pairedTitle: string): void {
+  switch (outcome.kind) {
+    case 'paired':
+      step.succeed(pairedTitle)
+      return
+    case 'interrupted':
+      step.cancel()
+      return
+    case 'blocked':
+    case 'fatal':
+      step.fail()
   }
 }
 

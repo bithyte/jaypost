@@ -17,8 +17,11 @@ let failBuild: boolean
 let failArgs: (args: readonly string[]) => string | undefined
 let failCtl: (args: readonly string[]) => boolean
 
-const fakeExec: Exec = async (cmd, args) => {
+const fakeExec: Exec = async (cmd, args, options) => {
   calls.push([cmd, args])
+  if (cmd === 'podman' && args[0] === 'build') {
+    options?.onOutput?.('STEP 1/7\n')
+  }
   if (cmd === 'podman' && args[0] === '--version') {
     return { code: 0, stdout: `podman version ${podmanVersion}\n`, stderr: '' }
   }
@@ -135,6 +138,13 @@ test('quadlet install builds tagged image then starts', async () => {
   expect(existsSync(join(paths.quadletDirectory, 'pkg-1.tgz'))).toBe(true)
   expect(readFileSync(paths.quadletUnit, 'utf8')).toContain(`Image=${TAG}`)
   expect(readFileSync(join(paths.quadletDirectory, '.dockerignore'), 'utf8')).toBe('.env\n')
+})
+
+test('quadlet install streams podman build output to the output callback', async () => {
+  const { t } = make()
+  const chunks: string[] = []
+  await t.install({ ...base, output: (chunk) => chunks.push(chunk) })
+  expect(chunks).toEqual(['STEP 1/7\n'])
 })
 
 test('install throws when build fails and does not start', async () => {

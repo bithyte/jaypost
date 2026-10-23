@@ -9,6 +9,7 @@ import {
   UNREACHABLE_STATUS,
 } from './constants.ts'
 import { formatPairingText } from './pairing-text.ts'
+import type { ProgressStep } from '../progress/index.ts'
 import type { StatusFetch, WaitOptions, WaitResult } from './types.ts'
 
 /**
@@ -37,12 +38,36 @@ function createAbortableSleep(signal?: AbortSignal): (delayMs: number) => Promis
 }
 
 /**
- * Polls /status, printing the pairing code once. Start timeout only applies until the service first
- * answers; ends as paired, interrupted, stopped (not running), notStarted or unauthorized (the
- * service rejected the token).
+ * Polls /status, showing the service start and then the pairing code as checklist steps. Start
+ * timeout only applies until the service first answers; ends as paired, interrupted, stopped (not
+ * running), notStarted or unauthorized (the service rejected the token). A throw from `isRunning`
+ * fails the running step first, so the terminal is never left on a live step.
  */
 export async function waitForPairing(options: WaitOptions): Promise<WaitResult> {
-  const print = options.print ?? ((text: string) => console.log(text))
+  const { progress } = options
+  const startStep = progress.start('Waiting for the service to start')
+  // The running step; every exit path ends it.
+  let step: ProgressStep = startStep
+  try {
+    return await pollPairing(options, {
+      current: () => step,
+      replace: (next) => {
+        step = next
+      },
+    })
+  } catch (error) {
+    step.fail()
+    throw error
+  }
+}
+
+type StepHolder = {
+  readonly current: () => ProgressStep
+  readonly replace: (step: ProgressStep) => void
+}
+
+async function pollPairing(options: WaitOptions, holder: StepHolder): Promise<WaitResult> {
+  const { progress } = options
   const fetchStatus = options.fetchStatus ?? defaultFetchStatus
   const sleep = options.sleep ?? createAbortableSleep(options.signal)
   const startTimeoutMs = options.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS
@@ -51,29 +76,39 @@ export async function waitForPairing(options: WaitOptions): Promise<WaitResult> 
   let shown = false
   for (;;) {
     if (options.signal?.aborted) {
-      print(
+      holder.current().cancel()
+      progress.note(
         'Service is still running and waiting for pairing. Run "jaypost status" to see the code again.',
       )
       return 'interrupted'
     }
     const fetched = await fetchStatus(options.port, options.token)
     if (fetched.kind === 'unauthorized') {
+      holder.current().fail()
       return 'unauthorized'
     }
     if (fetched.kind === 'answered') {
-      answered = true
+      if (!answered) {
+        answered = true
+        holder.current().succeed('Service is up')
+        holder.replace(progress.start('Waiting for pairing'))
+      }
       if (fetched.status.paired) {
+        holder.current().succeed('Paired')
         return 'paired'
       }
       if (!shown) {
         shown = true
-        print(formatPairingText(fetched.status))
+        // A note, not a step detail: it must print in plain mode and keep long URLs whole.
+        progress.note(formatPairingText(fetched.status))
       }
     } else if (!answered && Date.now() - began >= startTimeoutMs) {
+      holder.current().fail()
       return 'notStarted'
     }
     if (!(await options.isRunning())) {
-      print(`The service stopped. ${options.logsHint}`)
+      holder.current().fail()
+      progress.note(`The service stopped. ${options.logsHint}`)
       return 'stopped'
     }
     await sleep(POLL_INTERVAL_MS)

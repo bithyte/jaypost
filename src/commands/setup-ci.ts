@@ -24,6 +24,7 @@ async function runSetupCiInner(
   seen: string[],
 ): Promise<number> {
   const { print } = deps
+  const note = deps.progress.note
   const opened = await openPairingRuntime(args.provider, deps, seen)
   if (opened.kind === 'failed') {
     return 1
@@ -36,26 +37,26 @@ async function runSetupCiInner(
       return 0
     }
     const waitFor = createPairingWaiter(runtime, deps)
-    const outcome = await waitFor(describeOwnerPairing(provider, runtime))
+    const outcome = await waitFor(describeOwnerPairing(provider, runtime), OWNER_STEP_TITLES)
     switch (outcome.kind) {
       case 'interrupted':
-        print('')
+        note('')
         return 130
       case 'blocked':
-        print('Too many wrong pairing codes. Run jaypost setup-ci again.')
+        note('Too many wrong pairing codes. Run jaypost setup-ci again.')
         return 1
       case 'fatal':
-        print(`Setup failed: ${redact(outcome.message, seen)}`)
+        note(`Setup failed: ${redact(outcome.message, seen)}`)
         return 1
       case 'paired': {
         const owner = ownerSetting.parse(outcome.senderId)
         if (owner === undefined) {
-          print(`Setup failed: ${provider.label} sent an owner id jaypost can't use`)
+          note(`Setup failed: ${provider.label} sent an owner id jaypost can't use`)
           return 1
         }
         printEnvBlock(provider, { ...settings, [ownerSetting.configKey]: owner }, print)
-        print('')
-        print(SETUP_CI_APPROVERS_HINT)
+        note('')
+        note(SETUP_CI_APPROVERS_HINT)
         return 0
       }
     }
@@ -79,6 +80,11 @@ function printEnvBlock(
       print(`${setting.envVar}=${String(value)}`)
     }
   }
+}
+
+const OWNER_STEP_TITLES = {
+  waiting: 'Waiting for the owner to pair',
+  paired: 'Owner paired',
 }
 
 function describeOwnerPairing(

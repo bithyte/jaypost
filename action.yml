@@ -38,7 +38,7 @@ inputs:
     required: true
 outputs:
   answer:
-    description: The answer printed by jaypost send request; empty for notify or on an error.
+    description: The answer printed by jaypost request; empty for notify or on an error.
     value: ${{ steps.send.outputs.answer }}
 runs:
   using: composite

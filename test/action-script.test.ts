@@ -217,7 +217,6 @@ test('asks with the inputs as send arguments and sets the answer output', async 
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
   expect(readArgs(runner)).toEqual([
-    'send',
     'request',
     '--project=demo',
     '--option=Yes',
@@ -236,7 +235,7 @@ test('notify sends the text with the run link and nothing else', async () => {
   const runner = await setUp({ INPUT_COMMAND: 'notify', INPUT_TEXT: 'Shipped' })
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
-  expect(readArgs(runner)).toEqual(['send', 'notify', '--project=demo', '--', `Shipped${LINK}`])
+  expect(readArgs(runner)).toEqual(['notify', '--project=demo', '--', `Shipped${LINK}`])
 })
 
 test('passes project, format and allow-text through', async () => {
@@ -250,7 +249,6 @@ test('passes project, format and allow-text through', async () => {
   const result = await runAction(runner.env).result
   expect(result.status, result.stderr).toBe(0)
   expect(readArgs(runner)).toEqual([
-    'send',
     'request',
     '--project=api',
     '--format=markdown',

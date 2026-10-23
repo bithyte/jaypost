@@ -157,6 +157,8 @@ export type RequestStore = {
 export type ApprovalServiceOptions = {
   readonly store?: RequestStore
   readonly audit?: AuditSink
+  /** Where failed message edits are reported; `console.error(message, error)` when not given. */
+  readonly logError?: (message: string, error: unknown) => void
 }
 
 /** Records what happened to each request; implementations must not throw. */
@@ -268,6 +270,25 @@ export type RoundEnd =
   | { readonly kind: 'decided'; readonly approved: boolean }
   | { readonly kind: 'timedOut' }
   | { readonly kind: 'cancelled' }
+
+/**
+ * What a direct ask reports while it runs; rounds are 1-based. `sent` fires once a round's
+ * message(s) are out, `voted` after each answer is recorded (the deciding one too).
+ */
+export type AskProgress =
+  | {
+      readonly kind: 'sent'
+      readonly round: number
+      readonly roundCount: number
+      readonly timeoutSeconds: number
+    }
+  | {
+      readonly kind: 'voted'
+      readonly round: number
+      readonly roundCount: number
+      readonly votedCount: number
+      readonly voterCount: number
+    }
 
 /** A vote message sent to `voter`. */
 export type VoterQuestion = SentQuestion & { readonly voter: string }

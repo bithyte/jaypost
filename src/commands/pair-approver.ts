@@ -30,7 +30,9 @@ async function runPairApproverInner(
   const { provider, runtime } = opened
   try {
     if (findOwnerSetting(provider) === undefined) {
-      deps.print(`Setup failed: ${provider.label} has no pairing, so it has no approvers to pair`)
+      deps.progress.note(
+        `Setup failed: ${provider.label} has no pairing, so it has no approvers to pair`,
+      )
       return 1
     }
     const instructions = runtime.approverPairingInstructions ?? runtime.pairingInstructions
@@ -43,6 +45,11 @@ async function runPairApproverInner(
   }
 }
 
+const APPROVER_STEP_TITLES = {
+  waiting: 'Waiting for an approver to pair',
+  paired: 'Approver paired',
+}
+
 /** Waits for one approver, then asks "Pair another?" after each attempt until the answer is no. */
 async function pairApprovers(
   instructions: (code: string) => string,
@@ -51,22 +58,23 @@ async function pairApprovers(
   seen: string[],
 ): Promise<number> {
   const { print } = deps
+  const note = deps.progress.note
   const approvers: string[] = []
   for (;;) {
-    const outcome = await waitFor(instructions)
+    const outcome = await waitFor(instructions, APPROVER_STEP_TITLES)
     switch (outcome.kind) {
       case 'interrupted':
-        return interruptApprovers(approvers, print)
+        return interruptApprovers(approvers, deps)
       case 'fatal':
         printApprovers(approvers, print)
-        print(`Setup failed: ${redact(outcome.message, seen)}`)
+        note(`Setup failed: ${redact(outcome.message, seen)}`)
         return 1
       case 'blocked':
-        print('Too many wrong pairing codes for that approver.')
+        note('Too many wrong pairing codes for that approver.')
         break
       case 'paired':
         approvers.push(outcome.senderId)
-        print(`Approver paired: ${outcome.senderId}`)
+        note(`Approver paired: ${outcome.senderId}`)
     }
     let wanted: boolean
     try {
@@ -75,10 +83,10 @@ async function pairApprovers(
       if (!(error instanceof PromptAborted)) {
         throw error
       }
-      return interruptApprovers(approvers, print)
+      return interruptApprovers(approvers, deps)
     }
     if (deps.signal?.aborted) {
-      return interruptApprovers(approvers, print)
+      return interruptApprovers(approvers, deps)
     }
     if (!wanted) {
       break
@@ -88,9 +96,9 @@ async function pairApprovers(
   return 0
 }
 
-function interruptApprovers(approvers: readonly string[], print: (text: string) => void): number {
-  print('')
-  printApprovers(approvers, print)
+function interruptApprovers(approvers: readonly string[], deps: PairApproverDeps): number {
+  deps.progress.note('')
+  printApprovers(approvers, deps.print)
   return 130
 }
 

@@ -92,17 +92,17 @@ Workflow example:
 - uses: actions/setup-node@v4
   with:
     node-version: 24
-- run: npx jaypost send request 'Publish v123?' -o Yes -d No
+- run: npx jaypost request 'Publish v123?' -o Yes -d No
   env:
     JAYPOST_MODE: direct
     JAYPOST_PROVIDER: telegram
     JAYPOST_BOT_TOKEN: ${{ secrets.JAYPOST_BOT_TOKEN }}
     JAYPOST_OWNER_ID: ${{ secrets.JAYPOST_OWNER_ID }}
-- run: npx jaypost send notify 'New version published'
+- run: npx jaypost notify 'New version published'
   env: # same four
 ```
 
-In direct mode `send request` exits with:
+In direct mode `request` exits with:
 
 - 0: any answer other than the `-d` one
 - 1: an error
@@ -111,7 +111,7 @@ In direct mode `send request` exits with:
 
 With `--allow-text`, a typed reply counts as the `-d` answer only when it equals the `-d` value exactly, case included.
 
-So `-d No` works as a gate: the step fails unless someone approves. In service mode `send request` still exits 0 for any answer, including the default.
+So `-d No` works as a gate: the step fails unless someone approves. In service mode `request` still exits 0 for any answer, including the default.
 
 ## Several approvers
 
@@ -121,7 +121,7 @@ In direct mode, `-u ID` sends the question to a paired user instead of the owner
 - `majority`: approved when more than half of the listed approvers answer `-o`, rejected once that can't happen. A tie rejects.
 
 ```yaml
-- run: npx jaypost send request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
+- run: npx jaypost request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
   env: # same four
 ```
 
@@ -132,13 +132,13 @@ A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run,
 Instead of `-u` flags, `JAYPOST_APPROVERS` can hold the ids, comma or space separated. That keeps them out of the workflow file when it comes from a secret, and a different secret per step gives each step its own approvers:
 
 ```yaml
-- run: npx jaypost send request 'Deploy prod?' -o Yes -d No --require majority
+- run: npx jaypost request 'Deploy prod?' -o Yes -d No --require majority
   env:
     JAYPOST_APPROVERS: ${{ secrets.PROD_APPROVERS }}
     # plus JAYPOST_MODE, JAYPOST_PROVIDER, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID
 ```
 
-Setting it means the same as passing those ids with `-u`: the question is a vote and `--require` defaults to `all`. If any `-u` is given, `-u` wins and the variable is ignored, not merged. A variable that is set but empty exits 2, because a misspelled or missing secret expands to an empty string and would otherwise send a plain question to the owner. `send notify` ignores it.
+Setting it means the same as passing those ids with `-u`: the question is a vote and `--require` defaults to `all`. If any `-u` is given, `-u` wins and the variable is ignored, not merged. A variable that is set but empty exits 2, because a misspelled or missing secret expands to an empty string and would otherwise send a plain question to the owner. `notify` ignores it.
 
 On GitHub Actions the voter ids, from `-u` or `JAYPOST_APPROVERS`, are masked in the logs (shown as `***`). GitHub masks the secret as a whole but not the single ids inside a list.
 

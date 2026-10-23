@@ -19,6 +19,7 @@ import {
   writeInstall,
 } from '../install/index.ts'
 import type { InstallRecord, Secrets, TargetName } from '../install/index.ts'
+import { runStep } from '../progress/index.ts'
 import { findOwnerSetting, findProvider, listSecretValues } from '../provider/index.ts'
 import type { Provider } from '../provider/index.ts'
 import { TARGET_LABELS } from './constants.ts'
@@ -67,10 +68,10 @@ async function chooseAuth(args: InitArgs, deps: InitDeps, isReplacing: boolean):
   if (raw !== undefined) {
     const token = parseToken(raw)
     if (token !== undefined) {
-      deps.print('Reusing the saved API token.')
+      deps.progress.note('Reusing the saved API token.')
       return { kind: 'token', token }
     }
-    deps.print('The saved API token was invalid; made a new one.')
+    deps.progress.note('The saved API token was invalid; made a new one.')
     return { kind: 'token', token: generateToken() }
   }
   if (
@@ -86,6 +87,13 @@ async function chooseAuth(args: InitArgs, deps: InitDeps, isReplacing: boolean):
   return NO_AUTH
 }
 
+/** Title of the install step: container targets build an image, the others install a service. */
+function describeInstallStep(name: TargetName): string {
+  return name === 'quadlet' || name === 'compose'
+    ? `Building the ${name} image`
+    : `Installing the ${name} service`
+}
+
 /**
  * Installs or replaces the service and waits for pairing. Saves the API token before installing,
  * and removes the token file only after a tokenless install succeeds. Returns 0 on success or when
@@ -99,18 +107,19 @@ export async function runInit(args: InitArgs, deps: InitDeps): Promise<number> {
     return await runInitInner(args, deps, seen)
   } catch (error) {
     if (error instanceof PromptAborted || deps.signal?.aborted) {
-      deps.print('')
+      deps.progress.note('')
       return 130
     }
     const message = error instanceof Error ? error.message : String(error)
-    deps.print(`Install failed: ${redact(message, seen)}`)
-    deps.print('Run jaypost init again. Check the logs for details.')
+    deps.progress.note(`Install failed: ${redact(message, seen)}`)
+    deps.progress.note('Run jaypost init again. Check the logs for details.')
     return 1
   }
 }
 
 async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Promise<number> {
-  const { print, prompt } = deps
+  const { progress, prompt } = deps
+  const print = progress.note
   const env = deps.env ?? process.env
   const detected = await detectTargets(
     deps.targets,
@@ -216,28 +225,50 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     return 1
   }
   const { settings } = resolved
+  if (resolved.displayName !== undefined) {
+    progress.done(`Bot token checked (${resolved.displayName})`)
+  }
   const port = args.port ?? record?.port ?? DEFAULT_PORT
   if (!(await deps.isPortFree(port))) {
     print(`Port ${port} is in use. Pick another with --port.`)
     return 1
   }
+  progress.done(`Port ${port} is free`)
   const auth = await chooseAuth(args, deps, existing !== undefined)
   if (auth.kind === 'token') {
     seen.push(auth.token)
     // Saved first, so a failed install below reuses this token on the retry.
     writeTokenFile(deps.paths.tokenFile, auth.token)
   }
-  const installed = await target.install({
-    version: deps.version,
-    port,
-    provider,
-    settings,
-    auth,
-    ...(deps.timeZone === undefined ? {} : { timeZone: deps.timeZone }),
-    ...(args.tarball === undefined ? {} : { tarball: args.tarball }),
-    print,
-  })
-  writeInstall(deps.paths.installFile, installed)
+  progress.plan([
+    describeInstallStep(name),
+    'Waiting for the service to start',
+    'Waiting for pairing',
+  ])
+  // Recording the install is part of the step, so a failed write fails it too.
+  const installed = await runStep(
+    progress,
+    describeInstallStep(name),
+    async (step) => {
+      const record = await target.install({
+        version: deps.version,
+        port,
+        provider,
+        settings,
+        auth,
+        ...(deps.timeZone === undefined ? {} : { timeZone: deps.timeZone }),
+        ...(args.tarball === undefined ? {} : { tarball: args.tarball }),
+        print,
+        output: step.output,
+      })
+      writeInstall(deps.paths.installFile, record)
+      return record
+    },
+    {
+      settle: (step) => step.succeed(`Installed the ${name} service`),
+      ...(deps.signal ? { signal: deps.signal } : {}),
+    },
+  )
   if (auth.kind === 'none') {
     removeTokenFile(deps.paths.tokenFile)
   }
@@ -248,10 +279,10 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     logsHint: target.logsHint(installed),
     ...(deps.signal ? { signal: deps.signal } : {}),
     ...(auth.kind === 'token' ? { token: auth.token } : {}),
-    print,
+    progress,
   })
   if (result === 'paired') {
-    print('Done. Try it: jaypost test')
+    print('Done. Try it: jaypost ping')
     print('Check state: jaypost status')
     print(
       auth.kind === 'token'

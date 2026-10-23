@@ -6,6 +6,7 @@ import type { PairResult } from '../../src/pairing/index.ts'
 import type { CredentialCheck, ProviderRuntime, SettingValues } from '../../src/provider/index.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
 import type { FakeRuntime } from '../provider/fake.ts'
+import { createRecordingProgress } from '../progress/recording.ts'
 
 const CODE = 'ABCDEFGH'
 const ACCEPTED: CredentialCheck = { ok: true, displayName: 'fake' }
@@ -43,12 +44,17 @@ function createProvider(
   return { provider, stop }
 }
 
+/** The recording behind the deps `createDeps` built last; reset by each call. */
+let recording = createRecordingProgress()
+
 function createDeps(
   provider: SetupCiDeps['providers'][number],
   printed: string[],
   over: Partial<SetupCiDeps> = {},
 ): SetupCiDeps {
+  recording = createRecordingProgress()
   return {
+    progress: recording.progress,
     prompt: createPrompts(),
     providers: [provider],
     print: (text) => printed.push(text),
@@ -82,14 +88,13 @@ test('pairs and prints the env vars, then the approvers hint', async () => {
   const running = runSetupCi({}, createDeps(provider, printed))
   expect(await pairWhenStarted(provider.runtimes, 'owner-1', 'abcd-efgh')).toBe('paired')
   expect(await running).toBe(0)
-  expect(printed.slice(-6)).toEqual([
+  expect(printed.slice(-4)).toEqual([
     'JAYPOST_MODE=direct',
     'JAYPOST_PROVIDER=fakepair',
     'FAKE_KEY=k',
     'FAKE_OWNER=owner-1',
-    '',
-    SETUP_CI_APPROVERS_HINT,
   ])
+  expect(recording.notes().slice(-2)).toEqual(['', SETUP_CI_APPROVERS_HINT])
   expect(stop).toHaveBeenCalled()
 })
 
@@ -109,8 +114,57 @@ test("shows the pairing code and the provider's instructions", async () => {
   const running = runSetupCi({}, createDeps(provider, printed))
   await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
   expect(await running).toBe(0)
-  expect(printed).toContain('Pairing code: ABCD-EFGH')
-  expect(printed).toContain('Say ABCDEFGH to fake')
+  expect(recording.events).toContain('note:Pairing code: ABCD-EFGH')
+  expect(recording.events).toContain('note:Say ABCDEFGH to fake')
+  expect(printed).not.toContain('Pairing code: ABCD-EFGH')
+})
+
+test('setup-ci shows the owner pairing as a step and prints the env block on stdout', async () => {
+  const { provider } = createProvider()
+  const printed: string[] = []
+  const running = runSetupCi({}, createDeps(provider, printed))
+  await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
+  expect(await running).toBe(0)
+  expect(recording.events).toEqual([
+    'done:Bot token checked (fake)',
+    'start:Waiting for the owner to pair',
+    'note:Pairing code: ABCD-EFGH',
+    `note:Say ${CODE} to fake`,
+    'succeed:Owner paired',
+    'note:',
+    `note:${SETUP_CI_APPROVERS_HINT}`,
+  ])
+  expect(printed).toEqual([
+    '',
+    expect.stringContaining('GitHub secrets'),
+    'JAYPOST_MODE=direct',
+    'JAYPOST_PROVIDER=fakepair',
+    'FAKE_KEY=k',
+    'FAKE_OWNER=owner-1',
+  ])
+})
+
+test('setup-ci cancels the owner step on interrupt and fails it when blocked or fatal', async () => {
+  const { provider } = createProvider()
+  const controller = new AbortController()
+  const running = runSetupCi({}, createDeps(provider, [], { signal: controller.signal }))
+  await waitForStart(provider.runtimes)
+  controller.abort()
+  expect(await running).toBe(130)
+  expect(recording.events).toContain('cancel:Waiting for the owner to pair')
+  const blocked = createProvider()
+  const blockedRunning = runSetupCi({}, createDeps(blocked.provider, []))
+  const runtime = await waitForStart(blocked.provider.runtimes)
+  while (runtime.handlers?.pair?.('stranger', 'WRONG') !== 'blocked') {
+    // keep guessing
+  }
+  expect(await blockedRunning).toBe(1)
+  expect(recording.events).toContain('fail:Waiting for the owner to pair')
+  const fatal = createProvider({
+    runtime: { start: (handlers) => handlers.fatal('Fake went away') },
+  })
+  expect(await runSetupCi({}, createDeps(fatal.provider, []))).toBe(1)
+  expect(recording.events).toContain('fail:Waiting for the owner to pair')
 })
 
 test('pairing handlers answer nothing else', async () => {
@@ -134,7 +188,7 @@ test("a wrong code doesn't pair", async () => {
   expect(await pairWhenStarted(provider.runtimes, 'owner-1', 'WRONG')).toBe('wrong')
   expect(await pairWhenStarted(provider.runtimes, 'owner-1', CODE)).toBe('paired')
   expect(await running).toBe(0)
-  expect(printed.at(-3)).toBe('FAKE_OWNER=owner-1')
+  expect(printed.at(-1)).toBe('FAKE_OWNER=owner-1')
 })
 
 test('asks again after a rejected token', async () => {
@@ -148,7 +202,7 @@ test('asks again after a rejected token', async () => {
   const running = runSetupCi({}, deps)
   await pairWhenStarted(provider.runtimes, 'owner-1', CODE)
   expect(await running).toBe(0)
-  expect(printed).toContain('Fake rejected that key. Try again.')
+  expect(recording.notes()).toContain('Fake rejected that key. Try again.')
   expect(deps.prompt.password).toHaveBeenCalledTimes(2)
 })
 
@@ -209,7 +263,7 @@ test('a fatal provider error exits 1 with its message, secrets masked', async ()
   const prompt = createPrompts()
   vi.mocked(prompt.password).mockResolvedValue('secret-key')
   expect(await runSetupCi({}, createDeps(provider, printed, { prompt }))).toBe(1)
-  expect(printed).toContain('Setup failed: Fake went away, key ***')
+  expect(recording.notes()).toContain('Setup failed: Fake went away, key ***')
   expect(printed.filter((line) => line.startsWith('JAYPOST_'))).toEqual([])
   expect(stop).toHaveBeenCalled()
 })
@@ -234,7 +288,7 @@ test('rejected runtime credentials exit 1 with the reason', async () => {
   })
   const printed: string[] = []
   expect(await runSetupCi({}, createDeps(provider, printed))).toBe(1)
-  expect(printed.join('\n')).toContain('Fake said no')
+  expect(recording.notes().join('\n')).toContain('Fake said no')
   expect(provider.runtimes[0]?.handlers).toBeUndefined()
   expect(stop).toHaveBeenCalled()
 })
@@ -243,7 +297,8 @@ test('an unknown --provider exits 1', async () => {
   const { provider } = createProvider()
   const printed: string[] = []
   expect(await runSetupCi({ provider: 'nope' }, createDeps(provider, printed))).toBe(1)
-  expect(printed).toEqual(['Unknown provider "nope".'])
+  expect(recording.notes()).toEqual(['Unknown provider "nope".'])
+  expect(printed).toEqual([])
 })
 
 test('the runtime starts once and stops once', async () => {
