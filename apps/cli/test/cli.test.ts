@@ -1,0 +1,519 @@
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, expect, test, vi } from 'vitest'
+import { parse } from 'yaml'
+import { main } from '../src/cli.ts'
+import { VERSION } from '@jaypost/store'
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
+
+test('unknown command returns 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['nope'])).toBe(2)
+})
+
+test('--version prints VERSION', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['--version'])).toBe(0)
+  expect(write).toHaveBeenCalledWith(`${VERSION}\n`)
+})
+
+test('init rejects bad port and unknown target with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['init', '--port', 'abc'])).toBe(2)
+  expect(await main(['init', '--port', '70000'])).toBe(2)
+  expect(await main(['init', 'nope'])).toBe(2)
+})
+
+test('log rejects bad --since, --limit and empty --project with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['log', '--since', 'soon'])).toBe(2)
+  expect(await main(['log', '--since', '99999999999d'])).toBe(2)
+  expect(await main(['log', '-n', '0'])).toBe(2)
+  expect(await main(['log', '-n', 'x'])).toBe(2)
+  expect(await main(['log', '--project', ' '])).toBe(2)
+})
+
+test('init --help lists --provider', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['init', '--help'])).toBe(0)
+  expect(write.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider <name>')
+})
+
+test('init --help lists --token and --no-token', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['init', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call) => String(call[0])).join('')
+  expect(help).toContain('--token ')
+  expect(help).toContain('--no-token')
+})
+
+test('setup-ci --help lists --provider', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--help'])).toBe(0)
+  expect(write.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider <name>')
+})
+
+test('setup-ci --provider nope exits 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--provider', 'nope'])).toBe(2)
+})
+
+test('setup-ci --approvers-only exits 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--approvers-only'])).toBe(2)
+})
+
+test('pair --help lists approver', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['pair', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call) => String(call[0])).join('')
+  expect(help).toContain('Usage: jaypost pair')
+  expect(help).toMatch(/^\s+approver\b/m)
+})
+
+test('pair approver --provider nope exits 2', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['pair', 'approver', '--provider', 'nope'])).toBe(2)
+  expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider')
+})
+
+test('mcp rejects a bad port with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['mcp', '--port', 'abc'])).toBe(2)
+})
+
+test('request needs -o or --allow-text', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['request', 'Deploy?', '-d', 'No'])).toBe(2)
+  expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain('--allow-text')
+})
+
+test('request --allow-text without -o reaches the service', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  // An invalid token makes send exit 1 before any network call; a usage error would be 2.
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
+  const ask = ['request', 'Which?', '--allow-text', '-d', 'main']
+  expect(await main([...ask, '--port', '1'])).toBe(1)
+})
+
+test('request requires a default, and rejects a bad timeout', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '-o', 'No'])).toBe(2)
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '--timeout-option', 'No'])).toBe(2)
+  const ask = ['request', 'Deploy?', '-o', 'Yes', '-d', 'No']
+  expect(await main([...ask, '--timeout', '0'])).toBe(2)
+  expect(await main([...ask, '--timeout', 'soon'])).toBe(2)
+})
+
+test('request adds the default as the last button unless an option names it or --allow-text', async () => {
+  const bodies: unknown[] = []
+  const server = createServer((request, response) => {
+    let body = ''
+    request.on('data', (chunk: Buffer) => (body += chunk.toString()))
+    request.on('end', () => {
+      bodies.push(JSON.parse(body))
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ answer: 'Decline', timedOut: true }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = String((server.address() as AddressInfo).port)
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    const ask = ['request', 'Deploy?', '--port', port]
+    expect(await main([...ask, '-o', 'Approve', '-d', 'Decline'])).toBe(0)
+    expect(await main([...ask, '-o', 'Decline', '-o', 'Approve', '--default', 'Decline'])).toBe(0)
+    expect(await main([...ask, '-o', 'Approve', '--allow-text', '-d', 'Decline'])).toBe(0)
+  } finally {
+    server.close()
+  }
+  expect(bodies).toEqual([
+    { text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' },
+    { text: 'Deploy?', options: ['Decline', 'Approve'], timeoutOption: 'Decline' },
+    { text: 'Deploy?', options: ['Approve'], allowText: true, timeoutOption: 'Decline' },
+  ])
+})
+
+async function listenForRequests(): Promise<{
+  readonly port: number
+  readonly urls: (string | undefined)[]
+  readonly close: () => void
+}> {
+  const urls: (string | undefined)[] = []
+  const server = createServer((request, response) => {
+    urls.push(request.url)
+    request.resume()
+    request.on('end', () => {
+      response.setHeader('content-type', 'application/json')
+      response.end(JSON.stringify({ answer: 'Approve', timedOut: false }))
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  return {
+    port: (server.address() as AddressInfo).port,
+    urls,
+    close: () => server.close(),
+  }
+}
+
+test('ping --port sends to that port, over the install and JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const flagListener = await listenForRequests()
+  const installListener = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'))
+  writeFileSync(
+    join(directory, 'jaypost', 'install.json'),
+    JSON.stringify({ target: 'systemd', port: installListener.port, version: VERSION }),
+  )
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['ping', '--port', String(flagListener.port)])).toBe(0)
+  } finally {
+    flagListener.close()
+    installListener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(flagListener.urls).toEqual(['/notify'])
+  expect(installListener.urls).toEqual([])
+})
+
+test('ping without --port uses the install port over JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const listener = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'))
+  writeFileSync(
+    join(directory, 'jaypost', 'install.json'),
+    JSON.stringify({ target: 'systemd', port: listener.port, version: VERSION }),
+  )
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['ping'])).toBe(0)
+  } finally {
+    listener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(listener.urls).toEqual(['/notify'])
+})
+
+test('ping without --port or an install uses JAYPOST_PORT', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
+  const listener = await listenForRequests()
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
+  vi.stubEnv('JAYPOST_PORT', String(listener.port))
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(await main(['ping'])).toBe(0)
+  } finally {
+    listener.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(listener.urls).toEqual(['/notify'])
+})
+
+test('ping rejects a bad port with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['ping', '--port', 'abc'])).toBe(2)
+})
+
+test('notify requires text', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['notify'])).toBe(2)
+})
+
+test('the old send request, send notify and test spellings still run', async () => {
+  const listener = await listenForRequests()
+  const port = String(listener.port)
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(
+      await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--port', port]),
+    ).toBe(0)
+    expect(await main(['send', 'notify', 'hi', '--port', port])).toBe(0)
+    expect(await main(['test', '--port', port])).toBe(0)
+  } finally {
+    listener.close()
+  }
+  expect(listener.urls).toEqual(['/request', '/notify', '/notify'])
+})
+
+test('hook rejects a bad port, a bad timeout and positional arguments with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['hook', '--port', 'abc'])).toBe(2)
+  expect(await main(['hook', '--timeout', '0'])).toBe(2)
+  expect(await main(['hook', 'extra'])).toBe(2)
+})
+
+test('send exits 1 with the message on an invalid JAYPOST_TOKEN', async () => {
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await main(['notify', 'hi', '--port', '1'])).toBe(1)
+  expect(error).toHaveBeenCalledWith("jaypost: JAYPOST_TOKEN isn't a valid jaypost token")
+})
+
+test('send rejects an unknown JAYPOST_MODE with 2', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'bogus')
+  expect(await main(['request', 'x', '-o', 'a', '-d', 'a'])).toBe(2)
+  expect(await main(['notify', 'x'])).toBe(2)
+  expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain(
+    'JAYPOST_MODE must be "direct" or "service", got "bogus"',
+  )
+})
+
+test('direct send without a bot token exits 1 naming the env var', async () => {
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_PROVIDER', '')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await main(['request', 'x', '-o', 'a', '-d', 'a'])).toBe(1)
+  expect(await main(['notify', 'x'])).toBe(1)
+  const output = error.mock.calls.map((call) => String(call[0])).join('\n')
+  expect(output).toContain('missing bot token; set JAYPOST_BOT_TOKEN')
+})
+
+test('openapi writes the spec with the given port to a file', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-openapi-'))
+  try {
+    const file = join(directory, 'openapi.yaml')
+    expect(await main(['openapi', '--port', '9999', file])).toBe(0)
+    expect(parse(readFileSync(file, 'utf8')).servers).toEqual([{ url: 'http://127.0.0.1:9999' }])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('openapi for the discord provider carries its option limit', async () => {
+  vi.stubEnv('JAYPOST_PROVIDER', 'discord')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', 'x')
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['openapi', '--port', '9999'])).toBe(0)
+  expect(String(write.mock.calls[0]?.[0])).toContain('25')
+})
+
+test('openapi prints the spec without a file', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['openapi', '--port', '9999'])).toBe(0)
+  expect(String(write.mock.calls[0]?.[0])).toMatch(/^openapi: 3\.1\.0\n/)
+})
+
+test('openapi returns 1 when the file cannot be written', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await main(['openapi', '/nonexistent-directory/openapi.yaml'])).toBe(1)
+})
+
+test('send rejects an unknown format with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  const ask = ['request', 'Deploy?', '-o', 'Yes', '-d', 'Yes']
+  expect(await main([...ask, '--format', 'html'])).toBe(2)
+  expect(await main(['notify', 'hi', '--format', 'html'])).toBe(2)
+})
+
+function runAuditDump(args: readonly string[], directory: string) {
+  return spawnSync(process.execPath, ['apps/cli/src/cli.ts', 'audit', ...args], {
+    env: { ...process.env, JAYPOST_CONFIG: join(directory, 'config.json') },
+    maxBuffer: 8 * 1024 * 1024,
+    encoding: 'utf8',
+  })
+}
+
+test('audit dump writes .1 then current from the config directory, whole', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-audit-'))
+  try {
+    const current = `${'x'.repeat(2 * 1024 * 1024)}\n`
+    writeFileSync(join(directory, 'audit.jsonl.1'), 'old\n')
+    writeFileSync(join(directory, 'audit.jsonl'), current)
+    const result = runAuditDump(['dump'], directory)
+    expect(result.status).toBe(0)
+    expect(result.stdout.length).toBe(`old\n${current}`.length)
+    expect(result.stdout === `old\n${current}`).toBe(true)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('audit dump with no files prints nothing and exits 0', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-audit-'))
+  try {
+    const result = runAuditDump(['dump'], directory)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('audit with an unknown subcommand exits 2', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-audit-'))
+  try {
+    const result = runAuditDump(['nope'], directory)
+    expect(result.status).toBe(2)
+    expect(result.stderr).toContain('Usage: audit dump')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+function bigAuditLog(count: number): string {
+  return Array.from({ length: count }, (_, index) =>
+    JSON.stringify({
+      v: 1,
+      event: 'asked',
+      id: `id${index}`,
+      at: '2026-10-19T07:00:00.000Z',
+      text: `question ${index} ${'x'.repeat(100)}`,
+      options: ['Approve', 'Decline'],
+      timeoutOption: 'Decline',
+      timeoutSeconds: 300,
+      attachment: undefined,
+    }),
+  ).join('\n')
+}
+
+function runLogCli(args: readonly string[], directory: string) {
+  return spawnSync(process.execPath, ['apps/cli/src/cli.ts', 'log', ...args], {
+    env: {
+      ...process.env,
+      HOME: directory,
+      XDG_CONFIG_HOME: join(directory, 'xdg'),
+      JAYPOST_CONFIG: join(directory, 'config.json'),
+    },
+    maxBuffer: 16 * 1024 * 1024,
+    encoding: 'utf8',
+  })
+}
+
+test('log writes output larger than a pipe buffer whole, as json and as a table', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-log-'))
+  try {
+    writeFileSync(join(directory, 'audit.jsonl'), `${bigAuditLog(2500)}\n`)
+    const json = runLogCli(['--since', '2000-01-01', '--json'], directory)
+    expect(json.status).toBe(0)
+    expect(json.stdout.length).toBeGreaterThan(65_536 * 3)
+    const lines = json.stdout.split('\n')
+    expect(lines.at(-1)).toBe('')
+    expect(lines).toHaveLength(2501)
+    expect(JSON.parse(lines[2499] ?? '').id).toBe('id2499')
+    const table = runLogCli(['--since', '2000-01-01'], directory)
+    expect(table.status).toBe(0)
+    expect(table.stdout.length).toBeGreaterThan(65_536)
+    expect(table.stdout.endsWith('\n')).toBe(true)
+    expect(table.stdout.split('\n')).toHaveLength(2501)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('send --attach-name without --attach exits 2', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach-name', 'a'])).toBe(2)
+  expect(await main(['notify', 'done', '--attach-name', 'a'])).toBe(2)
+  const output = stderr.mock.calls.map((call) => String(call[0])).join('')
+  expect(output).toContain("error: option '--attach-name <name>' needs '--attach <file>'")
+})
+
+const REQUEST_ARGS = ['request', 'Deploy?', '-o', 'Yes', '-d', 'No']
+
+test('vote and retry flags reach the service without direct mode', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  vi.stubEnv('JAYPOST_MODE', '')
+  // An invalid token makes send exit 1 before any network call; a usage error would be 2.
+  vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
+  for (const flags of [
+    ['-u', '1'],
+    ['--require', 'all'],
+    ['--retry', '2'],
+  ]) {
+    expect(await main([...REQUEST_ARGS, ...flags, '--port', '1'])).toBe(1)
+  }
+})
+
+test('an empty JAYPOST_APPROVERS exits 2 in service mode too', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', '')
+  vi.stubEnv('JAYPOST_APPROVERS', '')
+  expect(await main(REQUEST_ARGS)).toBe(2)
+  const output = stderr.mock.calls.map((call) => String(call[0])).join('')
+  expect(output).toContain('JAYPOST_APPROVERS is set but has no ids')
+})
+
+test('an empty JAYPOST_APPROVERS exits 2 in direct mode', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', ' , ')
+  expect(await main(REQUEST_ARGS)).toBe(2)
+  const output = stderr.mock.calls.map((call) => String(call[0])).join('')
+  expect(output).toContain('JAYPOST_APPROVERS is set but has no ids')
+})
+
+test('-u wins over an empty JAYPOST_APPROVERS', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  // 1: got past validation to the direct send, which fails on the missing token
+  expect(await main([...REQUEST_ARGS, '-u', '1'])).toBe(1)
+})
+
+test('JAYPOST_APPROVERS makes the question a vote', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '1,2')
+  const args = ['send', 'request', 'Deploy?', '-o', 'Yes', '-o', 'Maybe', '-d', 'No']
+  expect(await main(args)).toBe(2)
+})
+
+test('send notify ignores JAYPOST_APPROVERS', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  expect(await main(['send', 'notify', 'done'])).toBe(1)
+})
+
+test('a vote needs one -o and a different -d without --allow-text', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  const base = ['request', 'Deploy?']
+  expect(await main([...base, '-o', 'Yes', '-o', 'Maybe', '-d', 'No', '-u', '1'])).toBe(2)
+  expect(await main([...base, '--allow-text', '-d', 'No', '--require', 'all'])).toBe(2)
+  expect(await main([...base, '-o', 'No', '-d', 'No', '-u', '1'])).toBe(2)
+})
+
+test('--require only takes all or majority', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  expect(await main([...REQUEST_ARGS, '--require', 'some'])).toBe(2)
+})
+
+test('--retry rejects a negative or non-integer count', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  for (const count of ['-1', '1.5', 'x', '', '101']) {
+    expect(await main([...REQUEST_ARGS, '--retry', count])).toBe(2)
+  }
+})
+
+test('valid vote and retry flags pass validation and reach the direct send', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  const flags = ['-u', '1', '-u', '2', '--require', 'majority', '--retry', '3']
+  expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
+  expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
+})

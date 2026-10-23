@@ -1,0 +1,22 @@
+{
+  "name": "@jaypost/service",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HTTP API, bot runtime, daemon and direct mode",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jaypost/core": "workspace:*",
+    "@jaypost/protocol": "workspace:*",
+    "@jaypost/providers": "workspace:*",
+    "@jaypost/store": "workspace:*",
+    "fastify": "catalog:",
+    "yaml": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@jaypost/testing": "workspace:*"
+  }
+}

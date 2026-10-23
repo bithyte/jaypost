@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { expect, test } from 'vite-plus/test'
 
 const ROOT = new URL('../..', import.meta.url).pathname
-const PACKAGE_PATH = join(ROOT, 'package.json')
+const PACKAGE_PATH = join(ROOT, 'apps', 'cli', 'package.json')
 const MANIFEST_PATH = join(ROOT, 'claude-plugin', '.claude-plugin', 'plugin.json')
 const WRAPPER_PATH = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
 const SYNC_SCRIPT_PATH = join(ROOT, 'scripts', 'sync-plugin-version.ts')
@@ -43,7 +43,7 @@ function readJson(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
 }
 
-test('plugin version matches package.json', () => {
+test('plugin version matches the jaypost package', () => {
   expect(readJson(MANIFEST_PATH).version).toBe(readJson(PACKAGE_PATH).version)
 })
 
@@ -62,7 +62,8 @@ test('sync script copies the package version into plugin.json', () => {
   try {
     const manifestPath = join(root, 'claude-plugin', '.claude-plugin', 'plugin.json')
     mkdirSync(join(root, 'claude-plugin', '.claude-plugin'), { recursive: true })
-    cpSync(PACKAGE_PATH, join(root, 'package.json'))
+    mkdirSync(join(root, 'apps', 'cli'), { recursive: true })
+    cpSync(PACKAGE_PATH, join(root, 'apps', 'cli', 'package.json'))
     const original = readFileSync(MANIFEST_PATH, 'utf8')
     writeFileSync(manifestPath, original.replace(/"version": "[^"]*"/, '"version": "0.0.1"'))
     const result = spawnSync(process.execPath, [SYNC_SCRIPT_PATH, '--root', root], {

@@ -1,0 +1,18 @@
+{
+  "name": "@jaypost/client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Client for the HTTP API",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jaypost/core": "workspace:*",
+    "@jaypost/protocol": "workspace:*",
+    "@jaypost/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@jaypost/service": "workspace:*"
+  }
+}

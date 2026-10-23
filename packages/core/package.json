@@ -1,0 +1,13 @@
+{
+  "name": "@jaypost/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Questions, votes, formatting, quiet hours, pairing, notifications and the provider contract",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  }
+}

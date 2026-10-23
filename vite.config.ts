@@ -12,15 +12,4 @@ export default defineConfig({
     singleQuote: true,
     printWidth: 100,
   },
-  // Bundles the library (ESM + CJS) and the CLI (ESM only, it uses top-level await) into dist
-  pack: [
-    {
-      entry: 'src/index.ts',
-      format: ['esm', 'cjs'],
-      dts: true,
-      fixedExtension: false,
-      logLevel: 'warn',
-    },
-    { entry: 'src/cli.ts', format: 'esm', dts: false, fixedExtension: false, logLevel: 'warn' },
-  ],
 })

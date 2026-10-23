@@ -1,0 +1,13 @@
+{
+  "name": "@jaypost/testing",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fakes shared by the workspace tests",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@jaypost/core": "workspace:*"
+  }
+}

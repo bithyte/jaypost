@@ -22,7 +22,7 @@ import { afterEach, expect, test } from 'vite-plus/test'
 const ROOT = join(import.meta.dirname, '..')
 const SCRIPT = join(ROOT, 'action', 'run.sh')
 const VERSION = (
-  JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as { version: string }
+  JSON.parse(readFileSync(join(ROOT, 'apps', 'cli', 'package.json'), 'utf8')) as { version: string }
 ).version
 const LINK = '\n\nWorkflow run: https://github.com/bithyte/demo/actions/runs/42'
 const FAKE_BINARY = `#!/bin/sh
