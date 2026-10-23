@@ -22,7 +22,7 @@ import type { Notifier } from '../../src/notify/index.ts'
 import { NO_AUTH, NO_CLIENT_TOKEN } from '../../src/auth/index.ts'
 import type { ApiAuth, ClientToken } from '../../src/auth/index.ts'
 import { TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
 const REFERENCE: MessageReference = { chatId: 1, messageId: 2 }
@@ -92,15 +92,19 @@ async function startApi(
   const messenger = new RecordingMessenger()
   const notifier = new RecordingNotifier()
   const service = new ApprovalService(messenger)
-  const server = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
-    maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
-    providerName: 'test',
-    auth: options.auth ?? NO_AUTH,
-    ...(options.notifications === false
-      ? {}
-      : { notifications: new NotificationService(notifier) }),
-  })
+  const server = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
+      providerName: 'test',
+      auth: options.auth ?? NO_AUTH,
+      ...(options.notifications === false
+        ? {}
+        : { notifications: new NotificationService(notifier) }),
+    }),
+  )
   servers.push(server)
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo

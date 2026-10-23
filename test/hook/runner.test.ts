@@ -18,7 +18,7 @@ import { readHookInput, runHook } from '../../src/hook/index.ts'
 import type { HookDeps } from '../../src/hook/index.ts'
 import { NotificationService } from '../../src/notify/index.ts'
 import type { Notifier } from '../../src/notify/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 
 const ROOT = new URL('../..', import.meta.url).pathname
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
@@ -74,12 +74,16 @@ async function startApi(
   const messenger = new RecordingMessenger()
   const notifier = new RecordingNotifier()
   const service = new ApprovalService(messenger)
-  const server = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: options.maxTextLength ?? 3900,
-    providerName: 'test',
-    auth: options.auth ?? NO_AUTH,
-    notifications: new NotificationService(notifier),
-  })
+  const server = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: options.maxTextLength ?? 3900,
+      providerName: 'test',
+      auth: options.auth ?? NO_AUTH,
+      notifications: new NotificationService(notifier),
+    }),
+  )
   servers.push(server)
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo

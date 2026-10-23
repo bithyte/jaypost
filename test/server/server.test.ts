@@ -7,9 +7,9 @@ import { NO_AUTH } from '../../src/auth/index.ts'
 import type { ApiAuth } from '../../src/auth/index.ts'
 import { ApprovalService, MAX_ATTACHMENT_BYTES, SendError } from '../../src/approval/index.ts'
 import type { MessageEnding, MessageReference, Messenger } from '../../src/approval/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 import { MAX_BODY_BYTES } from '../../src/server/constants.ts'
-import type { StatusInfo } from '../../src/server/index.ts'
+import type { ApiBot, BotRouter, StatusInfo } from '../../src/server/index.ts'
 import type { ApprovalRequest, RequestResult } from '../../src/approval/index.ts'
 import type { NotifyRequest } from '../../src/notify/index.ts'
 import type { FormattedText } from '../../src/format/index.ts'
@@ -52,13 +52,17 @@ async function start(
   maxAttachmentBytes: number = MAX_ATTACHMENT_BYTES,
 ): Promise<string> {
   const stub = createStub(vi.fn(request))
-  server = createApiServer(stub, status, {
-    maxTextLength: 3900,
-    providerName: 'test',
-    auth,
-    maxAttachmentBytes,
-    ...(notify === undefined ? {} : { notifications: { notify } }),
-  })
+  server = createApiServer(
+    createSingleBotRouter({
+      service: stub,
+      status: status,
+      maxTextLength: 3900,
+      providerName: 'test',
+      auth,
+      maxAttachmentBytes,
+      ...(notify === undefined ? {} : { notifications: { notify } }),
+    }),
+  )
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo
   return `http://127.0.0.1:${port}`
@@ -163,11 +167,15 @@ test('502 on SendError', async () => {
 })
 
 test('server uses the provider text limit', async () => {
-  server = createApiServer(createStub(vi.fn<RequestFn>()), () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 10,
-    providerName: 'test',
-    auth: NO_AUTH,
-  })
+  server = createApiServer(
+    createSingleBotRouter({
+      service: createStub(vi.fn<RequestFn>()),
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 10,
+      providerName: 'test',
+      auth: NO_AUTH,
+    }),
+  )
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo
   const res = await post(
@@ -509,6 +517,52 @@ test('without a token a stray authorization header is ignored', async () => {
   expect(res.status).toBe(200)
 })
 
+test('a router with several bots sends each call to the bot its token picks', async () => {
+  const askFirst = vi.fn<RequestFn>(async () => ({
+    kind: 'completed',
+    outcome: { answer: 'first', timedOut: false },
+  }))
+  const askSecond = vi.fn<RequestFn>(async () => ({
+    kind: 'completed',
+    outcome: { answer: 'second', timedOut: false },
+  }))
+  const toBot = (request: RequestFn, maxTextLength: number): ApiBot => ({
+    service: createStub(request),
+    status: () => ({ paired: true }),
+    maxTextLength,
+    providerName: 'test',
+  })
+  const botsByToken = new Map([
+    [TOKEN, toBot(askFirst, 100)],
+    [WRONG, toBot(askSecond, 200)],
+  ])
+  const router: BotRouter = {
+    route: (authorization) => {
+      const bot = botsByToken.get(authorization?.replace('Bearer ', '') ?? '')
+      return bot === undefined ? { kind: 'unauthorized', reason: 'wrong' } : { kind: 'bot', bot }
+    },
+    limits: { maxTextLength: 100, maxAttachmentBytes: 0 },
+  }
+  server = createApiServer(router)
+  await server.listen({ port: 0, host: '127.0.0.1' })
+  const { port } = server.server.address() as AddressInfo
+  const url = `http://127.0.0.1:${port}`
+  const ask = (token: string) =>
+    call(url, 'POST', '/request', { authorization: `Bearer ${token}` }, JSON.stringify(valid))
+  const status = (token: string) =>
+    call(url, 'GET', '/status', { authorization: `Bearer ${token}` })
+  expect(await (await ask(TOKEN)).json()).toEqual({ answer: 'first', timedOut: false })
+  expect(await (await ask(WRONG)).json()).toEqual({ answer: 'second', timedOut: false })
+  expect(await (await status(WRONG)).json()).toEqual({
+    paired: true,
+    maxAttachmentBytes: 0,
+    maxTextLength: 200,
+  })
+  expect((await ask('c'.repeat(43))).status).toBe(401)
+  expect(askFirst).toHaveBeenCalledTimes(1)
+  expect(askSecond).toHaveBeenCalledTimes(1)
+})
+
 test('markdown request reaches the provider as spans', async () => {
   const request = vi.fn<RequestFn>(async () => ({
     kind: 'completed',
@@ -581,13 +635,17 @@ async function startReal(
 ) {
   const messenger = new RecordingMessenger()
   const service = new ApprovalService(messenger)
-  server = createApiServer(service, options.status ?? (() => ({ paired: true, bot: 'b' })), {
-    maxTextLength: options.maxTextLength ?? 3900,
-    providerName: 'test',
-    auth: options.auth ?? NO_AUTH,
-    maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
-    ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
-  })
+  server = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: options.status ?? (() => ({ paired: true, bot: 'b' })),
+      maxTextLength: options.maxTextLength ?? 3900,
+      providerName: 'test',
+      auth: options.auth ?? NO_AUTH,
+      maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
+      ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
+    }),
+  )
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo
   return { url: `http://127.0.0.1:${port}`, messenger, service }
@@ -738,11 +796,15 @@ test('only async create checks pairing', async () => {
   const id = await createAsync(url, messenger)
   await server?.close()
   server = undefined
-  const other = createApiServer(service, unpaired, {
-    maxTextLength: 3900,
-    providerName: 'test',
-    auth: NO_AUTH,
-  })
+  const other = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: unpaired,
+      maxTextLength: 3900,
+      providerName: 'test',
+      auth: NO_AUTH,
+    }),
+  )
   server = other
   await other.listen({ port: 0, host: '127.0.0.1' })
   const { port } = other.server.address() as AddressInfo

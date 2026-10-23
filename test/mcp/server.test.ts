@@ -32,7 +32,7 @@ import {
   Caller,
   TOKEN_REJECTED_MESSAGE,
 } from '../../src/client/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 import { createMcpServer, OpenQuestions } from '../../src/mcp/index.ts'
 
 const ROOT = new URL('../..', import.meta.url).pathname
@@ -138,15 +138,19 @@ async function startApi(
   const messenger = new RecordingMessenger()
   const notifier = new RecordingNotifier()
   const service = new ApprovalService(messenger)
-  const server = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
-    maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
-    providerName: 'test',
-    auth: options.auth ?? NO_AUTH,
-    ...(options.notifications === false
-      ? {}
-      : { notifications: new NotificationService(notifier) }),
-  })
+  const server = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
+      providerName: 'test',
+      auth: options.auth ?? NO_AUTH,
+      ...(options.notifications === false
+        ? {}
+        : { notifications: new NotificationService(notifier) }),
+    }),
+  )
   servers.push(server)
   await server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = server.server.address() as AddressInfo

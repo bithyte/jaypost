@@ -27,7 +27,7 @@ import {
   TOKEN_REQUIRED_MESSAGE,
 } from '../../src/client/index.ts'
 import type { NotifyRequest } from '../../src/notify/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 
 const TOKEN = 'A'.repeat(43)
 const CALL = { signal: new AbortController().signal }
@@ -120,17 +120,21 @@ async function startApi(options: { maxAttachmentBytes?: number; notifications?: 
     waitFor: unexpected,
     cancel: unexpected,
   }
-  const app = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
-    providerName: 'test',
-    auth: NO_AUTH,
-    maxAttachmentBytes: options.maxAttachmentBytes ?? 1000,
-    notifications: {
-      notify: async (notification) => {
-        notifications.push(notification)
+  const app = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      providerName: 'test',
+      auth: NO_AUTH,
+      maxAttachmentBytes: options.maxAttachmentBytes ?? 1000,
+      notifications: {
+        notify: async (notification) => {
+          notifications.push(notification)
+        },
       },
-    },
-  })
+    }),
+  )
   await app.listen({ port: 0, host: '127.0.0.1' })
   servers.push(app.server)
   return { port: (app.server.address() as AddressInfo).port, requests, notifications }
@@ -559,12 +563,16 @@ class RecordingMessenger implements Messenger {
 async function startBackgroundApi() {
   const messenger = new RecordingMessenger()
   const service = new ApprovalService(messenger)
-  const app = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
-    providerName: 'test',
-    auth: NO_AUTH,
-    maxAttachmentBytes: 1000,
-  })
+  const app = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      providerName: 'test',
+      auth: NO_AUTH,
+      maxAttachmentBytes: 1000,
+    }),
+  )
   await app.listen({ port: 0, host: '127.0.0.1' })
   servers.push(app.server)
   return { port: (app.server.address() as AddressInfo).port, service, messenger }

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { writeTokenFile } from '../../src/auth/index.ts'
-import { createApiServer } from '../../src/server/index.ts'
+import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 import type { ApprovalRequest, RequestResult } from '../../src/approval/index.ts'
 import type { NotifyRequest } from '../../src/notify/index.ts'
 import { NO_AUTH } from '../../src/auth/index.ts'
@@ -226,17 +226,21 @@ async function startRealServer(): Promise<{
     waitFor: unexpected,
     cancel: unexpected,
   }
-  const app = createApiServer(service, () => ({ paired: true, bot: 'b' }), {
-    maxTextLength: 3900,
-    providerName: 'test',
-    auth: NO_AUTH,
-    maxAttachmentBytes: 1000,
-    notifications: {
-      notify: async (notification) => {
-        notifications.push(notification)
+  const app = createApiServer(
+    createSingleBotRouter({
+      service,
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      providerName: 'test',
+      auth: NO_AUTH,
+      maxAttachmentBytes: 1000,
+      notifications: {
+        notify: async (notification) => {
+          notifications.push(notification)
+        },
       },
-    },
-  })
+    }),
+  )
   await app.listen({ port: 0, host: '127.0.0.1' })
   servers.push(app.server)
   return {
