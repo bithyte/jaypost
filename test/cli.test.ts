@@ -346,6 +346,49 @@ test('vote and retry flags need direct mode', async () => {
   }
 })
 
+test('JAYPOST_APPROVERS needs direct mode, even empty', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', '')
+  for (const value of ['1', '']) {
+    vi.stubEnv('JAYPOST_APPROVERS', value)
+    expect(await main(REQUEST_ARGS)).toBe(2)
+  }
+})
+
+test('an empty JAYPOST_APPROVERS exits 2 in direct mode', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', ' , ')
+  expect(await main(REQUEST_ARGS)).toBe(2)
+  const output = stderr.mock.calls.map((call) => String(call[0])).join('')
+  expect(output).toContain('JAYPOST_APPROVERS is set but has no ids')
+})
+
+test('-u wins over an empty JAYPOST_APPROVERS', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  // 1: got past validation to the direct send, which fails on the missing token
+  expect(await main([...REQUEST_ARGS, '-u', '1'])).toBe(1)
+})
+
+test('JAYPOST_APPROVERS makes the question a vote', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '1,2')
+  const args = ['send', 'request', 'Deploy?', '-o', 'Yes', '-o', 'Maybe', '-d', 'No']
+  expect(await main(args)).toBe(2)
+})
+
+test('send notify ignores JAYPOST_APPROVERS', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.stubEnv('JAYPOST_MODE', 'direct')
+  vi.stubEnv('JAYPOST_APPROVERS', '')
+  vi.stubEnv('JAYPOST_BOT_TOKEN', '')
+  expect(await main(['send', 'notify', 'done'])).toBe(1)
+})
+
 test('a vote needs one -o and a different -d without --allow-text', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')

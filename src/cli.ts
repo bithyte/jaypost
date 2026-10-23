@@ -34,9 +34,16 @@ import {
 } from './commands/index.ts'
 import { MAX_RETRY_COUNT } from './commands/constants.ts'
 import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
-import { DEFAULT_PORT, loadConfig, MODE_ENV_VAR, PORT_ENV_VAR, VERSION } from './config/index.ts'
+import {
+  APPROVERS_ENV_VAR,
+  DEFAULT_PORT,
+  loadConfig,
+  MODE_ENV_VAR,
+  PORT_ENV_VAR,
+  VERSION,
+} from './config/index.ts'
 import { runService } from './daemon/index.ts'
-import { resolveSendMode } from './direct/index.ts'
+import { resolveApprovers, resolveSendMode } from './direct/index.ts'
 import type { SendMode } from './direct/index.ts'
 import { MESSAGE_FORMATS } from './format/index.ts'
 import type { MessageFormat } from './format/index.ts'
@@ -564,7 +571,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '-u, --user <id>',
-      'send to this paired user instead of the owner; repeat per approver (direct mode)',
+      'send to this paired user instead of the owner; repeat per approver; overrides JAYPOST_APPROVERS (direct mode)',
       collect,
     )
     .addOption(
@@ -614,11 +621,22 @@ export async function main(argv: readonly string[]): Promise<number> {
         },
       ) => {
         const mode = requireSendMode(request)
-        const isVote = options.user !== undefined || options.require !== undefined
-        if (mode.kind !== 'direct' && (isVote || options.retry !== undefined)) {
-          request.error('error: -u, --require and --retry need JAYPOST_MODE=direct', {
-            exitCode: 2,
-          })
+        const approvers = resolveApprovers(options.user, process.env)
+        const isVote = approvers.kind === 'listed' || options.require !== undefined
+        if (
+          mode.kind !== 'direct' &&
+          (isVote || options.retry !== undefined || process.env[APPROVERS_ENV_VAR] !== undefined)
+        ) {
+          request.error(
+            `error: -u, --require, --retry and ${APPROVERS_ENV_VAR} need JAYPOST_MODE=direct`,
+            { exitCode: 2 },
+          )
+        }
+        if (approvers.kind === 'empty') {
+          request.error(
+            `error: ${APPROVERS_ENV_VAR} is set but has no ids; a missing GitHub secret is empty too`,
+            { exitCode: 2 },
+          )
         }
         if (
           isVote &&
@@ -656,7 +674,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.format === undefined ? {} : { format: options.format }),
           ...(options.json === undefined ? {} : { json: options.json }),
           ...(attachment === undefined ? {} : { attachment }),
-          ...(options.user === undefined ? {} : { voters: options.user }),
+          ...(approvers.kind === 'listed' ? { voters: approvers.voters } : {}),
           ...(options.require === undefined ? {} : { rule: options.require }),
           ...(options.retry === undefined ? {} : { retryCount: options.retry }),
         }
