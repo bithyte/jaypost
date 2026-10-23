@@ -1,5 +1,5 @@
 import { findProvider, listSecretValues } from '@jaypost/core'
-import type { Provider, SettingValues } from '@jaypost/core'
+import type { Provider, SettingValue, SettingValues } from '@jaypost/core'
 import { PromptAborted } from './prompts.ts'
 import type { ProviderSettingsOptions, ProviderSettingsResult, Prompts } from './types.ts'
 
@@ -98,13 +98,16 @@ async function findDisplayName(
   }
 }
 
-/** Asks for every prompted setting; empty answers are left out. */
+/**
+ * Asks for every prompted setting; empty answers are left out. Answers `parse` rejects are kept
+ * raw, so the credential check refuses them instead of a default silently taking their place.
+ */
 async function promptSettings(
   provider: Provider,
   prompt: Prompts,
   signal: AbortSignal | undefined,
 ): Promise<SettingValues> {
-  const values: Record<string, string> = {}
+  const values: Record<string, SettingValue> = {}
   for (const setting of provider.settings) {
     if (setting.prompt === undefined) {
       continue
@@ -114,7 +117,7 @@ async function promptSettings(
     }
     const answer = await (setting.secret ? prompt.password : prompt.text)(setting.prompt)
     if (answer !== '') {
-      values[setting.configKey] = answer
+      values[setting.configKey] = setting.parse(answer) ?? answer
     }
   }
   return values

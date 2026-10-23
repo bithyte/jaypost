@@ -38,11 +38,13 @@ type McpName = { readonly server: string; readonly tool: string }
 
 /**
  * Builds the chat question for a permission request, within `maxLength`. When the primary field
- * has to be cut, only Deny and Ask in terminal are offered. Never throws.
+ * has to be cut, only Deny and Ask in terminal are offered. Always allow is left out when the chat
+ * app shows fewer than four buttons (`maxOptionCount`). Never throws.
  */
 export function formatPermissionQuestion(
   event: PermissionRequestEvent,
   maxLength: number = MAX_HOOK_TEXT_LENGTH,
+  maxOptionCount: number = Infinity,
 ): HookQuestion {
   const header = cut(
     `${describeActor(event.agentType)} ${describeAction(event)}:`,
@@ -50,12 +52,13 @@ export function formatPermissionQuestion(
   )
   const body = describeBody(event)
   const suggestionLine = describeSuggestions(event.permissionSuggestions)
-  if (suggestionLine !== undefined) {
+  const withAlwaysAllow = [ALLOW_OPTION, ALWAYS_ALLOW_OPTION, DENY_OPTION, ASK_IN_TERMINAL_OPTION]
+  if (suggestionLine !== undefined && withAlwaysAllow.length <= maxOptionCount) {
     const withSuggestion = fitLayout(
       header,
       body,
       `\n\n${suggestionLine}`,
-      [ALLOW_OPTION, ALWAYS_ALLOW_OPTION, DENY_OPTION, ASK_IN_TERMINAL_OPTION],
+      withAlwaysAllow,
       maxLength,
     )
     if (withSuggestion !== undefined) {

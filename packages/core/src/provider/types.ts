@@ -34,6 +34,8 @@ export type CredentialCheck =
   | { readonly ok: false; readonly reason: string }
 
 export type SetupText = {
+  /** What setup reports as checked, like `ntfy topic`; `Bot token` when absent. */
+  readonly checked?: string
   readonly leftoverFound: string
   readonly reusing: (displayName: string) => string
   readonly rejected: string

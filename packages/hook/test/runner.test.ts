@@ -75,7 +75,11 @@ afterEach(async () => {
 })
 
 async function startApi(
-  options: { readonly auth?: ApiAuth; readonly maxTextLength?: number } = {},
+  options: {
+    readonly auth?: ApiAuth
+    readonly maxTextLength?: number
+    readonly maxOptionCount?: number
+  } = {},
 ) {
   const messenger = new RecordingMessenger()
   const notifier = new RecordingNotifier()
@@ -86,6 +90,7 @@ async function startApi(
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: options.maxTextLength ?? 3900,
+      ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
       auth: options.auth ?? NO_AUTH,
@@ -234,6 +239,20 @@ test('sends project, text and buttons to /request', async () => {
     options: ['Allow', 'Always allow', 'Deny', 'Ask in terminal'],
   })
   service.tap(messenger.sent[0]?.id ?? '', 3)
+  expect(await pending).toBe(0)
+})
+
+test('a chat app with three buttons is asked without always allow', async () => {
+  const { port, service, messenger } = await startApi({ maxOptionCount: 3 })
+  const { deps } = createDeps(port, BASH_EVENT)
+  const pending = runHook({}, deps)
+  await waitFor(() => messenger.sent.length === 1)
+  expect(messenger.sent[0]).toEqual({
+    id: expect.any(String),
+    text: '[api]\n\nClaude wants to run Bash:\nnpm test\nRun tests',
+    options: ['Allow', 'Deny', 'Ask in terminal'],
+  })
+  service.tap(messenger.sent[0]?.id ?? '', 2)
   expect(await pending).toBe(0)
 })
 
