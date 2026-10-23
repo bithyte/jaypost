@@ -21,6 +21,7 @@ import {
   runInit,
   runLog,
   runOwner,
+  runPairApprover,
   runResetOwner,
   runSendNotify,
   runSendRequest,
@@ -33,7 +34,14 @@ import {
   writeAll,
 } from './commands/index.ts'
 import { MAX_RETRY_COUNT } from './commands/constants.ts'
-import type { DirectSendDeps, InitArgs, LogArgs, SendDeps, SetupCiArgs } from './commands/index.ts'
+import type {
+  DirectSendDeps,
+  InitArgs,
+  LogArgs,
+  PairApproverArgs,
+  SendDeps,
+  SetupCiArgs,
+} from './commands/index.ts'
 import {
   APPROVERS_ENV_VAR,
   DEFAULT_PORT,
@@ -272,6 +280,17 @@ function runSetupCiCommand(args: SetupCiArgs): Promise<number> {
   )
 }
 
+function runPairApproverCommand(args: PairApproverArgs): Promise<number> {
+  return runWithSignals((controller) =>
+    runPairApprover(args, {
+      prompt: createClackPrompts(controller.signal),
+      providers: PROVIDERS,
+      print: (text) => console.log(text),
+      signal: controller.signal,
+    }),
+  )
+}
+
 function createRealTargets(paths: InstallPaths): Readonly<Record<TargetName, Target>> {
   const userInfo = os.userInfo()
   return createTargets(
@@ -451,6 +470,20 @@ export async function main(argv: readonly string[]): Promise<number> {
         ...(options.provider === undefined ? {} : { provider: options.provider }),
         ...(options.approversOnly === true ? { approversOnly: true } : {}),
       })
+    })
+  const pair = program.command('pair').description('pair someone with the bot for CI')
+  pair
+    .command('approver')
+    .description('pair approvers for direct mode votes and print their ids')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      code = await runPairApproverCommand(
+        options.provider === undefined ? {} : { provider: options.provider },
+      )
     })
   program
     .command('start')

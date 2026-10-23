@@ -65,6 +65,20 @@ test('setup-ci --provider nope exits 2', async () => {
   expect(await main(['setup-ci', '--provider', 'nope'])).toBe(2)
 })
 
+test('pair --help lists approver', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['pair', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call) => String(call[0])).join('')
+  expect(help).toContain('Usage: jaypost pair')
+  expect(help).toMatch(/^\s+approver\b/m)
+})
+
+test('pair approver --provider nope exits 2', async () => {
+  const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['pair', 'approver', '--provider', 'nope'])).toBe(2)
+  expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider')
+})
+
 test('mcp rejects a bad port with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   expect(await main(['mcp', '--port', 'abc'])).toBe(2)

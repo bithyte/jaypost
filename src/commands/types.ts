@@ -254,6 +254,14 @@ export type SetupCiDeps = {
   readonly generateCode?: () => string
 }
 
+/** Parsed `pair approver` flags; absent fields mean the user didn't pass them. */
+export type PairApproverArgs = {
+  readonly provider?: string
+}
+
+/** Everything `runPairApprover` touches outside itself; the same needs as `setup-ci`. */
+export type PairApproverDeps = SetupCiDeps
+
 /** How `setup-ci`'s wait for one pairing code (owner or approver) ended. */
 export type OwnerPairing =
   | { readonly kind: 'paired'; readonly senderId: string }
