@@ -55,7 +55,7 @@ function toCaller(deps: SendDeps): Caller {
   return new Caller({ port: deps.port, readToken: () => deps.token })
 }
 
-/** The question `send request` asks, from its parsed arguments. */
+/** The question `request` asks, from its parsed arguments. */
 export function toQuestion(args: SendRequestArgs): Question {
   return {
     text: args.text,
@@ -69,7 +69,7 @@ export function toQuestion(args: SendRequestArgs): Question {
   }
 }
 
-/** The notification `send notify` sends, from its parsed arguments. */
+/** The notification `notify` sends, from its parsed arguments. */
 export function toMessage(args: SendNotifyArgs): Message {
   return {
     text: args.text,
@@ -79,7 +79,7 @@ export function toMessage(args: SendNotifyArgs): Message {
   }
 }
 
-/** The answer line `send request` prints: the bare answer, or `{ answer, timedOut }` with `json`. */
+/** The answer line `request` prints: the bare answer, or `{ answer, timedOut }` with `json`. */
 export function formatAnswer(answer: string, timedOut: boolean, json: boolean | undefined): string {
   return json === true ? JSON.stringify({ answer, timedOut }) : answer
 }

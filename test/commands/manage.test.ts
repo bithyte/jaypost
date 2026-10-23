@@ -371,7 +371,7 @@ async function startStub(status: number, body: string): Promise<{ port: number; 
   return { port: (stub.address() as AddressInfo).port, seen }
 }
 
-function testDeps(port: number, token: ClientToken, print: (text: string) => void = () => {}) {
+function pingDeps(port: number, token: ClientToken, print: (text: string) => void = () => {}) {
   return {
     port,
     token,
@@ -383,42 +383,42 @@ function testDeps(port: number, token: ClientToken, print: (text: string) => voi
   }
 }
 
-test('test command prints the answer', async () => {
-  const { runTest } = await import('../../src/commands/index.ts')
-  const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
+test('ping sends a notification and says so', async () => {
+  const { runPing } = await import('../../src/commands/index.ts')
+  const { port, seen } = await startStub(200, '{}')
   const log = vi.fn()
-  expect(await runTest(testDeps(port, NO_CLIENT_TOKEN, log))).toBe(0)
-  expect(seen).toEqual([{ url: 'POST /request' }])
-  expect(log).toHaveBeenCalledWith('Decline')
+  expect(await runPing(pingDeps(port, NO_CLIENT_TOKEN, log))).toBe(0)
+  expect(seen).toEqual([{ url: 'POST /notify' }])
+  expect(log).toHaveBeenCalledWith('Sent. Check your chat app.')
 })
 
-test('test sends the token and explains a 401', async () => {
-  const { runTest } = await import('../../src/commands/index.ts')
+test('ping sends the token and explains a 401', async () => {
+  const { runPing } = await import('../../src/commands/index.ts')
   const { port, seen } = await startStub(401, '{"error":"unauthorized"}')
   const token = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await runTest(testDeps(port, { kind: 'token', token, source: 'file' }))).toBe(1)
-  expect(seen).toEqual([{ url: 'POST /request', authorization: `Bearer ${token}` }])
+  expect(await runPing(pingDeps(port, { kind: 'token', token, source: 'file' }))).toBe(1)
+  expect(seen).toEqual([{ url: 'POST /notify', authorization: `Bearer ${token}` }])
   expect(error).toHaveBeenCalledWith(TOKEN_REJECTED_MESSAGE)
 })
 
-test('test with an unusable token fails before calling', async () => {
-  const { runTest } = await import('../../src/commands/index.ts')
-  const { port, seen } = await startStub(200, '{"answer":"Decline","timedOut":true}')
+test('ping with an unusable token fails before calling', async () => {
+  const { runPing } = await import('../../src/commands/index.ts')
+  const { port, seen } = await startStub(200, '{}')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await runTest(testDeps(port, { kind: 'unusable', message: 'bad token here' }))).toBe(1)
+  expect(await runPing(pingDeps(port, { kind: 'unusable', message: 'bad token here' }))).toBe(1)
   expect(seen).toEqual([])
   expect(error).toHaveBeenCalledWith('bad token here')
 })
 
-test('test with the service down reports it', async () => {
-  const { runTest } = await import('../../src/commands/index.ts')
+test('ping with the service down reports it', async () => {
+  const { runPing } = await import('../../src/commands/index.ts')
   const probe = createServer()
   await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve))
   const { port } = probe.address() as AddressInfo
   await new Promise<void>((resolve) => probe.close(() => resolve()))
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await runTest(testDeps(port, NO_CLIENT_TOKEN))).toBe(1)
+  expect(await runPing(pingDeps(port, NO_CLIENT_TOKEN))).toBe(1)
   expect(error).toHaveBeenCalledWith(
     `jaypost service not reachable on 127.0.0.1:${port} (run jaypost status)`,
   )
@@ -523,7 +523,7 @@ test('reset-owner runs clear, restart and pairing as a checklist', async () => {
     'succeed:Cleared the owner',
     'start:Restarting the service',
     'succeed:Restarted the service',
-    'note:Paired. Try it: jaypost test',
+    'note:Paired. Try it: jaypost ping',
   ])
 })
 

@@ -192,7 +192,7 @@ function printApprovers(approvers: readonly string[], print: (text: string) => v
   if (approvers.length === 0) {
     return
   }
-  print('Approvers (pass to send request):')
+  print('Approvers (pass to request):')
   print(approvers.map((id) => `-u ${id}`).join(' '))
 }
 

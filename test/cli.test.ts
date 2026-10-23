@@ -70,31 +70,31 @@ test('mcp rejects a bad port with 2', async () => {
   expect(await main(['mcp', '--port', 'abc'])).toBe(2)
 })
 
-test('send request needs -o or --allow-text', async () => {
+test('request needs -o or --allow-text', async () => {
   const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['send', 'request', 'Deploy?', '-d', 'No'])).toBe(2)
+  expect(await main(['request', 'Deploy?', '-d', 'No'])).toBe(2)
   expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain('--allow-text')
 })
 
-test('send request --allow-text without -o reaches the service', async () => {
+test('request --allow-text without -o reaches the service', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.spyOn(console, 'error').mockImplementation(() => {})
   // An invalid token makes send exit 1 before any network call; a usage error would be 2.
   vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
-  const ask = ['send', 'request', 'Which?', '--allow-text', '-d', 'main']
+  const ask = ['request', 'Which?', '--allow-text', '-d', 'main']
   expect(await main([...ask, '--port', '1'])).toBe(1)
 })
 
-test('send request requires a default, and rejects a bad timeout', async () => {
+test('request requires a default, and rejects a bad timeout', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-o', 'No'])).toBe(2)
-  expect(await main(['send', 'request', 'Deploy?', '-o', 'Yes', '--timeout-option', 'No'])).toBe(2)
-  const ask = ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No']
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '-o', 'No'])).toBe(2)
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '--timeout-option', 'No'])).toBe(2)
+  const ask = ['request', 'Deploy?', '-o', 'Yes', '-d', 'No']
   expect(await main([...ask, '--timeout', '0'])).toBe(2)
   expect(await main([...ask, '--timeout', 'soon'])).toBe(2)
 })
 
-test('send request adds the default as the last button unless an option names it or --allow-text', async () => {
+test('request adds the default as the last button unless an option names it or --allow-text', async () => {
   const bodies: unknown[] = []
   const server = createServer((request, response) => {
     let body = ''
@@ -109,7 +109,7 @@ test('send request adds the default as the last button unless an option names it
   const port = String((server.address() as AddressInfo).port)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    const ask = ['send', 'request', 'Deploy?', '--port', port]
+    const ask = ['request', 'Deploy?', '--port', port]
     expect(await main([...ask, '-o', 'Approve', '-d', 'Decline'])).toBe(0)
     expect(await main([...ask, '-o', 'Decline', '-o', 'Approve', '--default', 'Decline'])).toBe(0)
     expect(await main([...ask, '-o', 'Approve', '--allow-text', '-d', 'Decline'])).toBe(0)
@@ -145,7 +145,7 @@ async function listenForRequests(): Promise<{
   }
 }
 
-test('test --port sends to that port, over the install and JAYPOST_PORT', async () => {
+test('ping --port sends to that port, over the install and JAYPOST_PORT', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
   const flagListener = await listenForRequests()
   const installListener = await listenForRequests()
@@ -159,17 +159,17 @@ test('test --port sends to that port, over the install and JAYPOST_PORT', async 
   vi.stubEnv('JAYPOST_PORT', '1')
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    expect(await main(['test', '--port', String(flagListener.port)])).toBe(0)
+    expect(await main(['ping', '--port', String(flagListener.port)])).toBe(0)
   } finally {
     flagListener.close()
     installListener.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(flagListener.urls).toEqual(['/request'])
+  expect(flagListener.urls).toEqual(['/notify'])
   expect(installListener.urls).toEqual([])
 })
 
-test('test without --port uses the install port over JAYPOST_PORT', async () => {
+test('ping without --port uses the install port over JAYPOST_PORT', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
   const listener = await listenForRequests()
   mkdirSync(join(directory, 'jaypost'))
@@ -182,15 +182,15 @@ test('test without --port uses the install port over JAYPOST_PORT', async () => 
   vi.stubEnv('JAYPOST_PORT', '1')
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    expect(await main(['test'])).toBe(0)
+    expect(await main(['ping'])).toBe(0)
   } finally {
     listener.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(listener.urls).toEqual(['/request'])
+  expect(listener.urls).toEqual(['/notify'])
 })
 
-test('test without --port or an install uses JAYPOST_PORT', async () => {
+test('ping without --port or an install uses JAYPOST_PORT', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
   const listener = await listenForRequests()
   vi.stubEnv('XDG_CONFIG_HOME', directory)
@@ -198,22 +198,38 @@ test('test without --port or an install uses JAYPOST_PORT', async () => {
   vi.stubEnv('JAYPOST_PORT', String(listener.port))
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    expect(await main(['test'])).toBe(0)
+    expect(await main(['ping'])).toBe(0)
   } finally {
     listener.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(listener.urls).toEqual(['/request'])
+  expect(listener.urls).toEqual(['/notify'])
 })
 
-test('test rejects a bad port with 2', async () => {
+test('ping rejects a bad port with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['test', '--port', 'abc'])).toBe(2)
+  expect(await main(['ping', '--port', 'abc'])).toBe(2)
 })
 
-test('send notify requires text', async () => {
+test('notify requires text', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['send', 'notify'])).toBe(2)
+  expect(await main(['notify'])).toBe(2)
+})
+
+test('the old send request, send notify and test spellings still run', async () => {
+  const listener = await listenForRequests()
+  const port = String(listener.port)
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  try {
+    expect(
+      await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--port', port]),
+    ).toBe(0)
+    expect(await main(['send', 'notify', 'hi', '--port', port])).toBe(0)
+    expect(await main(['test', '--port', port])).toBe(0)
+  } finally {
+    listener.close()
+  }
+  expect(listener.urls).toEqual(['/request', '/notify', '/notify'])
 })
 
 test('hook rejects a bad port, a bad timeout and positional arguments with 2', async () => {
@@ -226,15 +242,15 @@ test('hook rejects a bad port, a bad timeout and positional arguments with 2', a
 test('send exits 1 with the message on an invalid JAYPOST_TOKEN', async () => {
   vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await main(['send', 'notify', 'hi', '--port', '1'])).toBe(1)
+  expect(await main(['notify', 'hi', '--port', '1'])).toBe(1)
   expect(error).toHaveBeenCalledWith("jaypost: JAYPOST_TOKEN isn't a valid jaypost token")
 })
 
 test('send rejects an unknown JAYPOST_MODE with 2', async () => {
   const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'bogus')
-  expect(await main(['send', 'request', 'x', '-o', 'a', '-d', 'a'])).toBe(2)
-  expect(await main(['send', 'notify', 'x'])).toBe(2)
+  expect(await main(['request', 'x', '-o', 'a', '-d', 'a'])).toBe(2)
+  expect(await main(['notify', 'x'])).toBe(2)
   expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain(
     'JAYPOST_MODE must be "direct" or "service", got "bogus"',
   )
@@ -245,8 +261,8 @@ test('direct send without a bot token exits 1 naming the env var', async () => {
   vi.stubEnv('JAYPOST_PROVIDER', '')
   vi.stubEnv('JAYPOST_BOT_TOKEN', '')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await main(['send', 'request', 'x', '-o', 'a', '-d', 'a'])).toBe(1)
-  expect(await main(['send', 'notify', 'x'])).toBe(1)
+  expect(await main(['request', 'x', '-o', 'a', '-d', 'a'])).toBe(1)
+  expect(await main(['notify', 'x'])).toBe(1)
   const output = error.mock.calls.map((call) => String(call[0])).join('\n')
   expect(output).toContain('missing bot token; set JAYPOST_BOT_TOKEN')
 })
@@ -283,9 +299,9 @@ test('openapi returns 1 when the file cannot be written', async () => {
 
 test('send rejects an unknown format with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  const ask = ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'Yes']
+  const ask = ['request', 'Deploy?', '-o', 'Yes', '-d', 'Yes']
   expect(await main([...ask, '--format', 'html'])).toBe(2)
-  expect(await main(['send', 'notify', 'hi', '--format', 'html'])).toBe(2)
+  expect(await main(['notify', 'hi', '--format', 'html'])).toBe(2)
 })
 
 function runAuditDump(args: readonly string[], directory: string) {
@@ -385,15 +401,13 @@ test('log writes output larger than a pipe buffer whole, as json and as a table'
 
 test('send --attach-name without --attach exits 2', async () => {
   const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(
-    await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach-name', 'a']),
-  ).toBe(2)
-  expect(await main(['send', 'notify', 'done', '--attach-name', 'a'])).toBe(2)
+  expect(await main(['request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach-name', 'a'])).toBe(2)
+  expect(await main(['notify', 'done', '--attach-name', 'a'])).toBe(2)
   const output = stderr.mock.calls.map((call) => String(call[0])).join('')
   expect(output).toContain("error: option '--attach-name <name>' needs '--attach <file>'")
 })
 
-const REQUEST_ARGS = ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No']
+const REQUEST_ARGS = ['request', 'Deploy?', '-o', 'Yes', '-d', 'No']
 
 test('vote and retry flags need direct mode', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
@@ -410,7 +424,7 @@ test('vote and retry flags need direct mode', async () => {
 test('a vote needs one -o and a different -d without --allow-text', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')
-  const base = ['send', 'request', 'Deploy?']
+  const base = ['request', 'Deploy?']
   expect(await main([...base, '-o', 'Yes', '-o', 'Maybe', '-d', 'No', '-u', '1'])).toBe(2)
   expect(await main([...base, '--allow-text', '-d', 'No', '--require', 'all'])).toBe(2)
   expect(await main([...base, '-o', 'No', '-d', 'No', '-u', '1'])).toBe(2)

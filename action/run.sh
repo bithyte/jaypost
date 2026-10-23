@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs `jaypost send` for the GitHub Action (action.yml): installs the release binary that matches
+# Runs `jaypost request` or `jaypost notify` for the GitHub Action (action.yml): installs the release binary that matches
 # this checkout's package.json version, builds the argv from the inputs and runs it in direct mode.
 # Reads INPUT_COMMAND, INPUT_TEXT, INPUT_OPTIONS, INPUT_DEFAULT, INPUT_TIMEOUT, INPUT_ALLOW_TEXT,
 # INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID (JAYPOST_MODE and
@@ -68,7 +68,7 @@ fi
 
 project="${INPUT_PROJECT:-${GITHUB_REPOSITORY#*/}}"
 run_link="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-args=(send "$command_name" "--project=$project")
+args=("$command_name" "--project=$project")
 if [ -n "${INPUT_FORMAT:-}" ]; then
   args+=("--format=$INPUT_FORMAT")
 fi

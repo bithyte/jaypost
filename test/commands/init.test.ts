@@ -131,7 +131,7 @@ test('fresh install: default target, default port, writes install record', async
     expect.objectContaining({ port: 8787, settings: { botToken: 'good-token' }, version: '1.2.3' }),
   )
   expect(readInstall(paths.installFile)?.target).toBe('quadlet')
-  expect(notes().join('\n')).toContain('Done. Try it: jaypost test')
+  expect(notes().join('\n')).toContain('Done. Try it: jaypost ping')
 })
 
 test('passes the time zone to the target install when given', async () => {
@@ -553,7 +553,7 @@ test('single provider: no provider prompt and unchanged output', async () => {
   expect(d.prompt.select).toHaveBeenCalledTimes(1)
   expect(vi.mocked(d.prompt.select).mock.calls[0]?.[0]).toBe('Where should the bot run?')
   expect(notes()).toEqual([
-    'Done. Try it: jaypost test',
+    'Done. Try it: jaypost ping',
     'Check state: jaypost status',
     savedToLine(),
     'Logs: logs for quadlet',

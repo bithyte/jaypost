@@ -82,7 +82,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     return 1
   }
   if (result === 'paired') {
-    print('Paired. Try it: jaypost test')
+    print('Paired. Try it: jaypost ping')
     return 0
   }
   if (result === 'interrupted') {

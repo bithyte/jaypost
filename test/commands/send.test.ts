@@ -422,14 +422,11 @@ function runCli(args: readonly string[], port: number, stdin?: Readable | string
   })
 }
 
-test('send request --attach sends the file', async () => {
+test('request --attach sends the file', async () => {
   const { port, service, messenger } = await startApi()
   const path = join(createTempDirectory(), 'notes.md')
   writeFileSync(path, '# notes')
-  const pending = runCli(
-    ['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach', path],
-    port,
-  )
+  const pending = runCli(['request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--attach', path], port)
   await waitFor(() => messenger.sent.length === 1)
   service.tap(messenger.sent[0]?.id ?? '', 0)
   expect(await pending).toEqual({ code: 0, stdout: 'Yes\n', stderr: '' })
@@ -437,23 +434,23 @@ test('send request --attach sends the file', async () => {
   expect(Buffer.from(messenger.attachments[0]?.content ?? []).toString()).toBe('# notes')
 })
 
-test('send notify --attach - reads stdin with the default name', async () => {
+test('notify --attach - reads stdin with the default name', async () => {
   const { port, notifier } = await startApi()
-  const result = await runCli(['send', 'notify', 'done', '--attach', '-'], port, 'hello')
+  const result = await runCli(['notify', 'done', '--attach', '-'], port, 'hello')
   expect(result).toEqual({ code: 0, stdout: '', stderr: '' })
   expect(notifier.attachments[0]?.name).toBe('attachment.txt')
   expect(Buffer.from(notifier.attachments[0]?.content ?? []).toString()).toBe('hello')
 })
 
-test('send notify --attach - --attach-name uses the name', async () => {
+test('notify --attach - --attach-name uses the name', async () => {
   const { port, notifier } = await startApi()
-  const args = ['send', 'notify', 'done', '--attach', '-', '--attach-name', 'changes.diff']
+  const args = ['notify', 'done', '--attach', '-', '--attach-name', 'changes.diff']
   const result = await runCli(args, port, 'diff')
   expect(result.code).toBe(0)
   expect(notifier.attachments[0]?.name).toBe('changes.diff')
 })
 
-test('send notify --attach - stops at the size cap on an endless stdin', async () => {
+test('notify --attach - stops at the size cap on an endless stdin', async () => {
   const { port, notifier } = await startApi()
   const endless = Readable.from(
     (function* () {
@@ -462,7 +459,7 @@ test('send notify --attach - stops at the size cap on an endless stdin', async (
       }
     })(),
   )
-  const result = await runCli(['send', 'notify', 'done', '--attach', '-'], port, endless)
+  const result = await runCli(['notify', 'done', '--attach', '-'], port, endless)
   endless.destroy()
   expect(result.code).toBe(1)
   expect(result.stderr).toBe(

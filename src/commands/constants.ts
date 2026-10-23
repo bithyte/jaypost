@@ -20,9 +20,9 @@ export const UNAUTHORIZED_STATUS = { kind: 'unauthorized' } as const satisfies S
 /** No usable /status answer: not up yet, a network error or an unexpected body. */
 export const UNREACHABLE_STATUS = { kind: 'unreachable' } as const satisfies StatusFetch
 
-/** Direct `send request` exit code when the answer is the `-d` value or the timeout fired. */
+/** Direct `request` exit code when the answer is the `-d` value or the timeout fired. */
 export const DECLINED_EXIT_CODE = 3
-/** Most re-asks `send request --retry` accepts. */
+/** Most re-asks `request --retry` accepts. */
 export const MAX_RETRY_COUNT = 100
 /** Shown for a failed provider send; the cause can hold provider internals, so it's left out. */
 export const DIRECT_SEND_FAILED_MESSAGE = 'failed to send message'

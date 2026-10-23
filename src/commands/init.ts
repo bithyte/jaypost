@@ -282,7 +282,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     progress,
   })
   if (result === 'paired') {
-    print('Done. Try it: jaypost test')
+    print('Done. Try it: jaypost ping')
     print('Check state: jaypost status')
     print(
       auth.kind === 'token'

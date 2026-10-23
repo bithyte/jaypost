@@ -21,12 +21,12 @@ import {
   runInit,
   runLog,
   runOwner,
+  runPing,
   runResetOwner,
   runSendNotify,
   runSendRequest,
   runSetupCi,
   runStatus,
-  runTest,
   runUninstall,
   runUpdate,
   runWithSignals,
@@ -474,6 +474,18 @@ function runUpdateCommand(isFinish: boolean): Promise<number> {
   )
 }
 
+/** Maps the old `send request`, `send notify` and `test` spellings so existing scripts keep working. */
+function toCurrentArgv(argv: readonly string[]): readonly string[] {
+  const [first, second] = argv
+  if (first === 'send' && (second === 'request' || second === 'notify')) {
+    return argv.slice(1)
+  }
+  if (first === 'test') {
+    return ['ping', ...argv.slice(1)]
+  }
+  return argv
+}
+
 /** Takes argv without node and script path; returns the exit code (2 for usage errors). */
 export async function main(argv: readonly string[]): Promise<number> {
   let code = 0
@@ -519,7 +531,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         PROVIDERS.map((provider) => provider.name),
       ),
     )
-    .option('--approvers-only', 'skip the owner and only pair approvers for send request -u')
+    .option('--approvers-only', 'skip the owner and only pair approvers for request -u')
     .action(async (options: { readonly provider?: string; readonly approversOnly?: boolean }) => {
       code = await runSetupCiCommand({
         ...(options.provider === undefined ? {} : { provider: options.provider }),
@@ -563,8 +575,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       },
     )
   program
-    .command('test')
-    .description('send a test approval request')
+    .command('ping')
+    .description('send a test message to check the service and pairing')
     .option(
       '--port <n>',
       'API port (default: the install, then JAYPOST_PORT, then 8787)',
@@ -575,7 +587,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         options.port ?? readInstall(resolveInstallPaths().installFile)?.port ?? resolvePort()
       const progress = createStderrProgress()
       const runLive = (controller: AbortController) =>
-        runTest({
+        runPing({
           port,
           token: resolveClientToken(process.env, resolveTokenFile(process.env)),
           progress,
@@ -584,7 +596,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           print: createAnswerPrint(progress),
           printError: (text) => console.error(text),
         })
-      // Off a terminal the sync ask has no handler, as before: a signal ends the process.
+      // Off a terminal there's no signal handler, as before: a signal ends the process.
       code =
         progress.mode === 'live'
           ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
@@ -638,10 +650,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .action((file: string | undefined, options: { readonly port?: number }) => {
       code = runOpenApiCommand(file, options.port)
     })
-  const send = program
-    .command('send')
-    .description('ask a question or send a notification from a script')
-  const request = send
+  const request = program
     .command('request')
     .description('ask a question and print the answer')
     .argument('<text>', 'question to show')
@@ -764,7 +773,7 @@ export async function main(argv: readonly string[]): Promise<number> {
             : await runSendRequestWithSignals(args, options.port)
       },
     )
-  const notify = send
+  const notify = program
     .command('notify')
     .description("send a message that doesn't need an answer")
     .argument('<text>', 'message to show')
@@ -873,7 +882,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       code = runAudit(args)
     })
   try {
-    await program.parseAsync(argv.length === 0 ? ['--help'] : argv, {
+    await program.parseAsync(argv.length === 0 ? ['--help'] : toCurrentArgv(argv), {
       from: 'user',
     })
   } catch (error) {

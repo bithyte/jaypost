@@ -20,13 +20,13 @@ jaypost status
 
 Shows the target, version, port, where the token comes from (never its value), whether the service is running, and pairing state (with the code and instructions if unpaired).
 
-### `jaypost test`
+### `jaypost ping`
 
 ```
-jaypost test [--port N]
+jaypost ping [--port N]
 ```
 
-Sends "This is a test" with Approve/Decline buttons (Decline on timeout) and prints the response.
+Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
 
 ### `jaypost reset-owner`
 
@@ -60,21 +60,21 @@ For systemd and launchd the npm package stays; `uninstall` prints the command to
 
 ## Asking and notifying
 
-### `jaypost send request`
+### `jaypost request`
 
 ```
-jaypost send request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
+jaypost request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
 ```
 
-Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` only work in [direct mode](ci.md). See [From the shell](scripts.md#from-the-shell).
+Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` only work in [direct mode](ci.md). See [From the shell](scripts.md#from-the-shell). `jaypost send request` still works as the old name.
 
-### `jaypost send notify`
+### `jaypost notify`
 
 ```
-jaypost send notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
+jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
 ```
 
-Sends a message that doesn't need an answer. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell).
+Sends a message that doesn't need an answer. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell). `jaypost send notify` still works as the old name.
 
 ### `jaypost mcp`
 

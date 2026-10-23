@@ -193,7 +193,7 @@ export type UpdateDeps = {
   readonly timeZone?: string
 }
 
-/** `send request` input; `timeout` in seconds, capped to 86400 (24 h) by the service. */
+/** `request` input; `timeout` in seconds, capped to 86400 (24 h) by the service. */
 export type SendRequestArgs = {
   readonly text: string
   /** Button labels; required unless `allowText`. */
@@ -216,7 +216,7 @@ export type SendRequestArgs = {
   readonly retryCount?: number
 }
 
-/** `send notify` input. */
+/** `notify` input. */
 export type SendNotifyArgs = {
   readonly text: string
   readonly project?: string
@@ -242,8 +242,8 @@ export type SendDeps = {
   readonly wallNow?: () => number
 }
 
-/** Everything `runTest` touches outside itself, injected for tests. */
-export type TestDeps = {
+/** Everything `runPing` touches outside itself, injected for tests. */
+export type PingDeps = {
   readonly port: number
   readonly token: ClientToken
   readonly progress: Progress

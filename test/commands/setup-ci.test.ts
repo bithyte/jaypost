@@ -336,7 +336,7 @@ async function pairWhenShown(
   return runtimes[0]?.handlers?.pair?.(senderId, code)
 }
 
-const APPROVERS_HEADING = 'Approvers (pass to send request):'
+const APPROVERS_HEADING = 'Approvers (pass to request):'
 
 test('pairs approvers after the owner and prints their -u line last', async () => {
   const { provider, stop } = createProvider()
