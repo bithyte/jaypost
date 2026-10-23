@@ -1,11 +1,7 @@
 import { expect, test } from 'vite-plus/test'
-import {
-  DEFAULT_PROVIDER,
-  findProvider,
-  PROVIDERS,
-  RESERVED_CONFIG_KEYS,
-  RESERVED_ENV_VARS,
-} from '../../src/provider/index.ts'
+import { RESERVED_CONFIG_KEYS, RESERVED_ENV_VARS } from '../../src/config/index.ts'
+import { DEFAULT_PROVIDER, findProvider } from '../../src/provider/index.ts'
+import { PROVIDERS } from '../../src/registry/index.ts'
 
 test('settings are unique within a provider', () => {
   for (const provider of PROVIDERS) {

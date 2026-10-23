@@ -1,4 +1,5 @@
 import packageJson from '../../package.json' with { type: 'json' }
+import { TOKEN_ENV_VAR } from '../auth/constants.ts'
 
 /** Package version, read from package.json when the module loads. */
 export const VERSION: string = packageJson.version
@@ -24,3 +25,21 @@ export const INIT_HINT = 'run `jaypost init` to set up the bot'
 export const INTEGER_PATTERN = /^-?\d+$/
 /** Owner read/write only, for files that hold provider secrets. */
 export const SECRET_FILE_MODE = 0o600
+/** Config keys jaypost itself reads; no provider setting may use them. */
+export const RESERVED_CONFIG_KEYS: readonly string[] = [
+  'provider',
+  'port',
+  'apiToken',
+  'quietHours',
+  'mutedUntil',
+]
+/** Env vars jaypost itself reads; no provider setting may use them. */
+export const RESERVED_ENV_VARS: readonly string[] = [
+  PROVIDER_ENV_VAR,
+  PORT_ENV_VAR,
+  HOST_ENV_VAR,
+  'JAYPOST_CONFIG',
+  TOKEN_ENV_VAR,
+  MODE_ENV_VAR,
+  'TZ',
+]

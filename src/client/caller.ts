@@ -1,6 +1,6 @@
 import { MAX_WAIT_SECONDS } from '../approval/constants.ts'
-import { statusInfoSchema } from '../server/schema.ts'
-import type { StatusInfo } from '../server/types.ts'
+import { statusInfoSchema } from '../protocol/index.ts'
+import type { StatusInfo } from '../protocol/index.ts'
 import { checkAttachmentLimit, readAttachment } from './attachment.ts'
 import { FETCH_GRACE_MS } from './constants.ts'
 import {

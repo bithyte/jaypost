@@ -1,10 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import type { RequestRecord } from '../approval/index.ts'
 import { SECRET_FILE_MODE } from '../config/index.ts'
+import type { NotificationRecord } from '../notify/index.ts'
 import { isMissingFileError, writeFileAtomic } from '../system/index.ts'
 import { STATE_FILE_NAME, STATE_VERSION } from './constants.ts'
 import { parseState } from './parser.ts'
-import type { NotificationRecord, RequestRecord, SavedState } from './types.ts'
+import type { SavedState } from './types.ts'
 
 /** state.json lives next to the config file. */
 export function resolveStatePath(configPath: string): string {

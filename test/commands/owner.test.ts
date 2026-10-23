@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { runOwner } from '../../src/commands/index.ts'
 import { createFakeProvider, createPairingFakeProvider } from '../provider/fake.ts'
-import { PROVIDERS } from '../../src/provider/index.ts'
+import { PROVIDERS } from '../../src/registry/index.ts'
 
 let file: string
 let env: NodeJS.ProcessEnv

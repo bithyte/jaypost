@@ -1,7 +1,7 @@
 import { expect, test } from 'vite-plus/test'
 import { MAX_ATTACHMENT_BYTES } from '../../src/approval/index.ts'
 import { loadConfig } from '../../src/config/index.ts'
-import { PROVIDERS } from '../../src/provider/index.ts'
+import { PROVIDERS, SERVICE_PROVIDERS } from '../../src/registry/index.ts'
 import { terminalProvider } from '../../src/terminal/index.ts'
 
 test('identity and limits', () => {
@@ -18,10 +18,13 @@ test('init does not offer it', () => {
 })
 
 test('the service loads it from JAYPOST_PROVIDER=terminal with no config file', () => {
-  const config = loadConfig({
-    JAYPOST_PROVIDER: 'terminal',
-    JAYPOST_CONFIG: '/nonexistent/config.json',
-  })
+  const config = loadConfig(
+    {
+      JAYPOST_PROVIDER: 'terminal',
+      JAYPOST_CONFIG: '/nonexistent/config.json',
+    },
+    SERVICE_PROVIDERS,
+  )
   expect(config.provider).toBe(terminalProvider)
   expect(config.settings).toEqual({})
 })

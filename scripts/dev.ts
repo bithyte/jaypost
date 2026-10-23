@@ -24,8 +24,8 @@ import {
   DEFAULT_PROVIDER,
   findProvider,
   requireProvider,
-  SERVICE_PROVIDERS,
 } from '../src/provider/index.ts'
+import { SERVICE_PROVIDERS } from '../src/registry/index.ts'
 
 const DEV_PORT = '8788'
 const FIRST_RUN_PROVIDER = 'terminal'

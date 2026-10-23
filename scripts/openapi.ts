@@ -3,10 +3,10 @@ import { writeFileSync } from 'node:fs'
 import { DEFAULT_PORT } from '../src/config/index.ts'
 import {
   DEFAULT_PROVIDER,
-  PROVIDERS,
   requireProvider,
   resolveMaxAttachmentBytes,
 } from '../src/provider/index.ts'
+import { PROVIDERS } from '../src/registry/index.ts'
 import { formatOpenApiYaml } from '../src/server/index.ts'
 
 const provider = requireProvider(PROVIDERS, DEFAULT_PROVIDER)

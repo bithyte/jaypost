@@ -4,11 +4,11 @@ import {
   findOwnerSetting,
   hasRequiredSecrets,
   listSecretValues,
-  PROVIDERS,
   requireProvider,
   resolveMaxAttachmentBytes,
   resolveVoters,
 } from '../../src/provider/index.ts'
+import { PROVIDERS } from '../../src/registry/index.ts'
 import { MAX_ATTACHMENT_BYTES } from '../../src/approval/index.ts'
 import { createFakeProvider } from './fake.ts'
 

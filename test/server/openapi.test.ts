@@ -4,10 +4,10 @@ import { parse } from 'yaml'
 import { DEFAULT_PORT } from '../../src/config/index.ts'
 import {
   DEFAULT_PROVIDER,
-  PROVIDERS,
   requireProvider,
   resolveMaxAttachmentBytes,
 } from '../../src/provider/index.ts'
+import { PROVIDERS } from '../../src/registry/index.ts'
 import { createOpenApiDocument, formatOpenApiYaml } from '../../src/server/index.ts'
 
 test('docs/openapi.yaml is up to date (vp run openapi)', () => {

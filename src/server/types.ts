@@ -1,12 +1,8 @@
-import type { z } from 'zod'
 import type { ApprovalService } from '../approval/index.ts'
 import type { ApiAuth } from '../auth/index.ts'
 import type { NotificationService } from '../notify/index.ts'
+import type { StatusInfo } from '../protocol/index.ts'
 import type { VoterIds } from '../provider/index.ts'
-import type { statusInfoSchema } from './schema.ts'
-
-/** Body of /status: paired, or the pairing code to send to the bot. */
-export type StatusInfo = Readonly<z.infer<typeof statusInfoSchema>>
 
 /**
  * One bot behind the HTTP API: its questions, notifications, pairing state and its provider's

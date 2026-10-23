@@ -1,5 +1,4 @@
-import type { FormattedText } from '../format/index.ts'
-import type { RequestRecord } from '../state/index.ts'
+import type { FormattedText, Span } from '../format/index.ts'
 import type { ApprovalService } from './service.ts'
 
 /** A file sent along with a message; `content` is never empty and `name` is a safe file name. */
@@ -146,6 +145,17 @@ export type Messenger = {
     message: FormattedText,
     buttons: MessageButtons | undefined,
   ) => Promise<void>
+}
+
+/**
+ * A pending approval request. `reference` is the provider's opaque message reference; `spans` is
+ * omitted for plain text (and in files written before formatting existed).
+ */
+export type RequestRecord = {
+  readonly id: string
+  readonly reference: unknown
+  readonly text: string
+  readonly spans?: readonly Span[]
 }
 
 /** Where in-flight requests are saved so a restart can expire them; calls must not throw. */

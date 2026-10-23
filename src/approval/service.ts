@@ -9,7 +9,6 @@ import {
 } from './constants.ts'
 import { formatFinalText } from './formatter.ts'
 import { PendingRequests } from './pending.ts'
-import type { RequestRecord } from '../state/index.ts'
 import type {
   ApprovalRequest,
   ApprovalServiceOptions,
@@ -22,6 +21,7 @@ import type {
   Messenger,
   OpenedRequest,
   PendingSummary,
+  RequestRecord,
   RequestResult,
   RequestState,
   RequestStore,

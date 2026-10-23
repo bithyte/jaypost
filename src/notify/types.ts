@@ -1,6 +1,5 @@
 import type { Attachment, MessageReference } from '../approval/index.ts'
 import type { FormattedText } from '../format/index.ts'
-import type { NotificationRecord } from '../state/index.ts'
 
 /** As produced by `parseNotifyRequest`. */
 export type NotifyRequest = {
@@ -40,6 +39,13 @@ export type Notifier = {
     attachment: Attachment | undefined,
   ) => Promise<MessageReference>
   readonly deleteMessage?: (reference: MessageReference) => Promise<void>
+}
+
+/** A sent notification that is still waiting for its expiry. */
+export type NotificationRecord = {
+  readonly id: string
+  readonly reference: unknown
+  readonly expiresAtMs: number
 }
 
 /** Where live notifications are saved so a restart can still expire them; calls must not throw. */

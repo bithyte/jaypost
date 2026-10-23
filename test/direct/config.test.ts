@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test'
 import { loadDirectConfig } from '../../src/direct/index.ts'
-import { PROVIDERS } from '../../src/provider/index.ts'
+import { PROVIDERS } from '../../src/registry/index.ts'
 import { createPairingFakeProvider } from '../provider/fake.ts'
 
 const FAKE = createPairingFakeProvider()

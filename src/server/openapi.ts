@@ -11,8 +11,8 @@ import {
 } from '../approval/index.ts'
 import { VERSION } from '../config/index.ts'
 import { createNotifyRequestSchema } from '../notify/index.ts'
+import { statusInfoSchema } from '../protocol/index.ts'
 import { MAX_BODY_BYTES } from './constants.ts'
-import { statusInfoSchema } from './schema.ts'
 import type { OpenApiOptions } from './types.ts'
 
 type JsonSchema = z.core.JSONSchema.BaseSchema

@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import type { FormattedText } from '../../src/format/index.ts'
 import { ApprovalService, RESULT_TTL_MS, SendError } from '../../src/approval/index.ts'
-import type { RequestRecord } from '../../src/state/index.ts'
 import type {
   ApprovalRequest,
   Attachment,
@@ -9,6 +8,7 @@ import type {
   MessageEnding,
   MessageReference,
   Messenger,
+  RequestRecord,
   RequestState,
 } from '../../src/approval/index.ts'
 

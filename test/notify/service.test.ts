@@ -4,12 +4,12 @@ import type { FormattedText } from '../../src/format/index.ts'
 import type { Attachment, MessageReference } from '../../src/approval/index.ts'
 import { NOTIFICATION_TTL_MS, NotificationService } from '../../src/notify/index.ts'
 import type {
+  NotificationRecord,
   Notifier,
   NotificationServiceOptions,
   QuietSource,
   SendNotificationOptions,
 } from '../../src/notify/index.ts'
-import type { NotificationRecord } from '../../src/state/index.ts'
 
 const NOW = 1_792_400_000_000
 const REFERENCE: MessageReference = { chatId: 1, messageId: 9 }

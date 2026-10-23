@@ -19,7 +19,7 @@ import {
   TOO_OLD_MESSAGE,
   VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
-import { voteReportSchema } from '../server/schema.ts'
+import { voteReportSchema } from '../protocol/index.ts'
 import { describeEndpoint, isLoopbackEndpoint, resolveApiUrl } from './endpoint.ts'
 import type {
   ApiMethod,

@@ -58,6 +58,7 @@ export type {
   OwnerCommandOptions,
   ParseResult,
   PendingSummary,
+  RequestRecord,
   RequestResult,
   RequestState,
   RequestStore,

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { loadConfig, resolveConfigPath } from '../config/index.ts'
 import type { Config } from '../config/index.ts'
+import { SERVICE_PROVIDERS } from '../registry/index.ts'
 import { createApiServer, createSingleBotRouter } from '../server/index.ts'
 import { startBot } from './bot.ts'
 import type { ServiceOptions } from './bot.ts'
@@ -42,7 +43,7 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
 export async function runService(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   let config: Config
   try {
-    config = loadConfig(env)
+    config = loadConfig(env, SERVICE_PROVIDERS)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)

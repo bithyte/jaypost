@@ -1,8 +1,8 @@
 import { SendError } from '../approval/index.ts'
 import type { MessageReference } from '../approval/index.ts'
-import type { NotificationRecord } from '../state/index.ts'
 import { MAX_NOTIFICATION_TTL_MS, MAX_TIMER_DELAY_MS, NOTIFICATION_TTL_MS } from './constants.ts'
 import type {
+  NotificationRecord,
   NotificationServiceOptions,
   NotificationStore,
   Notifier,

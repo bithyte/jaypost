@@ -4,13 +4,9 @@ import {
   resolveConfigPath,
   updateConfigFile,
 } from '../config/index.ts'
-import {
-  DEFAULT_PROVIDER,
-  findOwnerSetting,
-  PROVIDERS,
-  requireProvider,
-} from '../provider/index.ts'
+import { DEFAULT_PROVIDER, findOwnerSetting, requireProvider } from '../provider/index.ts'
 import type { Provider } from '../provider/index.ts'
+import { PROVIDERS } from '../registry/index.ts'
 
 /** Hidden helper; runs inside containers so the CLI can read/clear the owner in the data volume. */
 export function runOwner(

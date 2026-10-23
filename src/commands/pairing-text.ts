@@ -1,4 +1,4 @@
-import type { StatusInfo } from '../server/index.ts'
+import type { StatusInfo } from '../protocol/index.ts'
 import { formatLegacyInstructions } from '../telegram/index.ts'
 
 /**

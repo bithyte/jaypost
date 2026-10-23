@@ -5,10 +5,11 @@ import type { Config } from '../config/index.ts'
 import { NotificationService } from '../notify/index.ts'
 import { formatCode, generateCode as generateDefaultCode, Pairing } from '../pairing/index.ts'
 import type { PairResult } from '../pairing/index.ts'
+import type { StatusInfo } from '../protocol/index.ts'
 import { findOwnerSetting, resolveMaxAttachmentBytes, resolveVoters } from '../provider/index.ts'
 import type { RuntimeHandlers, SettingValues } from '../provider/index.ts'
 import { QUIET_COMMANDS, QuietService } from '../quiet/index.ts'
-import type { ApiBot, StatusInfo } from '../server/index.ts'
+import type { ApiBot } from '../server/index.ts'
 import { resolveStatePath, StateStore } from '../state/index.ts'
 
 export type ServiceOptions = {

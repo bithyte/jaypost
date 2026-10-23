@@ -11,7 +11,7 @@ import {
   readConfigFile,
   updateConfigFile,
 } from '../../src/config/index.ts'
-import { PROVIDERS } from '../../src/provider/index.ts'
+import { PROVIDERS, SERVICE_PROVIDERS } from '../../src/registry/index.ts'
 import { createFakeProvider } from '../provider/fake.ts'
 
 const TELEGRAM = PROVIDERS[0]
@@ -40,7 +40,7 @@ test('resolveConfigPath precedence: JAYPOST_CONFIG > XDG_CONFIG_HOME > HOME', ()
 
 test('save then load roundtrip, host defaults to 127.0.0.1', () => {
   updateConfigFile(file, { botToken: 'tok', ownerId: 7, port: 9000 })
-  expect(loadConfig({ JAYPOST_CONFIG: file })).toEqual({
+  expect(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 'tok', ownerId: 7 },
     port: 9000,
@@ -51,10 +51,12 @@ test('save then load roundtrip, host defaults to 127.0.0.1', () => {
 
 test('port defaults to DEFAULT_PORT', () => {
   updateConfigFile(file, { botToken: 'tok', ownerId: 7, port: DEFAULT_PORT })
-  expect(loadConfig({ JAYPOST_CONFIG: file }).port).toBe(8787)
+  expect(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS).port).toBe(8787)
   expect(
-    loadConfig({ JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1', JAYPOST_CONFIG: join(dir, 'no') })
-      .port,
+    loadConfig(
+      { JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1', JAYPOST_CONFIG: join(dir, 'no') },
+      SERVICE_PROVIDERS,
+    ).port,
   ).toBe(8787)
 })
 
@@ -71,13 +73,16 @@ test('saved file has mode 0o600, including when it already existed', () => {
 test('env overrides file values; env-only config works with no file', () => {
   updateConfigFile(file, { botToken: 'filetok', ownerId: 1, port: 1111 })
   expect(
-    loadConfig({
-      JAYPOST_CONFIG: file,
-      JAYPOST_BOT_TOKEN: 'envtok',
-      JAYPOST_OWNER_ID: '42',
-      JAYPOST_PORT: '2222',
-      JAYPOST_HOST: '0.0.0.0',
-    }),
+    loadConfig(
+      {
+        JAYPOST_CONFIG: file,
+        JAYPOST_BOT_TOKEN: 'envtok',
+        JAYPOST_OWNER_ID: '42',
+        JAYPOST_PORT: '2222',
+        JAYPOST_HOST: '0.0.0.0',
+      },
+      SERVICE_PROVIDERS,
+    ),
   ).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 'envtok', ownerId: 42 },
@@ -86,11 +91,14 @@ test('env overrides file values; env-only config works with no file', () => {
     auth: NO_AUTH,
   })
   expect(
-    loadConfig({
-      JAYPOST_CONFIG: join(dir, 'missing.json'),
-      JAYPOST_BOT_TOKEN: 't',
-      JAYPOST_OWNER_ID: '42',
-    }),
+    loadConfig(
+      {
+        JAYPOST_CONFIG: join(dir, 'missing.json'),
+        JAYPOST_BOT_TOKEN: 't',
+        JAYPOST_OWNER_ID: '42',
+      },
+      SERVICE_PROVIDERS,
+    ),
   ).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 't', ownerId: 42 },
@@ -103,13 +111,16 @@ test('env overrides file values; env-only config works with no file', () => {
 test('empty-string env vars count as unset', () => {
   updateConfigFile(file, { botToken: 'filetok', ownerId: 1, port: 1111 })
   expect(
-    loadConfig({
-      JAYPOST_CONFIG: file,
-      JAYPOST_BOT_TOKEN: '',
-      JAYPOST_OWNER_ID: '',
-      JAYPOST_PORT: '',
-      JAYPOST_HOST: '',
-    }),
+    loadConfig(
+      {
+        JAYPOST_CONFIG: file,
+        JAYPOST_BOT_TOKEN: '',
+        JAYPOST_OWNER_ID: '',
+        JAYPOST_PORT: '',
+        JAYPOST_HOST: '',
+      },
+      SERVICE_PROVIDERS,
+    ),
   ).toEqual({
     provider: TELEGRAM,
     settings: { botToken: 'filetok', ownerId: 1 },
@@ -122,27 +133,35 @@ test('empty-string env vars count as unset', () => {
 test('empty string in the file counts as missing', () => {
   const file = join(dir, 'empty.json')
   writeFileSync(file, JSON.stringify({ botToken: '' }))
-  expect(() => loadConfig({ JAYPOST_CONFIG: file, JAYPOST_OWNER_ID: '1' })).toThrow(
-    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
-  )
+  expect(() =>
+    loadConfig({ JAYPOST_CONFIG: file, JAYPOST_OWNER_ID: '1' }, SERVICE_PROVIDERS),
+  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
 })
 
 test('missing token or non-integer JAYPOST_OWNER_ID throws mentioning init', () => {
   const none = join(dir, 'none.json')
-  expect(() => loadConfig({ JAYPOST_CONFIG: none, JAYPOST_OWNER_ID: '1' })).toThrow(
-    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
-  )
   expect(() =>
-    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: 'abc' }),
+    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_OWNER_ID: '1' }, SERVICE_PROVIDERS),
+  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
+  expect(() =>
+    loadConfig(
+      { JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: 'abc' },
+      SERVICE_PROVIDERS,
+    ),
   ).toThrow('invalid owner id; run `jaypost init` to set up the bot (or set JAYPOST_OWNER_ID)')
   expect(() =>
-    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1.5' }),
+    loadConfig(
+      { JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1.5' },
+      SERVICE_PROVIDERS,
+    ),
   ).toThrow(/jaypost init/)
 })
 
 test('missing owner is undefined, not an error', () => {
   const none = join(dir, 'none.json')
-  expect(loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't' }).settings).toEqual({
+  expect(
+    loadConfig({ JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't' }, SERVICE_PROVIDERS).settings,
+  ).toEqual({
     botToken: 't',
   })
 })
@@ -162,7 +181,7 @@ test('updateConfigFile merges, null deletes, keeps 0600', () => {
 
 test('updateConfigFile does not copy env values into the file', () => {
   updateConfigFile(file, { ownerId: 1 })
-  loadConfig({ JAYPOST_CONFIG: file, JAYPOST_BOT_TOKEN: 'envtok' })
+  loadConfig({ JAYPOST_CONFIG: file, JAYPOST_BOT_TOKEN: 'envtok' }, SERVICE_PROVIDERS)
   expect(readConfigFile(file)).toEqual({ ownerId: 1 })
 })
 
@@ -173,26 +192,29 @@ test('configDir is the directory of the default config path', () => {
 
 test.each(['0', '65536', '-1', 'abc', '80.5'])('invalid port %s throws', (p) => {
   expect(() =>
-    loadConfig({
-      JAYPOST_CONFIG: join(dir, 'none.json'),
-      JAYPOST_BOT_TOKEN: 't',
-      JAYPOST_OWNER_ID: '1',
-      JAYPOST_PORT: p,
-    }),
+    loadConfig(
+      {
+        JAYPOST_CONFIG: join(dir, 'none.json'),
+        JAYPOST_BOT_TOKEN: 't',
+        JAYPOST_OWNER_ID: '1',
+        JAYPOST_PORT: p,
+      },
+      SERVICE_PROVIDERS,
+    ),
   ).toThrow(/port/i)
 })
 
 test('malformed config file gives readable error with path', () => {
   const bad = join(dir, 'bad.json')
   writeFileSync(bad, '{"botToken": "SECRET123" oops')
-  expect(() => loadConfig({ JAYPOST_CONFIG: bad })).toThrow(bad)
-  expect(() => loadConfig({ JAYPOST_CONFIG: bad })).toThrow(/invalid JSON/)
-  expect(() => loadConfig({ JAYPOST_CONFIG: bad })).not.toThrow(/SECRET123/)
+  expect(() => loadConfig({ JAYPOST_CONFIG: bad }, SERVICE_PROVIDERS)).toThrow(bad)
+  expect(() => loadConfig({ JAYPOST_CONFIG: bad }, SERVICE_PROVIDERS)).toThrow(/invalid JSON/)
+  expect(() => loadConfig({ JAYPOST_CONFIG: bad }, SERVICE_PROVIDERS)).not.toThrow(/SECRET123/)
 })
 
 test('old config without provider loads as telegram', () => {
   updateConfigFile(file, { botToken: 't', ownerId: 42 })
-  const config = loadConfig({ JAYPOST_CONFIG: file })
+  const config = loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)
   expect(config.provider.name).toBe('telegram')
   expect(config.settings).toEqual({ botToken: 't', ownerId: 42 })
 })
@@ -206,7 +228,7 @@ test('JAYPOST_PROVIDER env overrides the file provider', () => {
 
 test('unknown provider fails with the init hint', () => {
   updateConfigFile(file, { provider: 'nope' })
-  expect(() => loadConfig({ JAYPOST_CONFIG: file })).toThrow(
+  expect(() => loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)).toThrow(
     'unknown provider "nope"; run `jaypost init`',
   )
 })
@@ -226,26 +248,29 @@ test('readConfigFile rethrows read errors other than a missing file', () => {
 
 test('api token comes from JAYPOST_TOKEN, then apiToken in the file, else none', () => {
   updateConfigFile(file, { botToken: 'tok', apiToken: FILE_TOKEN })
-  expect(loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: ENV_TOKEN }).auth).toEqual({
+  expect(
+    loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: ENV_TOKEN }, SERVICE_PROVIDERS).auth,
+  ).toEqual({
     kind: 'token',
     token: ENV_TOKEN,
   })
-  expect(loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: '' }).auth).toEqual({
+  expect(loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: '' }, SERVICE_PROVIDERS).auth).toEqual({
     kind: 'token',
     token: FILE_TOKEN,
   })
   updateConfigFile(file, { apiToken: null })
-  expect(loadConfig({ JAYPOST_CONFIG: file }).auth).toEqual(NO_AUTH)
+  expect(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS).auth).toEqual(NO_AUTH)
 })
 
 test('an invalid api token throws without quoting it', () => {
   const message = 'invalid api token; run `jaypost init` to set up the bot (or set JAYPOST_TOKEN)'
   updateConfigFile(file, { botToken: 'tok' })
-  const fromEnv = () => loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: 'short-secret' })
+  const fromEnv = () =>
+    loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: 'short-secret' }, SERVICE_PROVIDERS)
   expect(fromEnv).toThrow(message)
   expect(fromEnv).not.toThrow(/short-secret/)
   updateConfigFile(file, { apiToken: 'short-secret' })
-  const fromFile = () => loadConfig({ JAYPOST_CONFIG: file })
+  const fromFile = () => loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)
   expect(fromFile).toThrow(message)
   expect(fromFile).not.toThrow(/short-secret/)
 })
@@ -256,36 +281,40 @@ test('quietHours and mutedUntil round-trip through the config file', () => {
     quietHours: '23:00-08:00',
     mutedUntil: '2026-07-15T13:00:00.000Z',
   })
-  const config = loadConfig({ JAYPOST_CONFIG: file })
+  const config = loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)
   expect(config.quietHours).toEqual({ startMinute: 1380, endMinute: 480 })
   expect(config.mutedUntil?.toISOString()).toBe('2026-07-15T13:00:00.000Z')
 })
 
 test('quiet settings are omitted when absent', () => {
   updateConfigFile(file, { botToken: 't' })
-  const config = loadConfig({ JAYPOST_CONFIG: file })
+  const config = loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)
   expect(Object.hasOwn(config, 'quietHours')).toBe(false)
   expect(Object.hasOwn(config, 'mutedUntil')).toBe(false)
 })
 
 test('hand-written quiet hours are normalized and empty means off', () => {
   updateConfigFile(file, { botToken: 't', quietHours: '23-8' })
-  expect(loadConfig({ JAYPOST_CONFIG: file }).quietHours).toEqual({
+  expect(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS).quietHours).toEqual({
     startMinute: 1380,
     endMinute: 480,
   })
   updateConfigFile(file, { quietHours: '' })
-  expect(Object.hasOwn(loadConfig({ JAYPOST_CONFIG: file }), 'quietHours')).toBe(false)
+  expect(Object.hasOwn(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS), 'quietHours')).toBe(
+    false,
+  )
 })
 
 test('whitespace-only quiet hours means off', () => {
   updateConfigFile(file, { botToken: 't', quietHours: '   ' })
-  expect(Object.hasOwn(loadConfig({ JAYPOST_CONFIG: file }), 'quietHours')).toBe(false)
+  expect(Object.hasOwn(loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS), 'quietHours')).toBe(
+    false,
+  )
 })
 
 test('invalid quiet hours fail with the value quoted', () => {
   updateConfigFile(file, { botToken: 't', quietHours: '25:00-08:00' })
-  expect(() => loadConfig({ JAYPOST_CONFIG: file })).toThrow(
+  expect(() => loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)).toThrow(
     'invalid quiet hours "25:00-08:00": expected HH:MM-HH:MM',
   )
 })
@@ -300,12 +329,14 @@ test('an invalid mutedUntil is ignored and logged', () => {
 
 test('a non-string quietHours is an invalid field', () => {
   updateConfigFile(file, { botToken: 't', quietHours: 2300 })
-  expect(() => loadConfig({ JAYPOST_CONFIG: file })).toThrow('has invalid or missing fields')
+  expect(() => loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)).toThrow(
+    'has invalid or missing fields',
+  )
 })
 
 test('unprefixed env vars are ignored', () => {
   const none = join(dir, 'none.json')
-  expect(() => loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: '1' })).toThrow(
-    'missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)',
-  )
+  expect(() =>
+    loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: '1' }, SERVICE_PROVIDERS),
+  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
 })

@@ -70,11 +70,11 @@ import { resolveMcpEndpoint, resolveMcpPort, runMcp } from './mcp/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from './install/index.ts'
 import {
   DEFAULT_PROVIDER,
-  PROVIDERS,
   requireProvider,
   resolveMaxAttachmentBytes,
   type Provider,
 } from './provider/index.ts'
+import { PROVIDERS, SERVICE_PROVIDERS } from './registry/index.ts'
 import { formatOpenApiYaml } from './server/index.ts'
 import { isPortFree, realExec } from './system/index.ts'
 import { NPM_LATEST_URL, RELEASES_API_URL } from './update/index.ts'
@@ -83,7 +83,7 @@ const DIGITS_PATTERN = /^\d+$/
 
 function resolvePort(): number {
   try {
-    return loadConfig().port
+    return loadConfig(process.env, SERVICE_PROVIDERS).port
   } catch {
     const port = Number(process.env[PORT_ENV_VAR])
     return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT
@@ -253,7 +253,7 @@ function createHookDeps(flagPort: number | undefined, signal: AbortSignal): Hook
 
 function resolveOpenApiProvider(): Provider {
   try {
-    return loadConfig().provider
+    return loadConfig(process.env, SERVICE_PROVIDERS).provider
   } catch {
     return requireProvider(PROVIDERS, DEFAULT_PROVIDER)
   }

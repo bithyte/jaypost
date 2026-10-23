@@ -4,8 +4,8 @@ import type { VoteRule } from '../approval/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
 import type { Progress } from '../progress/index.ts'
+import type { StatusInfo } from '../protocol/index.ts'
 import type { Provider, ProviderRuntime, SettingValues } from '../provider/index.ts'
-import type { StatusInfo } from '../server/index.ts'
 import type { Exec } from '../system/index.ts'
 
 /** One entry in a select prompt; a `disabled` reason shows it as unavailable. */

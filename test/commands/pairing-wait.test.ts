@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { expect, test, vi } from 'vite-plus/test'
-import type { StatusInfo } from '../../src/server/index.ts'
+import type { StatusInfo } from '../../src/protocol/index.ts'
 import { defaultFetchStatus, waitForPairing } from '../../src/commands/index.ts'
 import type { StatusFetch } from '../../src/commands/index.ts'
 import { UNAUTHORIZED_STATUS, UNREACHABLE_STATUS } from '../../src/commands/constants.ts'
