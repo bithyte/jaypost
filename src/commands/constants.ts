@@ -36,6 +36,8 @@ export const INTERRUPTED_PAIRING = { kind: 'interrupted' } as const satisfies Ow
 /** Printed above the env lines `setup-ci` ends with. */
 export const SETUP_CI_SECRETS_HINT =
   "Add these as GitHub secrets and pass them to jaypost through the step's `env:`, never on the command line:"
+/** Printed after the env lines `setup-ci` ends with. */
+export const SETUP_CI_APPROVERS_HINT = 'To add approvers, run: jaypost pair approver'
 /** Printed above the comma list of ids `pair approver` ends with. */
 export const PAIRED_APPROVERS_HEADING =
   'Add these to your approvers list and the JAYPOST_APPROVERS secret (each also works as -u ID):'

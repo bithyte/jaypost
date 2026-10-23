@@ -105,10 +105,10 @@ Prints the questions the service asked and how they ended. `--since` takes a dur
 ### `jaypost setup-ci`
 
 ```
-jaypost setup-ci [--provider NAME] [--approvers-only]
+jaypost setup-ci [--provider NAME]
 ```
 
-Pairs an owner (and optionally approvers) and prints the env vars for CI. `--approvers-only` skips the owner, to add approvers later. See [CI](ci.md).
+Pairs an owner and prints the env vars for CI. Add approvers with `jaypost pair approver`. See [CI](ci.md).
 
 ## Other
 

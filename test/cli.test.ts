@@ -65,6 +65,11 @@ test('setup-ci --provider nope exits 2', async () => {
   expect(await main(['setup-ci', '--provider', 'nope'])).toBe(2)
 })
 
+test('setup-ci --approvers-only exits 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--approvers-only'])).toBe(2)
+})
+
 test('pair --help lists approver', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['pair', '--help'])).toBe(0)

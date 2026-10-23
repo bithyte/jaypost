@@ -237,8 +237,6 @@ export type DirectSendDeps = {
 /** Parsed `setup-ci` flags; absent fields mean the user didn't pass them. */
 export type SetupCiArgs = {
   readonly provider?: string
-  /** Skip pairing the owner and the env block; only pair approvers. */
-  readonly approversOnly?: boolean
 }
 
 /** Everything `runSetupCi` touches outside itself; no paths or targets, so it writes no files. */

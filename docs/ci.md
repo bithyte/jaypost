@@ -11,7 +11,7 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
-After the owner pairs and the env vars print, `setup-ci` asks `Pair an approver?`. Say yes and it shows a fresh code for that person to send to the bot; repeat for each approver. When you're done it prints their ids as `-u ID` flags to pass to `send request` (see [Several approvers](#several-approvers)). `jaypost setup-ci --approvers-only` skips the owner and the env vars, to add approvers later. On Discord, an approver must be in a server the bot is in before they DM the code.
+After the owner pairs and the env vars print, `setup-ci` points you to `jaypost pair approver` to add approvers. On Discord, an approver must be in a server the bot is in before they DM the code.
 
 ## GitHub Action
 
