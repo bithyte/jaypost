@@ -226,7 +226,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   }
   const { settings } = resolved
   if (resolved.displayName !== undefined) {
-    progress.done(`Bot token checked (${resolved.displayName})`)
+    progress.done(`${text.checked ?? 'Bot token'} checked (${resolved.displayName})`)
   }
   const port = args.port ?? record?.port ?? DEFAULT_PORT
   if (!(await deps.isPortFree(port))) {

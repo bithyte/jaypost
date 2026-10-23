@@ -65,6 +65,9 @@ export type HookParseResult =
 /** A question ready for POST /request; `options` already reduced when the primary field was cut. */
 export type HookQuestion = { readonly text: string; readonly options: readonly string[] }
 
+/** What the service's /status allows: text length less the project line, and buttons per question. */
+export type Limits = { readonly maxLength: number; readonly maxOptionCount: number }
+
 export type PermissionDecision =
   | { readonly behavior: 'allow'; readonly updatedPermissions?: readonly PermissionSuggestion[] }
   | { readonly behavior: 'deny'; readonly message: string }

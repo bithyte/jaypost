@@ -26,6 +26,7 @@ import { checkService, findManualSetup } from './setup.ts'
 import type {
   HookArgs,
   HookDeps,
+  Limits,
   NotificationEvent,
   PermissionRequestEvent,
   SessionMovedOnEvent,
@@ -73,12 +74,12 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   if (event.kind === 'Stop') {
     return askNextPrompt(event, project, args, caller, deps)
   }
-  const maxLength = await resolveMaxLength(project, caller, deps.signal)
+  const limits = await resolveLimits(project, caller, deps.signal)
   switch (event.kind) {
     case 'Notification':
-      return notify(event, project, maxLength, caller, deps)
+      return notify(event, project, limits.maxLength, caller, deps)
     case 'PermissionRequest':
-      return askPermission(event, project, maxLength, args, caller, deps)
+      return askPermission(event, project, limits, args, caller, deps)
   }
 }
 
@@ -150,7 +151,7 @@ async function waitForNextPrompt(
     // Only an abort rejects it: nothing was sent yet, so there's nothing to cancel.
     return 0
   }
-  const maxLength = await resolveMaxLength(project, caller, signal)
+  const { maxLength } = await resolveLimits(project, caller, signal)
   const question = formatStopQuestion(event, maxLength)
   const started = await caller.askInBackground(
     {
@@ -210,18 +211,26 @@ async function checkSetup(event: SessionStartEvent, deps: HookDeps): Promise<num
 
 /**
  * The text cap: the service's limit less the `[project]` line it adds, at most
- * MAX_HOOK_TEXT_LENGTH. A failed /status call isn't reported; the request that follows is.
+ * MAX_HOOK_TEXT_LENGTH; and the most buttons the chat app shows, unlimited when /status doesn't
+ * say. A failed /status call isn't reported; the request that follows is.
  */
-async function resolveMaxLength(
+async function resolveLimits(
   project: string,
   caller: Caller,
   signal: AbortSignal,
-): Promise<number> {
+): Promise<Limits> {
   const result = await caller.status({ signal })
-  if (result.kind === 'status' && typeof result.status.maxTextLength === 'number') {
-    return Math.min(MAX_HOOK_TEXT_LENGTH, result.status.maxTextLength - (project.length + 4))
+  if (result.kind !== 'status') {
+    return { maxLength: MAX_HOOK_TEXT_LENGTH, maxOptionCount: Infinity }
   }
-  return MAX_HOOK_TEXT_LENGTH
+  const { maxTextLength, maxOptionCount } = result.status
+  return {
+    maxLength:
+      typeof maxTextLength === 'number'
+        ? Math.min(MAX_HOOK_TEXT_LENGTH, maxTextLength - (project.length + 4))
+        : MAX_HOOK_TEXT_LENGTH,
+    maxOptionCount: typeof maxOptionCount === 'number' ? maxOptionCount : Infinity,
+  }
 }
 
 async function notify(
@@ -244,12 +253,12 @@ async function notify(
 async function askPermission(
   event: PermissionRequestEvent,
   project: string,
-  maxLength: number,
+  limits: Limits,
   args: HookArgs,
   caller: Caller,
   deps: HookDeps,
 ): Promise<number> {
-  const question = formatPermissionQuestion(event, maxLength)
+  const question = formatPermissionQuestion(event, limits.maxLength, limits.maxOptionCount)
   const result = await caller.ask(
     {
       project,

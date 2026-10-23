@@ -1,7 +1,7 @@
 // `pnpm dev`: runs the service from source, restarting on every save. It keeps clear of a real
 // install: it listens on 8788 and keeps each chat app's config, state and question log in
 // .dev/<provider>/. It asks which chat app to use first; Terminal needs nothing, Telegram and
-// Discord ask for your bot's token once. JAYPOST_PROVIDER, JAYPOST_BOT_TOKEN or JAYPOST_CONFIG (in the
+// Discord ask for your bot's token once, ntfy for a server and topic. JAYPOST_PROVIDER, JAYPOST_BOT_TOKEN or JAYPOST_CONFIG (in the
 // env or .env) skip the questions.
 import { spawn } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'

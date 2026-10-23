@@ -71,6 +71,14 @@ test('bash shows the command, then the description, then the always allow line',
   })
 })
 
+test('a chat app with fewer than four buttons gets no always allow', () => {
+  expect(formatPermissionQuestion(EVENT, 3000, 3)).toEqual({
+    text: 'Claude wants to run Bash:\nnpm test\nRun tests',
+    options: SHORT_OPTIONS,
+  })
+  expect(formatPermissionQuestion(EVENT, 3000, 4).options).toEqual(FULL_OPTIONS)
+})
+
 test('without suggestions there is no always allow', () => {
   expect(formatPermissionQuestion(createPermissionEvent({}))).toEqual({
     text: 'Claude wants to run Bash:\nnpm test\nRun tests',

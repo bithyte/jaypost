@@ -71,3 +71,51 @@ test('a provider with no settings and failing credentials is rejected', async ()
   expect(result).toEqual({ kind: 'rejected' })
   expect(out).toEqual([provider.setup.text.rejected])
 })
+
+test('typed answers reach the credential check parsed, or raw when parse refuses them', async () => {
+  const checked: unknown[] = []
+  const base = createFakeProvider()
+  const provider = createFakeProvider({
+    settings: [
+      ...base.settings,
+      {
+        configKey: 'fakeUrl',
+        envVar: 'FAKE_URL',
+        description: 'fake url',
+        secret: false,
+        owner: false,
+        required: false,
+        prompt: 'Fake url',
+        parse: (raw) =>
+          typeof raw === 'string' && raw.endsWith('/') ? raw.slice(0, -1) : undefined,
+      },
+    ],
+    setup: {
+      ...base.setup,
+      checkCredentials: async (settings) => {
+        checked.push(settings)
+        return checked.length === 1
+          ? { ok: false, reason: 'bad url' }
+          : { ok: true, displayName: 'fake' }
+      },
+    },
+  })
+  const prompt = prompts()
+  vi.mocked(prompt.text).mockResolvedValueOnce('not-a-url').mockResolvedValueOnce('https://x/')
+  const result = await resolveProviderSettings({
+    provider,
+    saved: {},
+    prompt,
+    print: () => {},
+    seen: [],
+  })
+  expect(checked).toEqual([
+    { fakeKey: 'typed-key', fakeUrl: 'not-a-url' },
+    { fakeKey: 'typed-key', fakeUrl: 'https://x' },
+  ])
+  expect(result).toEqual({
+    kind: 'accepted',
+    settings: { fakeKey: 'typed-key', fakeUrl: 'https://x' },
+    displayName: 'fake',
+  })
+})

@@ -1,8 +1,8 @@
 # Install
 
-Create a bot first and have the token ready: with [@BotFather](https://t.me/BotFather) on Telegram, or as in [Discord setup](pairing.md#discord-setup). `init`:
+Create a bot first and have the token ready: with [@BotFather](https://t.me/BotFather) on Telegram, or as in [Discord setup](pairing.md#discord-setup). For [ntfy](ntfy.md) you need a topic instead. `init`:
 
-1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; `telegram` (the default) or `discord`.
+1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; `telegram` (the default), `discord` or `ntfy`.
 2. Asks for the bot token (input hidden) and checks it with the chat app. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
 3. Makes an API token and saves it to `~/.config/jaypost/token` (mode 0600). It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses a valid saved token.
 4. Installs and starts the service, then waits for pairing.

@@ -71,10 +71,9 @@ export async function openPairingRuntime(
     await stopRuntime(runtime)
     return { kind: 'failed' }
   }
+  const checked = `${provider.setup.text.checked ?? 'Bot token'} checked`
   deps.progress.done(
-    check.displayName === undefined
-      ? 'Bot token checked'
-      : `Bot token checked (${check.displayName})`,
+    check.displayName === undefined ? checked : `${checked} (${check.displayName})`,
   )
   return { kind: 'opened', provider, settings, runtime }
 }
