@@ -201,7 +201,7 @@ async function askInBackground(
   extraArguments: Record<string, unknown> = {},
 ): Promise<string> {
   const result = await client.callTool({
-    name: 'ask_for_permission_in_background',
+    name: 'ask_user_async',
     arguments: { ...ASK, ...extraArguments },
   })
   const id = (result.structuredContent as { request_id?: unknown } | undefined)?.request_id
@@ -238,21 +238,29 @@ test('lists the six tools with their required inputs', async () => {
     tools.map((tool) => [tool.name, tool.inputSchema.required?.toSorted()]),
   )
   expect(requiredByName).toEqual({
-    ask_for_permission: ['project_name', 'text', 'timeout_option'],
-    ask_for_permission_in_background: ['project_name', 'text', 'timeout_option'],
+    ask_user: ['project_name', 'text', 'timeout_option'],
+    ask_user_async: ['project_name', 'text', 'timeout_option'],
     cancel_question: ['request_id'],
     list_questions: undefined,
     notify_user: ['project_name', 'text'],
     wait_for_answer: ['request_id'],
   })
   expect(tools.map((tool) => tool.name).toSorted()).toEqual([
-    'ask_for_permission',
-    'ask_for_permission_in_background',
+    'ask_user',
+    'ask_user_async',
     'cancel_question',
     'list_questions',
     'notify_user',
     'wait_for_answer',
   ])
+})
+
+test('sends instructions that name every tool', async () => {
+  const { port } = await startApi()
+  const client = await connect(port)
+  const { tools } = await client.listTools()
+  const instructions = client.getInstructions() ?? ''
+  expect(tools.filter((tool) => !instructions.includes(tool.name))).toEqual([])
 })
 
 function writeAttachmentFile(name: string, content: string): string {
@@ -266,7 +274,7 @@ test('a path attachment reaches the service as the file bytes', async () => {
   const client = await connect(port)
   const path = writeAttachmentFile('report.diff', 'diff body')
   const pending = client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, attachment: { path } },
   })
   await waitFor(() => messenger.sent.length === 1)
@@ -315,7 +323,7 @@ test('both or neither of path and text are refused', async () => {
   const file = writeAttachmentFile('a.txt', 'x')
   for (const attachment of [{ path: file, text: 'x' }, { name: 'a.txt' }]) {
     const refused = await client
-      .callTool({ name: 'ask_for_permission', arguments: { ...ASK, attachment } })
+      .callTool({ name: 'ask_user', arguments: { ...ASK, attachment } })
       .then(
         (result) => result.isError === true,
         () => true,
@@ -359,7 +367,7 @@ test('an old service is a tool error with the upgrade message', async () => {
 test('ask returns the tapped answer', async () => {
   const { port, service, messenger } = await startApi()
   const client = await connect(port)
-  const pending = client.callTool({ name: 'ask_for_permission', arguments: ASK })
+  const pending = client.callTool({ name: 'ask_user', arguments: ASK })
   await waitFor(() => messenger.sent.length === 1)
   const [sent] = messenger.sent
   expect(sent?.text).toBe('[api]\n\nDeploy?')
@@ -374,7 +382,7 @@ test('ask on timeout returns the timeout option', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const result = await client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, timeout_seconds: 0.2 },
   })
   expect(result).toEqual({
@@ -387,7 +395,7 @@ test('service 400 text reaches the agent', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const result = await client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, project_name: '   ' },
   })
   expect(result).toEqual({
@@ -442,7 +450,7 @@ test('cancelling an ask cancels the request', async () => {
   const { port, messenger } = await startApi()
   const client = await connect(port)
   const controller = new AbortController()
-  const pending = client.callTool({ name: 'ask_for_permission', arguments: ASK }, undefined, {
+  const pending = client.callTool({ name: 'ask_user', arguments: ASK }, undefined, {
     signal: controller.signal,
   })
   await waitFor(() => messenger.sent.length === 1)
@@ -454,7 +462,7 @@ test('cancelling an ask cancels the request', async () => {
 test('closing stdin cancels a pending ask', async () => {
   const { port, messenger } = await startApi()
   const client = await connect(port)
-  const pending = client.callTool({ name: 'ask_for_permission', arguments: ASK })
+  const pending = client.callTool({ name: 'ask_user', arguments: ASK })
   // The call rejects once the connection closes; that's expected here.
   pending.catch(() => {})
   await waitFor(() => messenger.sent.length === 1)
@@ -543,7 +551,7 @@ test('an unusable token fails only the call that hit it', async () => {
     ],
   }
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual(unusable)
-  expect(await client.callTool({ name: 'ask_for_permission', arguments: ASK })).toEqual(unusable)
+  expect(await client.callTool({ name: 'ask_user', arguments: ASK })).toEqual(unusable)
   writeTokenFile(tokenFile, TOKEN)
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     content: [{ type: 'text', text: 'sent' }],
@@ -556,18 +564,18 @@ test('tool list shows format', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const { tools } = await client.listTools()
-  const messageTools = ['ask_for_permission', 'ask_for_permission_in_background', 'notify_user']
+  const messageTools = ['ask_user', 'ask_user_async', 'notify_user']
   for (const tool of tools.filter((tool) => messageTools.includes(tool.name))) {
     expect(tool.inputSchema.properties?.format).toMatchObject({ enum: ['plain', 'markdown'] })
     expect(tool.inputSchema.required).not.toContain('format')
   }
 })
 
-test('ask_for_permission forwards format', async () => {
+test('ask_user forwards format', async () => {
   const { port, service, messenger } = await startApi()
   const client = await connect(port)
   const pending = client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, text: 'Run `ls` now?', format: 'markdown' },
   })
   await waitFor(() => messenger.sent.length === 1)
@@ -580,7 +588,7 @@ test('ask format is omitted when not set', async () => {
   const { port, service, messenger } = await startApi()
   const client = await connect(port)
   const pending = client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, text: 'Run `ls` now?' },
   })
   await waitFor(() => messenger.sent.length === 1)
@@ -608,7 +616,7 @@ test('ask with allow_text and no options is answered by a typed reply', async ()
   const { port, service, messenger } = await startApi()
   const client = await connect(port)
   const pending = client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: {
       project_name: 'api',
       text: 'Which branch?',
@@ -628,10 +636,10 @@ test('ask with allow_text and no options is answered by a typed reply', async ()
 test('allow_text is forwarded only when given', async () => {
   const { port, bodies } = await startRecordingStub()
   const client = await connect(port)
-  await client.callTool({ name: 'ask_for_permission', arguments: ASK })
-  await client.callTool({ name: 'ask_for_permission', arguments: { ...ASK, allow_text: false } })
+  await client.callTool({ name: 'ask_user', arguments: ASK })
+  await client.callTool({ name: 'ask_user', arguments: { ...ASK, allow_text: false } })
   await client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, options: [], allow_text: true },
   })
   expect(Object.hasOwn(bodies[0] ?? {}, 'allowText')).toBe(false)
@@ -643,7 +651,7 @@ test('empty options without allow_text is the service 400', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const result = await client.callTool({
-    name: 'ask_for_permission',
+    name: 'ask_user',
     arguments: { ...ASK, options: [] },
   })
   expect(result).toEqual({
@@ -656,7 +664,7 @@ test('the ask description mentions typed answers', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const { tools } = await client.listTools()
-  const description = tools.find((tool) => tool.name === 'ask_for_permission')?.description
+  const description = tools.find((tool) => tool.name === 'ask_user')?.description
   expect(description).toContain('allow_text')
   expect(description).toContain('wait for their answer')
 })
@@ -675,7 +683,7 @@ test('a long ask sends progress while it waits', async () => {
   await client.connect(clientTransport)
   const progress: Progress[] = []
   const pending = client.callTool(
-    { name: 'ask_for_permission', arguments: { ...ASK, timeout_seconds: 3600 } },
+    { name: 'ask_user', arguments: { ...ASK, timeout_seconds: 3600 } },
     undefined,
     { onprogress: (event) => progress.push(event) },
   )
@@ -694,7 +702,7 @@ test('ask in background returns an id at once', async () => {
   const { port, service, messenger } = await startApi()
   const client = await connect(port)
   const result = await client.callTool({
-    name: 'ask_for_permission_in_background',
+    name: 'ask_user_async',
     arguments: ASK,
   })
   const id = messenger.sent[0]?.id ?? ''
@@ -724,7 +732,7 @@ test('wait_for_answer returns the answer once the user taps', async () => {
   })
 })
 
-test('wait_for_answer reports a timeout like ask_for_permission', async () => {
+test('wait_for_answer reports a timeout like ask_user', async () => {
   const { port } = await startApi()
   const client = await connect(port)
   const id = await askInBackground(client, { timeout_seconds: 0.2 })
@@ -804,9 +812,7 @@ test('an old service is reported for background asks', async () => {
     )
   })
   const client = await connect(port)
-  expect(
-    await client.callTool({ name: 'ask_for_permission_in_background', arguments: ASK }),
-  ).toEqual({
+  expect(await client.callTool({ name: 'ask_user_async', arguments: ASK })).toEqual({
     isError: true,
     content: [{ type: 'text', text: BACKGROUND_TOO_OLD_MESSAGE }],
   })
