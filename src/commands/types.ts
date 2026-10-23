@@ -3,7 +3,7 @@ import type { AttachmentSource } from '../client/index.ts'
 import type { VoteRule } from '../approval/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
-import type { Provider, SettingValues } from '../provider/index.ts'
+import type { Provider, ProviderRuntime, SettingValues } from '../provider/index.ts'
 import type { StatusInfo } from '../server/index.ts'
 import type { Exec } from '../system/index.ts'
 
@@ -260,3 +260,16 @@ export type OwnerPairing =
   | { readonly kind: 'blocked' }
   | { readonly kind: 'fatal'; readonly message: string }
   | { readonly kind: 'interrupted' }
+
+/** Shows a fresh pairing code with `instructions(code)` and waits for how that pairing ends. */
+export type PairingWaiter = (instructions: (code: string) => string) => Promise<OwnerPairing>
+
+/** A provider with checked credentials and a runtime the caller must stop, or failed (already reported). */
+export type OpenedRuntime =
+  | {
+      readonly kind: 'opened'
+      readonly provider: Provider
+      readonly settings: SettingValues
+      readonly runtime: ProviderRuntime
+    }
+  | { readonly kind: 'failed' }
