@@ -43,7 +43,7 @@ import type { MessageFormat } from './format/index.ts'
 import { readHookInput, runHook } from './hook/index.ts'
 import type { HookDeps } from './hook/index.ts'
 import { createTargets, resolveInstallPaths, resolveTargetOrder } from './install/index.ts'
-import { resolveMcpPort, runMcp } from './mcp/index.ts'
+import { resolveMcpEndpoint, resolveMcpPort, runMcp } from './mcp/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from './install/index.ts'
 import {
   DEFAULT_PROVIDER,
@@ -155,7 +155,7 @@ function toAttachmentSource(
 
 function createSendDeps(flagPort: number | undefined, signal: AbortSignal): SendDeps {
   return {
-    port: resolveMcpPort(flagPort, process.env, resolveInstallPaths().installFile),
+    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
     token: resolveClientToken(process.env, resolveTokenFile(process.env)),
     signal,
     print: (text) => console.log(text),
@@ -187,7 +187,7 @@ function requireSendMode(command: Command): Exclude<SendMode, { readonly kind: '
 
 function createHookDeps(flagPort: number | undefined, signal: AbortSignal): HookDeps {
   return {
-    port: resolveMcpPort(flagPort, process.env, resolveInstallPaths().installFile),
+    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
     token: resolveClientToken(process.env, resolveTokenFile(process.env)),
     signal,
     readInput: () => readHookInput(process.stdin, signal),
@@ -517,14 +517,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     .description('run an MCP server on stdin/stdout for agents')
     .option(
       '--port <n>',
-      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
     )
     .action(async (options: { readonly port?: number }) => {
       // Not resolvePort(): that reads config.json, which an agent's container may not have.
       const tokenFile = resolveTokenFile(process.env)
       code = await runMcp({
-        port: resolveMcpPort(options.port, process.env, resolveInstallPaths().installFile),
+        endpoint: resolveMcpEndpoint(options.port, process.env, resolveInstallPaths().installFile),
         readToken: () => resolveClientToken(process.env, tokenFile),
       })
     })
@@ -534,7 +534,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .argument('[file]', 'file to write; prints to stdout without one')
     .option(
       '--port <n>',
-      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
     )
     .action((file: string | undefined, options: { readonly port?: number }) => {
@@ -591,7 +591,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '--port <n>',
-      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
     )
     .action(
@@ -689,7 +689,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '--port <n>',
-      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
     )
     .action(
@@ -734,7 +734,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .option(
       '--port <n>',
-      'API port (default: JAYPOST_PORT, then the install, then 8787)',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
     )
     .option('--project <name>', 'shown as [name] (default: the Claude Code project folder)')

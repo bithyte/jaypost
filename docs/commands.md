@@ -1,6 +1,6 @@
 # Commands
 
-Commands that talk to the service pick its port from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787.
+Commands that talk to the service pick its port from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. `send`, `hook` and `mcp` call `JAYPOST_URL` instead when it's set and `--port` isn't: a base URL, `http` or `https`, whose path (if any) goes in front of every API path, such as `https://jaypost.example.com/team`. Credentials go in `JAYPOST_TOKEN`, not the URL.
 
 ## Setup
 

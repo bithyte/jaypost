@@ -31,6 +31,7 @@ import {
   BACKGROUND_TOO_OLD_MESSAGE,
   Caller,
   TOKEN_REJECTED_MESSAGE,
+  toLocalEndpoint,
 } from '../../src/client/index.ts'
 import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 import { createMcpServer, OpenQuestions } from '../../src/mcp/index.ts'
@@ -651,7 +652,7 @@ test('a long ask sends progress while it waits', async () => {
   const { port, service, messenger } = await startApi()
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const server = createMcpServer(
-    new Caller({ port, readToken: () => ({ kind: 'none' }) }),
+    new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
     new AbortController().signal,
     { progressIntervalMs: 50 },
   )
@@ -849,7 +850,7 @@ test('wait_for_answer sends progress while it waits', async () => {
   const { port, service } = await startApi()
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
   const server = createMcpServer(
-    new Caller({ port, readToken: () => ({ kind: 'none' }) }),
+    new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
     new AbortController().signal,
     { progressIntervalMs: 50 },
   )
@@ -885,7 +886,10 @@ test('cancelAll gives up after its timeout', async () => {
   openQuestions.add('b')
   openQuestions.settle('b')
   const startedAt = performance.now()
-  await openQuestions.cancelAll(new Caller({ port, readToken: () => ({ kind: 'none' }) }), 100)
+  await openQuestions.cancelAll(
+    new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
+    100,
+  )
   expect(performance.now() - startedAt).toBeLessThan(1000)
   expect(paths).toEqual(['DELETE /request/a'])
 })
@@ -895,7 +899,9 @@ test('cancelAll resolves when the service is down', async () => {
   openQuestions.add('a')
   const port = await freePort()
   await expect(
-    openQuestions.cancelAll(new Caller({ port, readToken: () => ({ kind: 'none' }) })),
+    openQuestions.cancelAll(
+      new Caller({ endpoint: toLocalEndpoint(port), readToken: () => ({ kind: 'none' }) }),
+    ),
   ).resolves.toBeUndefined()
 })
 
@@ -908,14 +914,20 @@ test('cancelAll skips an unusable token', async () => {
   const openQuestions = new OpenQuestions()
   openQuestions.add('a')
   await openQuestions.cancelAll(
-    new Caller({ port, readToken: () => ({ kind: 'unusable', message: 'bad token' }) }),
+    new Caller({
+      endpoint: toLocalEndpoint(port),
+      readToken: () => ({ kind: 'unusable', message: 'bad token' }),
+    }),
   )
   expect(paths).toEqual([])
 })
 
 test('an unknown id settles the open question', async () => {
   const { port } = await startApi()
-  const caller = new Caller({ port, readToken: () => ({ kind: 'none' }) })
+  const caller = new Caller({
+    endpoint: toLocalEndpoint(port),
+    readToken: () => ({ kind: 'none' }),
+  })
   const openQuestions = new OpenQuestions()
   openQuestions.add('nope')
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -934,6 +946,8 @@ test('an unknown id settles the open question', async () => {
     paths.push(`${request.method} ${request.url}`)
     response.end('{}')
   })
-  await openQuestions.cancelAll(new Caller({ port: stubPort, readToken: () => ({ kind: 'none' }) }))
+  await openQuestions.cancelAll(
+    new Caller({ endpoint: toLocalEndpoint(stubPort), readToken: () => ({ kind: 'none' }) }),
+  )
   expect(paths).toEqual([])
 })

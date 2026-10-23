@@ -13,7 +13,7 @@ import { ApprovalService } from '../../src/approval/index.ts'
 import type { MessageEnding, MessageReference, Messenger } from '../../src/approval/index.ts'
 import { NO_AUTH, NO_CLIENT_TOKEN } from '../../src/auth/index.ts'
 import type { ApiAuth, ClientToken } from '../../src/auth/index.ts'
-import { TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
+import { TOKEN_REJECTED_MESSAGE, toLocalEndpoint } from '../../src/client/index.ts'
 import { readHookInput, runHook } from '../../src/hook/index.ts'
 import type { HookDeps } from '../../src/hook/index.ts'
 import { NotificationService } from '../../src/notify/index.ts'
@@ -102,7 +102,7 @@ function createDeps(
   const out: string[] = []
   const errors: string[] = []
   const deps: HookDeps = {
-    port,
+    endpoint: toLocalEndpoint(port),
     token: options.token ?? NO_CLIENT_TOKEN,
     signal: options.signal ?? new AbortController().signal,
     readInput: async () => input,

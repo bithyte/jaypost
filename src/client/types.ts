@@ -3,6 +3,12 @@ import type { MessageFormat } from '../format/index.ts'
 
 /** Where `Client` finds the service, and the project name its messages carry by default. */
 export type ClientOptions = {
+  /**
+   * The service's base URL, http or https, such as a remote relay; a path is kept as a prefix.
+   * Throws a `RangeError` at construction when it isn't one, or comes with `host` or `port`.
+   * Without `url`, `host` or `port`, `JAYPOST_URL` is used when set.
+   */
+  readonly url?: string
   /** Default `127.0.0.1`. */
   readonly host?: string
   /** Default 8787. */
@@ -92,8 +98,6 @@ export type ApiOptions = {
   /** Aborting it makes the call fail with "cancelled". */
   readonly signal: AbortSignal
   readonly timeoutMs: number
-  /** Default `127.0.0.1`. */
-  readonly host?: string
   /** Sent as `authorization: Bearer <token>` when set. */
   readonly token?: string
 }
@@ -141,10 +145,16 @@ export type StateBody =
     }
   | { readonly id: string; readonly state: 'cancelled' }
 
+/**
+ * Where a service lives: a base URL (the local daemon or a remote relay), or a configured URL that
+ * can't be used, which fails every call with reason `invalidUrl`.
+ */
+export type ServiceEndpoint =
+  | { readonly kind: 'url'; readonly url: URL }
+  | { readonly kind: 'invalid'; readonly message: string }
+
 export type CallerOptions = {
-  readonly port: number
-  /** Default `127.0.0.1`. */
-  readonly host?: string
+  readonly endpoint: ServiceEndpoint
   /** Called once per operation, before any I/O; `unusable` fails that operation only. */
   readonly readToken: () => ClientToken
   /** Milliseconds; default `performance.now`. Drives the wait deadline and the too-old check. */
@@ -163,8 +173,9 @@ export type Message = Omit<Notification, 'attachment' | 'signal'> & {
   readonly attachment?: AttachmentSource
 }
 
-/** `rejected` is a 400 with the daemon's own text; `attachment` is a local read or size failure. */
+/** `invalidUrl` is a bad `JAYPOST_URL`; `rejected` is a 400 with the daemon's own text; `attachment` is a local read or size failure. */
 export type FailureReason =
+  | 'invalidUrl'
   | 'unusableToken'
   | 'unreachable'
   | 'cancelled'

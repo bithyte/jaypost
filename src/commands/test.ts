@@ -1,5 +1,5 @@
 import type { ClientToken } from '../auth/index.ts'
-import { Caller } from '../client/index.ts'
+import { Caller, toLocalEndpoint } from '../client/index.ts'
 import { readInstall } from '../install/index.ts'
 
 /** Port from install.json when present, else the fallback. Sends the token when one is found. */
@@ -9,7 +9,7 @@ export async function runTest(
   token: ClientToken,
 ): Promise<number> {
   const port = (installFile ? readInstall(installFile)?.port : undefined) ?? fallbackPort
-  const result = await new Caller({ port, readToken: () => token }).ask(
+  const result = await new Caller({ endpoint: toLocalEndpoint(port), readToken: () => token }).ask(
     { text: 'This is a test', options: ['Approve', 'Decline'], timeoutOption: 'Decline' },
     { signal: new AbortController().signal },
   )

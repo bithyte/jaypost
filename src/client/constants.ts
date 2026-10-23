@@ -1,5 +1,8 @@
 /** The service listens on loopback by default. */
 export const HOST = '127.0.0.1'
+/** Shown when `JAYPOST_URL` isn't a usable service URL; never repeats the value. */
+export const INVALID_URL_MESSAGE =
+  'JAYPOST_URL must be an http or https URL without credentials, query or fragment'
 /** Fixed copy for failures, shown to agents and scripts as is. */
 export const CANCELLED_MESSAGE = 'cancelled'
 export const TOO_OLD_MESSAGE =

@@ -91,7 +91,7 @@ If the token file isn't readable where the MCP server runs (a container, another
 
 For a container, `export JAYPOST_TOKEN=$(cat ~/.config/jaypost/token)` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`.
 
-The port comes from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. If you run `start` by hand on a custom port without an install, pass `--port` or set `JAYPOST_PORT`.
+The port comes from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. Set `JAYPOST_URL` to reach a service by URL instead, on another host or behind a reverse proxy; `--port` still wins over it. If you run `start` by hand on a custom port without an install, pass `--port` or set `JAYPOST_PORT`.
 
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 

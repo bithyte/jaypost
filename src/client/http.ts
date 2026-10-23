@@ -1,4 +1,5 @@
 import { request as httpRequest } from 'node:http'
+import { request as httpsRequest } from 'node:https'
 import { DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS } from '../approval/constants.ts'
 import {
   ATTACHMENT_GRACE_MS,
@@ -6,7 +7,6 @@ import {
   BACKGROUND_TOO_OLD_MESSAGE,
   CANCELLED_MESSAGE,
   FETCH_GRACE_MS,
-  HOST,
   LEGACY_MAX_TIMEOUT_SECONDS,
   NOT_PAIRED_MESSAGE,
   NOT_SUPPORTED_MESSAGE,
@@ -16,6 +16,7 @@ import {
   TOKEN_REQUIRED_MESSAGE,
   TOO_OLD_MESSAGE,
 } from './constants.ts'
+import { describeEndpoint, resolveApiUrl } from './endpoint.ts'
 import type {
   ApiMethod,
   ApiOptions,
@@ -28,23 +29,23 @@ import type {
   StateBody,
 } from './types.ts'
 
-/** POSTs JSON to the local service; see `callApi`. */
+/** POSTs JSON to the service; see `callApi`. */
 export function postApi(
-  port: number,
+  endpoint: URL,
   path: ApiPath,
   body: object,
   options: ApiOptions,
 ): Promise<ApiResult> {
-  return callApi(port, 'POST', path, body, options)
+  return callApi(endpoint, 'POST', path, body, options)
 }
 
 /**
- * Calls the local service with JSON (no body when `body` is undefined). 200 and 202 are ok. Never
+ * Calls the service at `endpoint` (its path prefixes `path`) with JSON (no body when `body` is undefined). 200 and 202 are ok. Never
  * throws; no retries. Uses node:http rather than fetch, whose 300 s headers timeout would cut off
  * a request that waits the full approval timeout.
  */
 export async function callApi(
-  port: number,
+  endpoint: URL,
   method: ApiMethod,
   path: ApiPath,
   body: object | undefined,
@@ -55,16 +56,14 @@ export async function callApi(
   let response: RawResponse
   try {
     response = await send(
-      options.host ?? HOST,
-      port,
+      resolveApiUrl(endpoint, path),
       method,
-      path,
       body === undefined ? undefined : JSON.stringify(body),
       signal,
       options.token,
     )
   } catch {
-    return toTransportFailure(port, options, timeout)
+    return toTransportFailure(endpoint, options, timeout)
   }
   if (response.status === 200 || response.status === 202) {
     return parseOk(response.text)
@@ -95,13 +94,13 @@ export function toSendTimeoutMs(hasAttachment: boolean): number {
  * 300 s times out early, since only a service without long timeouts caps it at 300 s. Never throws.
  */
 export async function requestApi(
-  port: number,
+  endpoint: URL,
   body: AskBody,
   options: AskOptions,
 ): Promise<AskResult> {
   const now = options.now ?? (() => performance.now())
   const startMs = now()
-  const result = await postApi(port, '/request', body, {
+  const result = await postApi(endpoint, '/request', body, {
     ...options,
     timeoutMs: toFetchTimeoutMs(body.timeout, body.attachment !== undefined),
   })
@@ -130,20 +129,17 @@ type RawResponse = { readonly status: number; readonly text: string }
 
 /** Rejects on connection errors, resets and aborts; an abort destroys the socket. */
 function send(
-  host: string,
-  port: number,
+  url: URL,
   method: ApiMethod,
-  path: ApiPath,
   payload: string | undefined,
   signal: AbortSignal,
   token: string | undefined,
 ): Promise<RawResponse> {
+  const sendRequest = url.protocol === 'https:' ? httpsRequest : httpRequest
   return new Promise((resolve, reject) => {
-    const request = httpRequest(
+    const request = sendRequest(
+      url,
       {
-        host,
-        port,
-        path,
         method,
         headers: {
           ...(payload === undefined
@@ -180,7 +176,7 @@ function send(
   })
 }
 
-function toTransportFailure(port: number, options: ApiOptions, timeout: AbortSignal): Failure {
+function toTransportFailure(endpoint: URL, options: ApiOptions, timeout: AbortSignal): Failure {
   if (options.signal.aborted) {
     return { kind: 'failed', reason: 'cancelled', message: CANCELLED_MESSAGE }
   }
@@ -194,7 +190,7 @@ function toTransportFailure(port: number, options: ApiOptions, timeout: AbortSig
   return {
     kind: 'failed',
     reason: 'unreachable',
-    message: `jaypost service not reachable on ${options.host ?? HOST}:${port} (run jaypost status)`,
+    message: `jaypost service not reachable on ${describeEndpoint(endpoint)} (run jaypost status)`,
   }
 }
 

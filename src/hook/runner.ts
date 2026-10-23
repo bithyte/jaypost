@@ -47,7 +47,7 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
   if (event.kind === 'PermissionRequest' && event.toolName === ASK_USER_QUESTION_TOOL) {
     return 0
   }
-  const caller = new Caller({ port: deps.port, readToken: () => deps.token })
+  const caller = new Caller({ endpoint: deps.endpoint, readToken: () => deps.token })
   const maxLength = await resolveMaxLength(project, caller, deps)
   switch (event.kind) {
     case 'Notification':
@@ -59,7 +59,7 @@ export async function runHook(args: HookArgs, deps: HookDeps): Promise<number> {
 
 /** SessionStart: prints one systemMessage listing what's wrong, nothing when all is well. Exits 0. */
 async function checkSetup(event: SessionStartEvent, deps: HookDeps): Promise<number> {
-  const caller = new Caller({ port: deps.port, readToken: () => deps.token })
+  const caller = new Caller({ endpoint: deps.endpoint, readToken: () => deps.token })
   const lines = [await checkService(caller, deps)].filter((line) => line !== undefined)
   const manualPaths = findManualSetup(deps.env.HOME, deps.env.CLAUDE_PROJECT_DIR ?? event.cwd)
   if (manualPaths.length > 0) {

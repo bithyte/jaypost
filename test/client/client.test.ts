@@ -10,7 +10,11 @@ import { createApiServer, createSingleBotRouter } from '../../src/server/index.t
 import type { ApprovalRequest, RequestResult } from '../../src/approval/index.ts'
 import type { NotifyRequest } from '../../src/notify/index.ts'
 import { NO_AUTH } from '../../src/auth/index.ts'
-import { ATTACHMENT_TOO_OLD_MESSAGE, TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
+import {
+  ATTACHMENT_TOO_OLD_MESSAGE,
+  INVALID_URL_MESSAGE,
+  TOKEN_REJECTED_MESSAGE,
+} from '../../src/client/index.ts'
 import { Client, JaypostError } from '../../src/index.ts'
 
 const TOKEN = 'A'.repeat(43)
@@ -23,6 +27,7 @@ beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-client-'))
   vi.stubEnv('XDG_CONFIG_HOME', directory)
   vi.stubEnv('JAYPOST_TOKEN', '')
+  vi.stubEnv('JAYPOST_URL', '')
 })
 
 const servers: Server[] = []
@@ -127,6 +132,55 @@ test('unreachable host throws and names it', async () => {
   expect(error).toHaveProperty(
     'message',
     'jaypost service not reachable on 127.0.0.2:9 (run jaypost status)',
+  )
+})
+
+test('url sends every call under its path', async () => {
+  const { port, seen } = await startStub(200, '{"answer":"Approve","timedOut":false}')
+  const client = new Client({ url: `http://127.0.0.1:${port}/relay/`, token: TOKEN })
+  await client.request(ASK)
+  expect(seen).toEqual({ url: '/relay/request', body: ASK, authorization: `Bearer ${TOKEN}` })
+})
+
+test('JAYPOST_URL is used without url, host or port', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  vi.stubEnv('JAYPOST_URL', `http://127.0.0.1:${port}/team`)
+  await new Client().notify({ text: 'hi' })
+  expect(seen.url).toBe('/team/notify')
+})
+
+test('port wins over JAYPOST_URL', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  vi.stubEnv('JAYPOST_URL', 'http://127.0.0.2:9/team')
+  await new Client({ port }).notify({ text: 'hi' })
+  expect(seen.url).toBe('/notify')
+})
+
+test('unreachable url throws and names it', async () => {
+  const client = new Client({ url: 'http://127.0.0.2:9/relay' })
+  await expect(client.notify({ text: 'hi' })).rejects.toThrow(
+    new JaypostError(
+      'jaypost service not reachable on http://127.0.0.2:9/relay (run jaypost status)',
+    ),
+  )
+})
+
+test('bad JAYPOST_URL throws on the call without repeating it', async () => {
+  vi.stubEnv('JAYPOST_URL', 'ftp://user:secret@example.com')
+  const client = new Client()
+  await expect(client.notify({ text: 'hi' })).rejects.toThrow(new JaypostError(INVALID_URL_MESSAGE))
+})
+
+test.each(['example.com', 'ftp://example.com', 'https://user:pass@example.com', 'https://x/?a=1'])(
+  'url %s throws a RangeError',
+  (url) => {
+    expect(() => new Client({ url })).toThrow(RangeError)
+  },
+)
+
+test('url with host or port throws a RangeError', () => {
+  expect(() => new Client({ url: 'https://example.com', port: 1 })).toThrow(
+    new RangeError("url can't be combined with host or port"),
   )
 })
 

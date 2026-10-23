@@ -21,7 +21,7 @@ import { NotificationService } from '../../src/notify/index.ts'
 import type { Notifier } from '../../src/notify/index.ts'
 import { NO_AUTH, NO_CLIENT_TOKEN } from '../../src/auth/index.ts'
 import type { ApiAuth, ClientToken } from '../../src/auth/index.ts'
-import { TOKEN_REJECTED_MESSAGE } from '../../src/client/index.ts'
+import { TOKEN_REJECTED_MESSAGE, toLocalEndpoint } from '../../src/client/index.ts'
 import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG'
@@ -119,7 +119,7 @@ function createDeps(
   const out: string[] = []
   const errors: string[] = []
   const deps: SendDeps = {
-    port,
+    endpoint: toLocalEndpoint(port),
     signal,
     token,
     print: (text) => out.push(text),

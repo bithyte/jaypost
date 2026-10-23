@@ -28,7 +28,7 @@ export async function runSendNotify(args: SendNotifyArgs, deps: SendDeps): Promi
 }
 
 function toCaller(deps: SendDeps): Caller {
-  return new Caller({ port: deps.port, readToken: () => deps.token })
+  return new Caller({ endpoint: deps.endpoint, readToken: () => deps.token })
 }
 
 /** The question `send request` asks, from its parsed arguments. */

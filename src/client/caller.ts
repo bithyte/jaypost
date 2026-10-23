@@ -2,7 +2,7 @@ import { MAX_WAIT_SECONDS } from '../approval/constants.ts'
 import { statusInfoSchema } from '../server/schema.ts'
 import type { StatusInfo } from '../server/types.ts'
 import { checkAttachmentLimit, readAttachment } from './attachment.ts'
-import { FETCH_GRACE_MS, HOST } from './constants.ts'
+import { FETCH_GRACE_MS } from './constants.ts'
 import { callApi, isStateBody, postApi, requestApi, toSendTimeoutMs, unreadable } from './http.ts'
 import type {
   ApiOptions,
@@ -21,18 +21,19 @@ import type {
   StateBody,
 } from './types.ts'
 
-type Session = { readonly token?: string }
+type Session = { readonly endpoint: URL; readonly token?: string }
 
-/** Every call jaypost makes to its own daemon. Never throws; aborts come back as `cancelled`. */
+/**
+ * Every call jaypost makes to its own service, local or remote. Never throws; aborts come back as
+ * `cancelled`.
+ */
 export class Caller {
-  #port: number
-  #host: string
+  #endpoint: CallerOptions['endpoint']
   #readToken: CallerOptions['readToken']
   #now: () => number
 
   constructor(options: CallerOptions) {
-    this.#port = options.port
-    this.#host = options.host ?? HOST
+    this.#endpoint = options.endpoint
     this.#readToken = options.readToken
     this.#now = options.now ?? (() => performance.now())
   }
@@ -47,7 +48,7 @@ export class Caller {
     if (attachment.kind === 'failed') {
       return attachment
     }
-    const result = await requestApi(this.#port, toAskBody(question, attachment.body), {
+    const result = await requestApi(session.endpoint, toAskBody(question, attachment.body), {
       ...this.#apiOptions(session, call.signal),
       now: this.#now,
     })
@@ -68,7 +69,7 @@ export class Caller {
       return attachment
     }
     const result = await postApi(
-      this.#port,
+      session.endpoint,
       '/request/async',
       toAskBody(question, attachment.body),
       {
@@ -101,10 +102,16 @@ export class Caller {
       const remainingSeconds =
         deadlineMs === undefined ? MAX_WAIT_SECONDS : Math.max(0, (deadlineMs - this.#now()) / 1000)
       const waitSeconds = Math.min(remainingSeconds, MAX_WAIT_SECONDS)
-      const result = await callApi(this.#port, 'GET', `${path}?wait=${waitSeconds}`, undefined, {
-        ...this.#apiOptions(session, call.signal),
-        timeoutMs: waitSeconds * 1000 + FETCH_GRACE_MS,
-      })
+      const result = await callApi(
+        session.endpoint,
+        'GET',
+        `${path}?wait=${waitSeconds}`,
+        undefined,
+        {
+          ...this.#apiOptions(session, call.signal),
+          timeoutMs: waitSeconds * 1000 + FETCH_GRACE_MS,
+        },
+      )
       if (result.kind === 'failed') {
         return result
       }
@@ -128,7 +135,7 @@ export class Caller {
       return session
     }
     const result = await callApi(
-      this.#port,
+      session.endpoint,
       'DELETE',
       `/request/${encodeURIComponent(id)}`,
       undefined,
@@ -156,10 +163,15 @@ export class Caller {
     if (attachment.kind === 'failed') {
       return attachment
     }
-    const result = await postApi(this.#port, '/notify', toNotifyBody(message, attachment.body), {
-      ...this.#apiOptions(session, call.signal),
-      timeoutMs: toSendTimeoutMs(attachment.body !== undefined),
-    })
+    const result = await postApi(
+      session.endpoint,
+      '/notify',
+      toNotifyBody(message, attachment.body),
+      {
+        ...this.#apiOptions(session, call.signal),
+        timeoutMs: toSendTimeoutMs(attachment.body !== undefined),
+      },
+    )
     return result.kind === 'failed' ? result : { kind: 'sent' }
   }
 
@@ -175,21 +187,24 @@ export class Caller {
   }
 
   #begin(): ({ readonly kind: 'session' } & Session) | Failure {
+    if (this.#endpoint.kind === 'invalid') {
+      return { kind: 'failed', reason: 'invalidUrl', message: this.#endpoint.message }
+    }
+    const endpoint = this.#endpoint.url
     const token = this.#readToken()
     switch (token.kind) {
       case 'unusable':
         return { kind: 'failed', reason: 'unusableToken', message: token.message }
       case 'token':
-        return { kind: 'session', token: token.token }
+        return { kind: 'session', endpoint, token: token.token }
       case 'none':
-        return { kind: 'session' }
+        return { kind: 'session', endpoint }
     }
   }
 
   #apiOptions(session: Session, signal: AbortSignal): Omit<ApiOptions, 'timeoutMs'> {
     return {
       signal,
-      host: this.#host,
       ...(session.token === undefined ? {} : { token: session.token }),
     }
   }
@@ -199,7 +214,7 @@ export class Caller {
     signal: AbortSignal,
     timeoutMs: number,
   ): Promise<{ readonly kind: 'status'; readonly status: StatusInfo } | Failure> {
-    const result = await callApi(this.#port, 'GET', '/status', undefined, {
+    const result = await callApi(session.endpoint, 'GET', '/status', undefined, {
       ...this.#apiOptions(session, signal),
       timeoutMs,
     })

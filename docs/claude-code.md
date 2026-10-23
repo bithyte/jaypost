@@ -66,7 +66,7 @@ A timeout behaves like `Ask in terminal`. Long inputs that don't fit in the mess
 - Without the package on `PATH`, use `npx -y jaypost hook` as the command. npx adds startup time to every prompt.
 - `--project NAME` sets the `[name]` line. Default is the Claude Code project folder.
 - `--timeout S` is how long to wait for a tap on a permission prompt. Default 300, max 86400 (24 h); longer values are capped.
-- `--port N` picks the port as for [`mcp`](mcp.md), including `JAYPOST_PORT`.
+- `--port N` picks the port as for [`mcp`](mcp.md), including `JAYPOST_PORT` and `JAYPOST_URL`.
 - It finds the API token the same way `mcp` and `send` do: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`.
 
 It fails open. If the service is down or not paired, the hook does nothing and the terminal prompt works as usual. In `-p` (non-interactive) mode there's no terminal prompt, so no decision means Claude Code denies.

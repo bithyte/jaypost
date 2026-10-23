@@ -1,4 +1,5 @@
 import type { ClientToken } from '../auth/index.ts'
+import type { ServiceEndpoint } from '../client/index.ts'
 
 /** One `permission_suggestions` entry; passed back unchanged, unknown fields included. */
 export type PermissionSuggestion = {
@@ -65,7 +66,7 @@ export type HookArgs = { readonly project?: string; readonly timeout?: number }
 
 /** Everything `runHook` touches outside itself; aborting `signal` cancels the call silently. */
 export type HookDeps = {
-  readonly port: number
+  readonly endpoint: ServiceEndpoint
   /** Found the same way as for `send` and `mcp`; `unusable` fails right after the input is parsed (SessionStart reports it instead). */
   readonly token: ClientToken
   readonly signal: AbortSignal

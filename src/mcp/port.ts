@@ -1,3 +1,5 @@
+import { findEnvEndpoint, toLocalEndpoint } from '../client/index.ts'
+import type { ServiceEndpoint } from '../client/index.ts'
 import { DEFAULT_PORT, PORT_ENV_VAR } from '../config/constants.ts'
 import { readInstall } from '../install/index.ts'
 import { MAX_PORT, PORT_PATTERN } from './constants.ts'
@@ -16,6 +18,22 @@ export function resolveMcpPort(
     return envPort
   }
   return readInstall(installFile)?.port ?? DEFAULT_PORT
+}
+
+/**
+ * Service the clients (`send`, `hook`, `mcp`) call: the local one on the `--port` flag, then
+ * `JAYPOST_URL` (local or remote), then the local one on `resolveMcpPort`'s port. Never throws;
+ * a bad `JAYPOST_URL` comes back `invalid`.
+ */
+export function resolveMcpEndpoint(
+  flagPort: number | undefined,
+  env: NodeJS.ProcessEnv,
+  installFile: string,
+): ServiceEndpoint {
+  if (flagPort !== undefined) {
+    return toLocalEndpoint(flagPort)
+  }
+  return findEnvEndpoint(env) ?? toLocalEndpoint(resolveMcpPort(undefined, env, installFile))
 }
 
 function parseEnvPort(raw: string | undefined): number | undefined {

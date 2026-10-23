@@ -25,6 +25,7 @@ import {
   TIMEOUT_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
+  toLocalEndpoint,
 } from '../../src/client/index.ts'
 import type { NotifyRequest } from '../../src/notify/index.ts'
 import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
@@ -141,7 +142,11 @@ async function startApi(options: { maxAttachmentBytes?: number; notifications?: 
 }
 
 function caller(port: number, token: ClientToken = NO_CLIENT_TOKEN, now?: () => number): Caller {
-  return new Caller({ port, readToken: () => token, ...(now === undefined ? {} : { now }) })
+  return new Caller({
+    endpoint: toLocalEndpoint(port),
+    readToken: () => token,
+    ...(now === undefined ? {} : { now }),
+  })
 }
 
 function clock(values: readonly number[]): () => number {
@@ -221,7 +226,7 @@ test('readToken runs once per operation', async () => {
     body: TIMED_OUT,
   })
   const readToken = vi.fn((): ClientToken => NO_CLIENT_TOKEN)
-  const result = await new Caller({ port, readToken }).ask(
+  const result = await new Caller({ endpoint: toLocalEndpoint(port), readToken }).ask(
     { ...ASK, attachment: { name: 'a', text: 'x' } },
     CALL,
   )

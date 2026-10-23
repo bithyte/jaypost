@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { NO_CLIENT_TOKEN } from '../auth/index.ts'
-import { Caller } from '../client/index.ts'
+import { Caller, toLocalEndpoint } from '../client/index.ts'
 import {
   DEFAULT_START_TIMEOUT_MS,
   POLL_INTERVAL_MS,
@@ -17,7 +17,7 @@ import type { StatusFetch, WaitOptions, WaitResult } from './types.ts'
  */
 export async function defaultFetchStatus(port: number, token?: string): Promise<StatusFetch> {
   const caller = new Caller({
-    port,
+    endpoint: toLocalEndpoint(port),
     readToken: () =>
       token === undefined ? NO_CLIENT_TOKEN : { kind: 'token', token, source: 'file' },
   })

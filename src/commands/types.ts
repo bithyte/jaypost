@@ -1,5 +1,5 @@
 import type { ClientToken } from '../auth/index.ts'
-import type { AttachmentSource } from '../client/index.ts'
+import type { AttachmentSource, ServiceEndpoint } from '../client/index.ts'
 import type { VoteRule } from '../approval/index.ts'
 import type { MessageFormat } from '../format/index.ts'
 import type { CliLocation, InstallPaths, Target, TargetName } from '../install/index.ts'
@@ -218,7 +218,7 @@ export type SendNotifyArgs = {
 
 /** Where `send` talks to and writes; aborting `signal` cancels the call. */
 export type SendDeps = {
-  readonly port: number
+  readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
   readonly signal: AbortSignal
   readonly print: (text: string) => void

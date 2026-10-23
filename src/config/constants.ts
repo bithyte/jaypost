@@ -8,6 +8,8 @@ export const PROVIDER_ENV_VAR = 'JAYPOST_PROVIDER'
 export const PORT_ENV_VAR = 'JAYPOST_PORT'
 /** Env var that sets the API bind host. */
 export const HOST_ENV_VAR = 'JAYPOST_HOST'
+/** Env var that points clients at a service by URL, local or remote. */
+export const URL_ENV_VAR = 'JAYPOST_URL'
 /** Env var that selects the send mode (`direct` or `service`). */
 export const MODE_ENV_VAR = 'JAYPOST_MODE'
 /** Port used when neither the env nor the config file sets one. */
