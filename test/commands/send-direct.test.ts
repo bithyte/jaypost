@@ -421,6 +421,67 @@ test('voter ids are normalized to the form the provider parses them to', async (
   ])
 })
 
+function createNumericProvider() {
+  const base = createPairingFakeProvider()
+  return createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              parse: (raw: unknown) =>
+                typeof raw === 'string' && /^\s*\d+\s*$/.test(raw) ? Number(raw) : undefined,
+            }
+          : setting,
+      ),
+    },
+  )
+}
+
+test('under github actions voter ids are masked on stderr before they are checked', async () => {
+  const base = createPairingFakeProvider()
+  const { provider } = createProvider(
+    {},
+    {
+      settings: base.settings.map((setting) =>
+        setting.owner
+          ? {
+              ...setting,
+              parse: (raw: unknown) => (raw === 'bad' ? undefined : setting.parse(raw)),
+            }
+          : setting,
+      ),
+    },
+  )
+  const { deps, errors } = createDeps(provider, undefined, { ...ENV, GITHUB_ACTIONS: 'true' })
+  expect(await runDirectSendRequest({ ...REQUEST, voters: ['a', 'bad'] }, deps)).toBe(1)
+  expect(errors).toEqual(['::add-mask::a', '::add-mask::bad', 'jaypost: invalid user id "bad"'])
+})
+
+test('normalized voter ids are masked too, and stdout stays the answer', async () => {
+  const { provider } = createNumericProvider()
+  const env = { ...ENV, FAKE_OWNER: '9', GITHUB_ACTIONS: 'true' }
+  const { deps, printed, errors } = createDeps(provider, undefined, env)
+  const answered = answerVoter(provider, '111', 0)
+  const args = { ...REQUEST, voters: ['0111', ' 111'], json: true } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(errors).toEqual(['::add-mask::0111', '::add-mask::111'])
+  expect(printed).toEqual([
+    '{"answer":"Yes","timedOut":false,"approved":true,"require":"all","votes":{"111":"Yes"},"rounds":1}',
+  ])
+})
+
+test('the default owner voter gets no mask line', async () => {
+  const { provider } = createProvider()
+  const { deps, errors } = createDeps(provider, undefined, { ...ENV, GITHUB_ACTIONS: 'true' })
+  const answered = answerVoter(provider, 'o', 0)
+  expect(await runDirectSendRequest({ ...REQUEST, rule: 'majority' }, deps)).toBe(0)
+  await answered
+  expect(errors).toEqual([])
+})
+
 test('a failed send to one voter exits 1 naming them', async () => {
   const { provider } = createProvider({
     sendRequest: async (_id, _message, _options, _allowText, _attachment, recipient) => {

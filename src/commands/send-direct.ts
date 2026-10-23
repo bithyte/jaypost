@@ -7,7 +7,7 @@ import {
   toNotifyBody,
 } from '../client/index.ts'
 import type { AttachmentBody, AttachmentSource } from '../client/index.ts'
-import { loadDirectConfig, openDirectSession } from '../direct/index.ts'
+import { formatMaskCommands, loadDirectConfig, openDirectSession } from '../direct/index.ts'
 import type { DirectConfig, DirectSession } from '../direct/index.ts'
 import { parseNotifyRequest } from '../notify/index.ts'
 import { findOwnerSetting, resolveMaxAttachmentBytes } from '../provider/index.ts'
@@ -88,6 +88,12 @@ async function runDirectVote(
   deps: DirectSendDeps,
 ): Promise<number> {
   const parse = findOwnerSetting(config.provider)?.parse
+  const rawVoters = args.voters ?? []
+  // On stderr because the Action's run.sh and `$(...)` capture stdout only; the runner processes
+  // workflow commands on both streams.
+  for (const line of formatMaskCommands(rawVoters, deps.env)) {
+    deps.printError(line)
+  }
   const normalized: string[] = []
   for (const voter of args.voters ?? [ownerVoter(config)]) {
     const value = parse === undefined ? voter : parse(voter)
@@ -99,6 +105,12 @@ async function runDirectVote(
     normalized.push(String(value))
   }
   const voters = [...new Set(normalized)]
+  // Only the voters given are masked; the owner id is already a whole secret.
+  const rawIds = new Set(rawVoters.map((voter) => voter.trim()))
+  const extraIds = args.voters === undefined ? [] : voters.filter((voter) => !rawIds.has(voter))
+  for (const line of formatMaskCommands(extraIds, deps.env)) {
+    deps.printError(line)
+  }
   const rule = args.rule ?? 'all'
   const result = await withSession(config, deps, (session) =>
     session.vote({ request, voters, rule, retryCount: args.retryCount ?? 0 }, deps.signal),
