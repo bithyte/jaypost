@@ -1,5 +1,5 @@
 name: jaypost approval
-description: Ask someone on Telegram or Discord before a step runs, or tell them something. A No or a timeout fails the step.
+description: Ask someone on Telegram, Discord or Slack before a step runs, or tell them something. A No or a timeout fails the step.
 branding:
   icon: message-circle
   color: blue
@@ -29,10 +29,12 @@ inputs:
   format:
     description: How text is read, plain (default) or markdown.
   provider:
-    description: telegram (default) or discord.
+    description: telegram (default), discord or slack.
   bot-token:
     description: The bot token. Pass it from a secret.
     required: true
+  app-token:
+    description: The Slack app-level token (xapp-), needed only for slack. Pass it from a secret.
   owner-id:
     description: Who gets the message. Pass it from a secret.
     required: true
@@ -62,4 +64,5 @@ runs:
         JAYPOST_APPROVERS: ${{ inputs.approvers }}
         JAYPOST_PROVIDER: ${{ inputs.provider }}
         JAYPOST_BOT_TOKEN: ${{ inputs.bot-token }}
+        JAYPOST_APP_TOKEN: ${{ inputs.app-token }}
         JAYPOST_OWNER_ID: ${{ inputs.owner-id }}

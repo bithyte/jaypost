@@ -1,12 +1,13 @@
 {
   "name": "jaypost",
   "version": "0.9.0",
-  "description": "Local HTTP API that asks you a question on Telegram or Discord with buttons and returns your answer",
+  "description": "Local HTTP API that asks you a question on Telegram, Discord or Slack with buttons and returns your answer",
   "keywords": [
     "approval",
     "bot",
     "discord",
     "human-in-the-loop",
+    "slack",
     "telegram"
   ],
   "license": "Apache-2.0",

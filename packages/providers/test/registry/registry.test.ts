@@ -39,8 +39,9 @@ test('each provider has at most one owner setting, and an owner setting iff rese
   }
 })
 
-test('discord is registered; telegram stays the default', () => {
+test('discord and slack are registered; telegram stays the default', () => {
   expect(findProvider(PROVIDERS, 'discord')?.label).toBe('Discord')
+  expect(findProvider(PROVIDERS, 'slack')?.label).toBe('Slack')
   expect(DEFAULT_PROVIDER).toBe('telegram')
   expect(findProvider(PROVIDERS, DEFAULT_PROVIDER)?.name).toBe('telegram')
 })

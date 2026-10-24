@@ -45,6 +45,7 @@ test('every input reaches the script through env', () => {
     'format',
     'provider',
     'bot-token',
+    'app-token',
     'owner-id',
   ])
   expect(step.env).toEqual({
@@ -62,6 +63,7 @@ test('every input reaches the script through env', () => {
     JAYPOST_APPROVERS: '${{ inputs.approvers }}',
     JAYPOST_PROVIDER: '${{ inputs.provider }}',
     JAYPOST_BOT_TOKEN: '${{ inputs.bot-token }}',
+    JAYPOST_APP_TOKEN: '${{ inputs.app-token }}',
     JAYPOST_OWNER_ID: '${{ inputs.owner-id }}',
   })
   expect(step.run).not.toContain('${{')

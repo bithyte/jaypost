@@ -386,6 +386,13 @@ test('names the empty owner id without printing the token', async () => {
   expect(result.stdout + result.stderr).not.toContain('123:secret')
 })
 
+test('names the empty app-level token only for slack', async () => {
+  await expectInputError(
+    { INPUT_TEXT: 'Hi', JAYPOST_PROVIDER: 'slack', JAYPOST_APP_TOKEN: '' },
+    "input app-token is empty; slack needs it, pass it from a secret (pull requests from forks don't get secrets)",
+  )
+})
+
 test('rejects an allow-text that is not true or false', async () => {
   await expectInputError(
     { INPUT_TEXT: 'Hi', INPUT_ALLOW_TEXT: 'yes' },

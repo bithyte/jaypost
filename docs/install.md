@@ -1,9 +1,9 @@
 # Install
 
-Create a bot first and have the token ready: with [@BotFather](https://t.me/BotFather) on Telegram, or as in [Discord setup](pairing.md#discord-setup). `init`:
+Create a bot first and have the token ready: with [@BotFather](https://t.me/BotFather) on Telegram, as in [Discord setup](pairing.md#discord-setup), or as in [Slack setup](pairing.md#slack-setup). `init`:
 
-1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; `telegram` (the default) or `discord`.
-2. Asks for the bot token (input hidden) and checks it with the chat app. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
+1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `init quadlet`, `init compose`, `init systemd`, `init launchd`. `--provider NAME` picks the chat app; `telegram` (the default), `discord` or `slack`.
+2. Asks for the bot token (input hidden; Slack also asks for its app-level token) and checks it with the chat app. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
 3. Makes an API token and saves it to `~/.config/jaypost/token` (mode 0600). It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses a valid saved token.
 4. Installs and starts the service, then waits for pairing.
 
@@ -95,11 +95,11 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 ## Config
 
-Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
+Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_APP_TOKEN` (Slack only), `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` and `slack` are the others. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
 ## One instance per token
 
-Only one instance can run per bot token; on Telegram two would fight over the updates. Discord doesn't stop two services sharing a token, and both get every tap, so run only one. `init` replaces an existing install rather than adding a second. Stop anything you started by hand, including a `docker run` container, before running `init`.
+Only one instance can run per bot token; on Telegram two would fight over the updates. Discord doesn't stop two services sharing a token, and both get every tap, so run only one. Slack hands each event to just one of the connected services, so a second one would swallow some of your taps. `init` replaces an existing install rather than adding a second. Stop anything you started by hand, including a `docker run` container, before running `init`.
 
 ## Upgrading from the old setup
 

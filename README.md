@@ -15,7 +15,7 @@
 
 </div>
 
-They send a question, it pops up on your phone in Telegram or Discord, you tap a button, and they get the answer back.
+They send a question, it pops up on your phone in Telegram, Discord or Slack, you tap a button, and they get the answer back.
 
 - Claude Code wants to run `git push --force`. You get Allow and Deny on your phone.
 - A deploy script waits for your go-ahead.
@@ -25,13 +25,13 @@ Runs on your machine, talks only to you.
 
 ## Quick start
 
-You need Node 24+ and a bot token, from [@BotFather](https://t.me/BotFather) on Telegram or the [Discord developer portal](docs/pairing.md#discord-setup).
+You need Node 24+ and a bot token, from [@BotFather](https://t.me/BotFather) on Telegram, the [Discord developer portal](docs/pairing.md#discord-setup) or a [Slack app](docs/pairing.md#slack-setup).
 
 ```
 npx jaypost init
 ```
 
-It asks for your chat app and token, installs a small background service and prints a pairing code. Send `/start ABCD-EFGH` to your bot on Telegram (on Discord, add the bot with the invite link it prints, then DM it the bare code) and you're paired. No Node? Use the [standalone binary](docs/install.md#standalone-binary).
+It asks for your chat app and token, installs a small background service and prints a pairing code. Send `/start ABCD-EFGH` to your bot on Telegram (on Discord, add the bot with the invite link it prints, then DM it the bare code; on Slack, send the bare code in the app's Messages tab) and you're paired. No Node? Use the [standalone binary](docs/install.md#standalone-binary).
 
 Check it works:
 
@@ -64,7 +64,7 @@ flowchart LR
     agent["AI agent"] -- "MCP (stdio)" --> mcp["jaypost mcp"]
     mcp -- HTTP --> svc
     script["Script / n8n"] -- "HTTP<br>POST /request, /notify" --> svc["jaypost service<br>127.0.0.1:8787"]
-    svc -- "message with buttons" --> chat["Telegram / Discord"]
+    svc -- "message with buttons" --> chat["Telegram / Discord / Slack"]
     chat --> you(["You, on your phone"])
     you -- "tap a button or reply" --> chat
     chat -- answer --> svc
@@ -75,7 +75,7 @@ A small service on localhost holds each request open until you tap a button, rep
 ## Docs
 
 - [Install](docs/install.md): targets (Podman, Docker, systemd, launchd), standalone binary, config, upgrading
-- [Pairing](docs/pairing.md): pairing, changing owner, Discord setup
+- [Pairing](docs/pairing.md): pairing, changing owner, Discord and Slack setup
 - [Claude Code](docs/claude-code.md): plugin, permission hook and replies to a finished turn
 - [Agents (MCP)](docs/mcp.md): tools for any MCP client
 - [Shell and Node](docs/scripts.md): `jaypost send` and the `Client`

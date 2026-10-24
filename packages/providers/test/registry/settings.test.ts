@@ -15,8 +15,8 @@ import { createFakeProvider } from '@jaypost/testing'
 const telegram = requireProvider(PROVIDERS, 'telegram')
 
 test('requireProvider rejects an unknown name', () => {
-  expect(() => requireProvider(PROVIDERS, 'slack')).toThrow(
-    'unknown provider "slack"; run `jaypost init`',
+  expect(() => requireProvider(PROVIDERS, 'matrix')).toThrow(
+    'unknown provider "matrix"; run `jaypost init`',
   )
 })
 
