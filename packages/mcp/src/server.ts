@@ -33,8 +33,9 @@ import type {
 } from './types.ts'
 
 const INSTRUCTIONS = [
-  "jaypost reaches the user on their phone (Telegram or Discord). Use it when they're away from",
-  'the terminal: they asked to be pinged or asked on their phone, or the session runs unattended.',
+  'jaypost reaches the user on their phone (Telegram, Discord or Slack). Use it when they are',
+  'away from the terminal: they asked to be pinged or asked on their phone, or the session runs',
+  'unattended.',
   'Need a decision before you go on: ask_user.',
   'Need a decision later and have other work first: ask_user_async, then wait_for_answer.',
   'No longer need a background answer: cancel_question. Lost a request_id: list_questions.',

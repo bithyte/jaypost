@@ -11,7 +11,7 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
-`setup-ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code.
+`setup-ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code. On Slack, they must be in the app's workspace.
 
 ## Through a service by URL
 
@@ -66,8 +66,9 @@ jobs:
 | `allow-text` |                 | `true` also accepts a typed answer (request)          |
 | `project`    | repository name | shown above the message                               |
 | `format`     | `plain`         | `plain` or `markdown`                                 |
-| `provider`   | `telegram`      | `telegram` or `discord`                               |
+| `provider`   | `telegram`      | `telegram`, `discord` or `slack`                      |
 | `bot-token`  |                 | from a secret (required)                              |
+| `app-token`  |                 | Slack's app-level token from a secret (Slack only)    |
 | `owner-id`   |                 | from a secret (required)                              |
 | `approvers`  |                 | voter ids from a secret; needs `require` (request)    |
 | `require`    |                 | `all` or `majority`; needs `approvers` (request)      |
@@ -160,4 +161,4 @@ Other differences from service mode:
 - Notifications have no Dismiss button and aren't deleted automatically.
 - The config file isn't read, and `--port` is ignored.
 - SIGINT and SIGTERM (a cancelled run) cancel a pending question, edit the message to the cancelled line and exit 1.
-- Pairing in `setup-ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI.
+- Pairing in `setup-ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI. On Slack the commands live in the app's manifest and stay, but a separate app matters even more: Slack hands each tap to only one of the app's connections, so a running service could get the tap meant for the CI run.

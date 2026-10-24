@@ -10,7 +10,7 @@ Commands that talk to the service pick its port from `--port`, then `JAYPOST_POR
 jaypost init [launchd|systemd|compose|quadlet] [--port N] [--provider NAME] [--token|--no-token]
 ```
 
-Installs or replaces the service and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. See [Install](install.md).
+Installs or replaces the service and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default), `discord` or `slack`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. See [Install](install.md).
 
 ### `jaypost status`
 
@@ -26,7 +26,7 @@ Shows the target, version, port, where the token comes from (never its value), w
 jaypost ping [--port N]
 ```
 
-Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
+Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord, or Slack) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
 
 ### `jaypost reset-owner`
 

@@ -3,7 +3,7 @@
 New here? Start with the [quick start](../README.md#quick-start).
 
 - [Install](install.md): targets (Podman, Docker, systemd, launchd), standalone binary, config, upgrading
-- [Pairing](pairing.md): pairing, changing owner, Discord setup
+- [Pairing](pairing.md): pairing, changing owner, Discord and Slack setup
 - [Claude Code](claude-code.md): plugin and permission hook
 - [Agents (MCP)](mcp.md): tools for any MCP client
 - [Shell and Node](scripts.md): `jaypost send` and the `Client`

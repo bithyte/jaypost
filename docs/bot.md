@@ -1,6 +1,6 @@
 # Bot commands
 
-Send these to the bot in your private chat (on Discord, its DM):
+Send these to the bot in your private chat (on Discord, its DM; on Slack, as `/jaypost pending`, `/jaypost history 5` and so on in the app's Messages tab):
 
 - `/pending` lists the open requests, with the time left and the answer each gets on timeout. A text question shows `or a typed reply` after its buttons, or `Typed reply` alone if it has none.
 - `/cancel` rejects every open request with its `timeoutOption`.

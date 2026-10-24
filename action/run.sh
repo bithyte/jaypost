@@ -2,7 +2,7 @@
 # Runs `jaypost request` or `jaypost notify` for the GitHub Action (action.yml): installs the release binary that matches
 # this checkout's apps/cli/package.json version, builds the argv from the inputs and runs it in direct mode.
 # Reads INPUT_COMMAND, INPUT_TEXT, INPUT_OPTIONS, INPUT_DEFAULT, INPUT_TIMEOUT, INPUT_ALLOW_TEXT,
-# INPUT_REQUIRE, INPUT_RETRY, INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_OWNER_ID,
+# INPUT_REQUIRE, INPUT_RETRY, INPUT_PROJECT, INPUT_FORMAT, JAYPOST_BOT_TOKEN, JAYPOST_APP_TOKEN, JAYPOST_OWNER_ID,
 # JAYPOST_APPROVERS (JAYPOST_MODE and JAYPOST_PROVIDER pass through) and the runner's GITHUB_* and RUNNER_* variables.
 # Exits with the binary's status; 2 means a bad input.
 set -euo pipefail
@@ -37,6 +37,9 @@ for pair in "bot-token:${JAYPOST_BOT_TOKEN:-}" "owner-id:${JAYPOST_OWNER_ID:-}";
     fail 2 "input ${pair%%:*} is empty; pass it from a secret (pull requests from forks don't get secrets)"
   fi
 done
+if [ "${JAYPOST_PROVIDER:-}" = slack ] && [ -z "${JAYPOST_APP_TOKEN:-}" ]; then
+  fail 2 "input app-token is empty; slack needs it, pass it from a secret (pull requests from forks don't get secrets)"
+fi
 case "$allow_text" in
   '' | true | false) ;;
   *) fail 2 "input allow-text must be true or false, got \"$allow_text\"" ;;

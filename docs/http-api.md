@@ -52,7 +52,7 @@ Errors are JSON `{ "error": "..." }`:
 
 | Status | Meaning                                                                                                                                                    |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | Body isn't valid JSON or fails validation (on Discord, more than 25 `options` is `options must have at most 25 entries`). Nothing is sent to the chat app. |
+| 400    | Body isn't valid JSON or fails validation (on Discord and Slack, more than 25 `options` is `options must have at most 25 entries`). Nothing is sent to the chat app. |
 | 401    | Missing or wrong token.                                                                                                                                    |
 | 413    | Body over 14 MiB.                                                                                                                                          |
 | 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).                                                              |
