@@ -7,7 +7,8 @@ import type { HookDeps } from './types.ts'
 
 /**
  * Asks the service for /status and describes what stops permission prompts from reaching the
- * phone: not running, a token it can't use, or no phone paired. `undefined` means all is well.
+ * phone: not running, a token it can't use, no phone paired, or a failed bot. `undefined` means
+ * all is well.
  * A killed hook (`deps.signal` aborted) gets `undefined` too, so the caller can stay silent.
  * Never throws.
  */
@@ -20,9 +21,16 @@ export async function checkService(caller: Caller, deps: HookDeps): Promise<stri
   }
   const result = await caller.status({ signal: deps.signal, timeoutMs: SETUP_STATUS_TIMEOUT_MS })
   if (result.kind === 'status') {
-    return result.status.paired
-      ? undefined
-      : "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair."
+    const { status } = result
+    if (!status.paired) {
+      return "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair."
+    }
+    if (status.state === 'failed') {
+      // The error is the provider's sanitized reason, the same text /status gives this key.
+      const reason = status.error === undefined ? '' : ` (${status.error})`
+      return `jaypost's bot isn't running${reason}, so permission prompts stay in the terminal. Run \`jaypost status\` to check it.`
+    }
+    return undefined
   }
   if (deps.signal.aborted) {
     return undefined

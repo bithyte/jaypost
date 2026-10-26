@@ -314,6 +314,12 @@ test.each([
   [501, '{"error":"x"}', 'notSupported', 'notifications not supported by this provider'],
   [501, '{"error":"attachments not supported"}', 'notSupported', ATTACHMENT_NOT_SUPPORTED_MESSAGE],
   [503, '{"error":"x"}', 'notPaired', "jaypost isn't paired yet (run jaypost status)"],
+  [
+    503,
+    '{"error":"bot unavailable"}',
+    'botUnavailable',
+    "jaypost's bot isn't running (run jaypost status)",
+  ],
   [502, '{"error":"x"}', 'sendFailed', "couldn't send the message to the user"],
   [
     500,

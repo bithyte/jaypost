@@ -5,6 +5,8 @@ import {
   ATTACHMENT_GRACE_MS,
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   BACKGROUND_TOO_OLD_MESSAGE,
+  BOT_UNAVAILABLE_ERROR,
+  BOT_UNAVAILABLE_MESSAGE,
   CANCELLED_MESSAGE,
   FETCH_GRACE_MS,
   LEGACY_MAX_TIMEOUT_SECONDS,
@@ -354,6 +356,9 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
           ? ATTACHMENT_NOT_SUPPORTED_MESSAGE
           : NOT_SUPPORTED_MESSAGE,
     }
+  }
+  if (status === 503 && error === BOT_UNAVAILABLE_ERROR) {
+    return { kind: 'failed', reason: 'botUnavailable', message: BOT_UNAVAILABLE_MESSAGE }
   }
   if (status === 503) {
     return { kind: 'failed', reason: 'notPaired', message: NOT_PAIRED_MESSAGE }

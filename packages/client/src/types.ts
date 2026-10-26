@@ -230,7 +230,7 @@ export type Message = Omit<Notification, 'attachment' | 'signal'> & {
 /**
  * `invalidUrl` is a bad `JAYPOST_URL`; `rejected` is a 400 with the daemon's own text; `attachment`
  * is a local read or size failure; `notFound` (404) and `conflict` (409) come from admin routes,
- * with the service's own text.
+ * with the service's own text. `botUnavailable` is a 503 for a bot that's starting or failed.
  */
 export type FailureReason =
   | 'invalidUrl'
@@ -243,6 +243,7 @@ export type FailureReason =
   | 'tooOld'
   | 'notSupported'
   | 'notPaired'
+  | 'botUnavailable'
   | 'sendFailed'
   | 'unknownRequest'
   | 'unreadable'

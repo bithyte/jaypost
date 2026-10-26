@@ -378,6 +378,25 @@ test('a 2xx body of the wrong shape is unreadable', async () => {
   })
 })
 
+test('a 2xx answer that would hold a key never repeats the body', async () => {
+  const secret = `jpk_${'s'.repeat(43)}`
+  const bodies = [`{"key":"${secret}"}`, `not json ${secret}`]
+  for (const body of bodies) {
+    const port = await startStub((_request, response) => {
+      response.statusCode = 201
+      response.end(body)
+    })
+    const caller = createCaller(port, WRONG_ADMIN_KEY)
+    const failure = {
+      kind: 'failed',
+      reason: 'unreadable',
+      message: 'jaypost service sent an unexpected answer',
+    }
+    expect(await caller.createKey({ bot: 'b1' })).toEqual(failure)
+    expect(await caller.rotateAdminKey()).toEqual(failure)
+  }
+})
+
 test('an unexpected status names the status and error', async () => {
   const port = await startStub((_request, response) => {
     response.statusCode = 500

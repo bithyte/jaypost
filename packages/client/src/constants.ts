@@ -9,6 +9,9 @@ export const TOO_OLD_MESSAGE =
   'jaypost service is too old for notifications (run jaypost init to upgrade)'
 export const NOT_SUPPORTED_MESSAGE = 'notifications not supported by this provider'
 export const NOT_PAIRED_MESSAGE = "jaypost isn't paired yet (run jaypost status)"
+/** The service's 503 error text for a key whose bot is starting or failed. */
+export const BOT_UNAVAILABLE_ERROR = 'bot unavailable'
+export const BOT_UNAVAILABLE_MESSAGE = "jaypost's bot isn't running (run jaypost status)"
 export const SEND_FAILED_MESSAGE = "couldn't send the message to the user"
 /** Extra time the HTTP call gets beyond the approval timeout, so the service answers first. */
 export const FETCH_GRACE_MS = 30_000
@@ -57,3 +60,5 @@ export const ADMIN_TOO_OLD_MESSAGE =
  * covers Fastify's default `Not Found`.
  */
 export const ROUTE_NOT_FOUND_ERROR = 'not found'
+/** Shown for a 2xx admin answer of the wrong shape whose body would hold a key; never quotes it. */
+export const UNEXPECTED_ANSWER_MESSAGE = 'jaypost service sent an unexpected answer'

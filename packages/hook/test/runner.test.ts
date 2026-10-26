@@ -712,6 +712,36 @@ test('session start when not paired says to pair', async () => {
   ])
 })
 
+test('session start with a failed bot says it is not running', async () => {
+  const port = await startStub({
+    paired: true,
+    state: 'failed',
+    error: 'telegram rejected the bot token',
+    maxTextLength: 3900,
+    maxAttachmentBytes: 1,
+  })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, { env: await createEmptyHome() })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage:
+        "jaypost's bot isn't running (telegram rejected the bot token), so permission prompts stay in the terminal. Run `jaypost status` to check it.",
+    }),
+  ])
+})
+
+test('session start with a failed bot and no error still warns', async () => {
+  const port = await startStub({ paired: true, state: 'failed' })
+  const { deps, out } = createDeps(port, SESSION_START_EVENT, { env: await createEmptyHome() })
+  expect(await runHook({}, deps)).toBe(0)
+  expect(out).toEqual([
+    JSON.stringify({
+      systemMessage:
+        "jaypost's bot isn't running, so permission prompts stay in the terminal. Run `jaypost status` to check it.",
+    }),
+  ])
+})
+
 test('session start with a rejected token reports the token', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
   const { deps, out } = createDeps(port, SESSION_START_EVENT, {

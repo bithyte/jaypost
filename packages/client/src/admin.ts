@@ -33,6 +33,7 @@ import {
   ADMIN_TOO_OLD_MESSAGE,
   FETCH_GRACE_MS,
   ROUTE_NOT_FOUND_ERROR,
+  UNEXPECTED_ANSWER_MESSAGE,
 } from './constants.ts'
 import { fetchApi, readStringField, toLogQueryFields, toQuery, unreadable } from './http.ts'
 import type {
@@ -52,6 +53,9 @@ type Schema<T> = {
     value: unknown,
   ) => { readonly success: true; readonly data: T } | { readonly success: false }
 }
+
+// Passed for the calls whose 2xx body holds a plaintext key.
+const HOLDS_SECRET = true
 
 // Nothing cancels an admin call but its timeout.
 const NEVER_ABORTED = new AbortController().signal
@@ -129,7 +133,7 @@ export class AdminCaller {
 
   /** The answer holds the plaintext key, which the service never shows again. */
   createKey(body: CreateKeyBody): Promise<AdminResult<CreatedKey>> {
-    return this.#call('POST', '/admin/keys', body, createdKeySchema)
+    return this.#call('POST', '/admin/keys', body, createdKeySchema, HOLDS_SECRET)
   }
 
   /** A string sets the field, null deletes it, absent keeps it. */
@@ -159,7 +163,7 @@ export class AdminCaller {
 
   /** The new admin key; the service saved it to its admin key file and the old one stopped working. */
   rotateAdminKey(): Promise<AdminResult<RotatedAdminKey>> {
-    return this.#call('POST', '/admin/admin-key', undefined, rotatedAdminKeySchema)
+    return this.#call('POST', '/admin/admin-key', undefined, rotatedAdminKeySchema, HOLDS_SECRET)
   }
 
   async #call<T>(
@@ -167,6 +171,7 @@ export class AdminCaller {
     path: AdminPath,
     body: object | undefined,
     schema: Schema<T>,
+    holdsSecret = false,
   ): Promise<AdminResult<T>> {
     if (this.#endpoint.kind === 'invalid') {
       return { kind: 'failed', reason: 'invalidUrl', message: this.#endpoint.message }
@@ -182,14 +187,18 @@ export class AdminCaller {
     if (response.status < 200 || response.status > 299) {
       return toAdminFailure(response)
     }
+    // A 2xx body that holds a plaintext key must never reach an error message.
+    const failure: Failure = holdsSecret
+      ? { kind: 'failed', reason: 'unreadable', message: UNEXPECTED_ANSWER_MESSAGE }
+      : unreadable(response.text.trim())
     let json: unknown
     try {
       json = JSON.parse(response.text)
     } catch {
-      return unreadable(response.text.trim())
+      return failure
     }
     const parsed = schema.safeParse(json)
-    return parsed.success ? { kind: 'ok', value: parsed.data } : unreadable(response.text.trim())
+    return parsed.success ? { kind: 'ok', value: parsed.data } : failure
   }
 }
 
