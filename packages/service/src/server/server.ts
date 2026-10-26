@@ -116,7 +116,7 @@ function parseVote(bot: ApiBot, json: unknown): Parsed<Vote> {
     return parsed
   }
   const { request, voters, rule, retryCount } = parsed.value
-  const resolved = bot.resolveVoters(voters)
+  const resolved = bot.resolveVoters(voters, bot.recipient())
   switch (resolved.kind) {
     case 'invalid':
       return { ok: false, error: `invalid user id ${JSON.stringify(resolved.voter)}` }

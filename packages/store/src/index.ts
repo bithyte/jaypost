@@ -1,4 +1,5 @@
 export {
+  AUDIT_FILE_NAME,
   AuditLog,
   DEFAULT_LOG_LIMIT,
   formatAuditJsonLines,
@@ -91,7 +92,7 @@ export type {
   SeedLoad,
   SeedRecord,
 } from './registry/index.ts'
-export { resolveStatePath, StateStore } from './state/index.ts'
+export { resolveStatePath, STATE_FILE_NAME, StateStore } from './state/index.ts'
 export {
   ensureLinger,
   isMissingFileError,

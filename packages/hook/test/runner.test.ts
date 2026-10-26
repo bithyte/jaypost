@@ -89,6 +89,8 @@ async function startApi(
       maxTextLength: options.maxTextLength ?? 3900,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: options.auth ?? NO_AUTH,
       notifications: new NotificationService(notifier),
     }),

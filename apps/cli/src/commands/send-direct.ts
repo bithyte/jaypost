@@ -1,6 +1,7 @@
 import { format } from 'node:util'
 import type { ApprovalRequest, AskProgress, VoteResult } from '@jaypost/core'
 import {
+  findOwnerSetting,
   parseApprovalRequest,
   parseNotifyRequest,
   resolveMaxAttachmentBytes,
@@ -114,7 +115,13 @@ async function runDirectVote(
     deps.printError(line)
   }
   // loadDirectConfig requires the owner, so `noOwner` can't happen.
-  const resolved = resolveVoters(config.provider, config.settings, args.voters)
+  const ownerSetting = findOwnerSetting(config.provider)
+  const owner = ownerSetting === undefined ? undefined : config.settings[ownerSetting.configKey]
+  const resolved = resolveVoters(
+    config.provider,
+    owner === undefined ? undefined : String(owner),
+    args.voters,
+  )
   if (resolved.kind === 'noOwner') {
     throw new Error('direct config has no owner')
   }

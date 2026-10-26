@@ -55,28 +55,28 @@ test('resolveMaxAttachmentBytes caps a larger provider value', () => {
 })
 
 test('resolveVoters parses ids the way taps report them and drops duplicates', () => {
-  expect(resolveVoters(telegram, {}, ['0111', ' 111', '222'])).toEqual({
+  expect(resolveVoters(telegram, undefined, ['0111', ' 111', '222'])).toEqual({
     kind: 'voters',
     voters: ['111', '222'],
   })
 })
 
-test('resolveVoters without voters gives the owner, or noOwner before pairing', () => {
-  expect(resolveVoters(telegram, { ownerId: 42 }, undefined)).toEqual({
-    kind: 'voters',
-    voters: ['42'],
-  })
-  expect(resolveVoters(telegram, {}, undefined)).toEqual({ kind: 'noOwner' })
+test('resolveVoters without voters gives the person, or noOwner without one', () => {
+  expect(resolveVoters(telegram, '42', undefined)).toEqual({ kind: 'voters', voters: ['42'] })
+  expect(resolveVoters(telegram, undefined, undefined)).toEqual({ kind: 'noOwner' })
 })
 
 test('resolveVoters names the first id the owner setting refuses', () => {
-  expect(resolveVoters(telegram, {}, ['1', 'abc', 'x'])).toEqual({ kind: 'invalid', voter: 'abc' })
+  expect(resolveVoters(telegram, undefined, ['1', 'abc', 'x'])).toEqual({
+    kind: 'invalid',
+    voter: 'abc',
+  })
 })
 
 test('resolveVoters keeps ids as given without an owner setting', () => {
-  expect(resolveVoters(createFakeProvider(), {}, ['a', 'a', 'b'])).toEqual({
+  expect(resolveVoters(createFakeProvider(), undefined, ['a', 'a', 'b'])).toEqual({
     kind: 'voters',
     voters: ['a', 'b'],
   })
-  expect(resolveVoters(createFakeProvider(), {}, undefined)).toEqual({ kind: 'noOwner' })
+  expect(resolveVoters(createFakeProvider(), undefined, undefined)).toEqual({ kind: 'noOwner' })
 })

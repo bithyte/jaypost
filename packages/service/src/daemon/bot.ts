@@ -1,11 +1,12 @@
+import { join } from 'node:path'
 import {
   ApprovalService,
   findOwnerSetting,
   formatCode,
-  generateCode as generateDefaultCode,
+  isCodeShaped,
   NotificationService,
   OWNER_COMMANDS,
-  Pairing,
+  PairingCodes,
   QUIET_COMMANDS,
   QuietService,
   resolveMaxAttachmentBytes,
@@ -13,63 +14,61 @@ import {
   runOwnerCommand,
 } from '@jaypost/core'
 import {
+  AUDIT_FILE_NAME,
   AuditLog,
-  resolveAuditPath,
-  resolveStatePath,
+  LOCAL_PERSON,
+  STATE_FILE_NAME,
   StateStore,
-  updateConfigFile,
 } from '@jaypost/store'
-import type { Config } from '@jaypost/store'
-import type { PairResult, RuntimeHandlers, SettingValues } from '@jaypost/core'
+import type { PairResult, RuntimeHandlers } from '@jaypost/core'
 import type { StatusInfo } from '@jaypost/protocol'
-import type { ApiBot } from '../server/index.ts'
+import type { BotOptions, RunningBot } from './types.ts'
 
-/** What `startBot` needs to start one bot. */
-export type BotOptions = {
-  readonly config: Config
-  readonly configPath: string
-  /** The provider can't continue; the caller decides how to exit. */
-  readonly fatal: (message: string) => void
-  readonly log?: (line: string) => void
-  readonly generateCode?: () => string
-}
-
-/** A bot whose provider runtime is started, ready to put behind the HTTP API. */
-export type RunningBot = {
-  readonly bot: ApiBot
-  /** Starts cleanup of the previous run's messages once; resolves when done; never rejects. */
-  readonly recover: () => Promise<void>
-  /**
-   * Freezes the saved state synchronously, before its first await (so pending requests stay saved
-   * for the next start), then stops the provider runtime; never rejects.
-   */
-  readonly stop: () => Promise<void>
+/** Who questions to `person` are sent to: nobody in particular for the local person. */
+function recipientFor(person: string): string | undefined {
+  return person === LOCAL_PERSON ? undefined : person
 }
 
 /**
- * Starts one bot: its provider runtime, questions, notifications, quiet hours and pairing, with
- * state and audit files next to `configPath`. Throws an Error with the provider's reason when
- * credentials are rejected.
+ * Starts one bot for everyone paired on it: its provider runtime, questions, notifications, each
+ * person's quiet hours, and pairing with the codes `people` has pending. State and audit files go
+ * to `options.directory`; every log line starts with `[<bot id>]`. Throws an Error with the
+ * provider's reason when credentials are rejected.
  */
 export async function startBot(options: BotOptions): Promise<RunningBot> {
-  const { config, configPath } = options
-  const log = options.log ?? console.error
-  const provider = config.provider
-  const runtime = provider.createRuntime(config.settings, log)
+  const { record, provider, people } = options
+  const baseLog = options.log ?? console.error
+  const log = (line: string): void => baseLog(`[${record.id}] ${line}`)
+  const runtime = provider.createRuntime(record.settings, log)
   const check = await runtime.checkCredentials()
   if (!check.ok) {
     throw new Error(check.reason)
   }
   const displayName = check.displayName
-  const store = new StateStore(resolveStatePath(configPath), provider.name, log)
+  const pairs = findOwnerSetting(provider) !== undefined
+  const pairingInstructions = runtime.pairingInstructions?.bind(runtime)
+  if (pairs && pairingInstructions === undefined) {
+    throw new Error(
+      `provider ${JSON.stringify(provider.name)} has an owner setting but no pairing support`,
+    )
+  }
+  const store = new StateStore(join(options.directory, STATE_FILE_NAME), provider.name, log)
   const saved = store.load()
-  const audit = new AuditLog(resolveAuditPath(configPath), { log })
+  const audit = new AuditLog(join(options.directory, AUDIT_FILE_NAME), { log })
   const service = new ApprovalService(runtime, undefined, undefined, { store, audit })
-  const quiet = new QuietService((patch) => updateConfigFile(configPath, patch), {
-    ...(config.quietHours === undefined ? {} : { quietHours: config.quietHours }),
-    ...(config.mutedUntil === undefined ? {} : { mutedUntil: config.mutedUntil }),
-    log,
-  })
+  const quietByPerson = new Map<string, QuietService>()
+  const quietFor = (person: string): QuietService => {
+    const existing = quietByPerson.get(person)
+    if (existing !== undefined) {
+      return existing
+    }
+    const created = new QuietService((patch) => people.saveQuiet(person, patch), {
+      ...people.quietHours(person),
+      log,
+    })
+    quietByPerson.set(person, created)
+    return created
+  }
   const sendNotification = runtime.sendNotification
   const notifications =
     sendNotification === undefined
@@ -78,7 +77,10 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
           { sendNotification, deleteMessage: runtime.deleteMessage },
           undefined,
           log,
-          { store, quiet },
+          {
+            store,
+            quiet: { quietUntil: (recipient) => quietFor(recipient ?? LOCAL_PERSON).quietUntil() },
+          },
         )
   let recovery: Promise<void> | undefined
   // Deferred to the caller so a second instance that fails to bind its port has no side effects.
@@ -90,89 +92,94 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     })().catch(() => undefined)
     return recovery
   }
-  const ownerSetting = findOwnerSetting(provider)
-  // Gains the owner once someone pairs, so /vote can default to them.
-  let settings: SettingValues = config.settings
-  // Interim single owner: the one paired person, from the config or from pairing.
-  const savedOwner =
-    ownerSetting === undefined ? undefined : config.settings[ownerSetting.configKey]
-  let owner = savedOwner === undefined ? undefined : String(savedOwner)
-  let pairing: Pairing | undefined
-  let instructions: string | undefined
-  if (ownerSetting !== undefined && !Object.hasOwn(config.settings, ownerSetting.configKey)) {
-    if (runtime.pairingInstructions === undefined) {
-      throw new Error(
-        `provider ${JSON.stringify(provider.name)} has an owner setting but no pairing support`,
-      )
+  const pendingCodes = people.pendingCodes()
+  const codes = new PairingCodes()
+  for (const [pairingId, code] of pendingCodes) {
+    codes.add(pairingId, code)
+  }
+  const describe = () => ({
+    provider: provider.name,
+    displayName,
+    ...runtime.statusFields?.(),
+  })
+  // Interim (until the hub answers /status): the first code from start that is still unspent.
+  const findPendingCode = (): string | undefined => {
+    for (const pairingId of pendingCodes.keys()) {
+      const code = codes.codeFor(pairingId)
+      if (code !== undefined) {
+        return code
+      }
     }
-    const code = (options.generateCode ?? generateDefaultCode)()
-    pairing = new Pairing(code)
-    instructions = runtime.pairingInstructions(code)
-    log(`Not paired. ${instructions}`)
+    return undefined
   }
   const status = (): StatusInfo => {
-    const extraFields = runtime.statusFields?.() ?? {}
-    if (pairing === undefined || pairing.code === undefined || instructions === undefined) {
-      return { paired: true, provider: provider.name, displayName, ...extraFields }
+    const code = people.list().length > 0 ? undefined : findPendingCode()
+    if (code === undefined || pairingInstructions === undefined) {
+      return { paired: true, ...describe() }
     }
     return {
       paired: false,
-      provider: provider.name,
-      displayName,
-      code: formatCode(pairing.code),
-      instructions,
-      ...extraFields,
+      ...describe(),
+      code: formatCode(code),
+      instructions: pairingInstructions(code),
     }
   }
   const pair = (senderId: string, text: string): PairResult => {
-    const result = pairing?.attempt(senderId, text) ?? 'notPairing'
-    if (result === 'paired') {
-      owner = senderId
+    // A paired person's chat isn't a guess, so it never counts toward their block.
+    if (people.isPaired(senderId) && !isCodeShaped(text)) {
+      return 'notPairing'
     }
-    if (result === 'paired' && ownerSetting !== undefined) {
-      try {
-        const parsedOwner = ownerSetting.parse(senderId)
-        if (parsedOwner === undefined) {
-          throw new Error('owner not parseable')
-        }
-        settings = { ...settings, [ownerSetting.configKey]: parsedOwner }
-        updateConfigFile(configPath, { [ownerSetting.configKey]: parsedOwner })
-      } catch {
-        log(
-          `paired with ${senderId} but couldn't save the owner to ${configPath}; it'll be lost on restart`,
-        )
-      }
+    const claim = codes.attempt(senderId, text)
+    if (claim.kind !== 'paired') {
+      return claim.kind
     }
-    return result
+    people.claim(claim.pairingId, senderId)
+    log(`paired ${senderId} on ${record.id}`)
+    return 'paired'
   }
   const handlers: RuntimeHandlers = {
     answer: (id, optionIndex) => service.tap(id, optionIndex),
     reply: (id, text) => service.reply(id, text),
     dismiss: (id) => notifications?.dismiss(id) ?? false,
-    isPaired: (id) => id === owner,
-    listPaired: () => (owner === undefined ? [] : [owner]),
+    isPaired: (id) => people.isPaired(id),
+    listPaired: () => people.list(),
     commands: [...OWNER_COMMANDS, ...QUIET_COMMANDS],
-    command: (name, argument) =>
-      runOwnerCommand(service, name, argument, owner, {
-        now: () => new Date(),
-        maxTextLength: provider.maxTextLength,
-      }) ?? quiet.handleCommand(name, argument),
+    command: (name, argument, senderId) => {
+      const person = !pairs || senderId === undefined ? LOCAL_PERSON : senderId
+      return (
+        runOwnerCommand(service, name, argument, recipientFor(person), {
+          now: () => new Date(),
+          maxTextLength: provider.maxTextLength,
+        }) ?? quietFor(person).handleCommand(name, argument)
+      )
+    },
     fatal: options.fatal,
-    ...(pairing === undefined ? {} : { pair }),
+    ...(pairs ? { pair } : {}),
   }
   runtime.start(handlers)
   return {
     bot: {
       service,
       status,
-      recipient: () => owner,
-      resolveVoters: (voters) => resolveVoters(provider, settings, voters),
+      recipient: () => {
+        const [first] = people.list()
+        return first === undefined ? undefined : recipientFor(first)
+      },
+      describe,
+      ...(pairingInstructions === undefined ? {} : { pairingInstructions }),
+      resolveVoters: (voters, person) => resolveVoters(provider, person, voters),
+      rejectForKeys: (keyIds) => {
+        for (const keyId of keyIds) {
+          service.rejectForKey(keyId)
+        }
+      },
       maxTextLength: provider.maxTextLength,
       providerName: provider.name,
       maxAttachmentBytes: resolveMaxAttachmentBytes(provider),
       ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
       ...(notifications === undefined ? {} : { notifications }),
     },
+    codes,
     recover,
     stop: async () => {
       store.freeze()

@@ -3,19 +3,31 @@ import type { ApiAuth } from '@jaypost/store'
 import type { StatusInfo } from '@jaypost/protocol'
 
 /**
- * One bot behind the HTTP API: its questions, notifications, pairing state and its provider's
- * limits. The daemon serves one; a relay can serve several, picked by the caller's token.
+ * One bot behind the HTTP API: its questions, notifications and its provider's limits. Pairing
+ * state belongs to the registry; `status` and `recipient` are the interim single-owner view.
  */
 export type ApiBot = {
   readonly service: Pick<
     ApprovalService,
     'request' | 'start' | 'get' | 'waitFor' | 'cancel' | 'send' | 'close' | 'update'
   >
+  /** Interim: paired when anyone is, else the first pending code; removed with Task 7. */
   readonly status: () => StatusInfo
   /** Who requests and notifications go to when the caller names no one; removed with Task 7. */
   readonly recipient: () => string | undefined
-  /** Voter ids for /vote as the provider reads them; without `voters`, the owner. */
-  readonly resolveVoters: (voters: readonly string[] | undefined) => VoterIds
+  /** Provider, display name and provider status fields (Telegram's `bot`), without pairing state. */
+  readonly describe: () => { readonly provider: string; readonly displayName: string } & Readonly<
+    Record<string, string>
+  >
+  /** How to redeem `code` on this bot; absent for providers that don't pair. */
+  readonly pairingInstructions?: (code: string) => string
+  /** Voter ids for /vote; without `voters`, `person` (the key's person), or noOwner when undefined. */
+  readonly resolveVoters: (
+    voters: readonly string[] | undefined,
+    person: string | undefined,
+  ) => VoterIds
+  /** Settles the open questions of each key, for revocation. */
+  readonly rejectForKeys: (keyIds: readonly string[]) => void
   readonly maxTextLength: number
   /** Named in the log when a send fails. */
   readonly providerName: string

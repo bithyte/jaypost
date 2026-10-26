@@ -20,19 +20,18 @@ export function findOwnerSetting(provider: Provider): ProviderSetting | undefine
 
 /**
  * `voters` parsed by the owner setting and deduplicated in order, so `0111` and ` 111` are the
- * same voter as `111`; without `voters`, the owner from `settings`. A provider without an owner
- * setting keeps ids as given. Never throws.
+ * same voter as `111`; without `voters`, `person` (already in the form taps report), or `noOwner`
+ * when that is undefined. A provider without an owner setting keeps ids as given. Never throws.
  */
 export function resolveVoters(
   provider: Provider,
-  settings: SettingValues,
+  person: string | undefined,
   voters: readonly string[] | undefined,
 ): VoterIds {
-  const ownerSetting = findOwnerSetting(provider)
   if (voters === undefined) {
-    const owner = ownerSetting === undefined ? undefined : settings[ownerSetting.configKey]
-    return owner === undefined ? { kind: 'noOwner' } : { kind: 'voters', voters: [String(owner)] }
+    return person === undefined ? { kind: 'noOwner' } : { kind: 'voters', voters: [person] }
   }
+  const ownerSetting = findOwnerSetting(provider)
   const normalized: string[] = []
   for (const voter of voters) {
     const value = ownerSetting === undefined ? voter : ownerSetting.parse(voter)

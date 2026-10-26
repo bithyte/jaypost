@@ -393,6 +393,31 @@ test('history keeps the last 20 and honours count', async () => {
   expect(svc.history(0, undefined)).toEqual([])
 })
 
+test("history keeps the last 20 per recipient, so a busy one doesn't push others out", async () => {
+  const m = new FakeMessenger()
+  let counter = 0
+  const svc = new ApprovalService(
+    m,
+    () => at,
+    () => `id${(counter += 1)}`,
+  )
+  const settle = async (recipient: string, text: string): Promise<void> => {
+    const result = svc.request({ ...req, message: { text, spans: [] }, recipient })
+    await flush()
+    svc.tap(`id${counter}`, 0)
+    await result
+  }
+  await settle('B', 'quiet one')
+  for (let index = 1; index <= 25; index += 1) {
+    await settle('A', `q${index}`)
+  }
+  expect(svc.history(50, 'B').map((entry) => entry.text)).toEqual(['quiet one'])
+  const busy = svc.history(50, 'A')
+  expect(busy).toHaveLength(20)
+  expect(busy[0]?.text).toBe('q25')
+  expect(busy.at(-1)?.text).toBe('q6')
+})
+
 test('history entry and final text share one clock read', async () => {
   const m = new FakeMessenger()
   let calls = 0

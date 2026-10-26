@@ -151,6 +151,8 @@ async function startApi(
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: options.auth ?? NO_AUTH,
       ...(options.notifications === false
         ? {}

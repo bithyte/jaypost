@@ -37,7 +37,7 @@ export class SendError extends Error {}
 /**
  * Sends each request to its recipient and waits for an answer (tap or typed reply), the timeout or
  * an abort. Background questions from `start` stay readable by id, by the key that asked, until
- * `RESULT_TTL_MS` after they settle. Also keeps the last `HISTORY_LIMIT` settled requests in memory.
+ * `RESULT_TTL_MS` after they settle. Also keeps the last `HISTORY_LIMIT` settled requests per recipient in memory.
  * Scoping is strict: a `key` matches `request.caller?.key` and a `recipient` matches
  * `request.recipient`, so `undefined` only matches questions without one.
  */
@@ -49,7 +49,8 @@ export class ApprovalService {
   #audit: AuditSink | undefined
   #logError: (message: string, error: unknown) => void
   #pending = new PendingRequests()
-  #history: HistoryEntry[] = []
+  // One ring per recipient, so a busy person doesn't push everyone else's history out.
+  #historyByRecipient = new Map<string | undefined, HistoryEntry[]>()
   #background = new Map<string, BackgroundEntry>()
   // The last queued update per message; the final edit waits for it, so it never gets overwritten.
   #updates = new Map<string, Promise<void>>()
@@ -256,10 +257,7 @@ export class ApprovalService {
     if (!(count > 0)) {
       return []
     }
-    return this.#history
-      .filter((entry) => entry.recipient === recipient)
-      .slice(-count)
-      .toReversed()
+    return (this.#historyByRecipient.get(recipient) ?? []).slice(-count).toReversed()
   }
 
   /**
@@ -348,15 +346,17 @@ export class ApprovalService {
   ): Promise<FormattedText> {
     const settledAt = this.#now()
     this.#audit?.settled(id, settlement, settledAt, request.caller)
-    this.#history.push({
+    const history = this.#historyByRecipient.get(request.recipient) ?? []
+    history.push({
       text: request.message.text,
       settlement,
       settledAt,
       recipient: request.recipient,
     })
-    if (this.#history.length > HISTORY_LIMIT) {
-      this.#history.shift()
+    if (history.length > HISTORY_LIMIT) {
+      history.shift()
     }
+    this.#historyByRecipient.set(request.recipient, history)
     const ending =
       settlement.kind === 'timedOut' && request.reaskOnTimeout === true
         ? REASKED_ENDING

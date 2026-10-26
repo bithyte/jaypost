@@ -54,7 +54,7 @@ export type RuntimeHandlers = {
    */
   readonly reply: (id: string, text: string) => 'accepted' | 'expired'
   readonly dismiss: (id: string) => boolean
-  /** Present only while pairing. */
+  /** Present only on providers that pair; `notPairing` when there is no code to redeem. */
   readonly pair?: (senderId: string, text: string) => PairResult
   /** True for anyone paired on this bot; only their messages, taps and commands count. */
   readonly isPaired: (senderId: string) => boolean

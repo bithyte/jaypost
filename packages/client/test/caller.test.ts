@@ -141,6 +141,8 @@ async function startApi(options: { maxAttachmentBytes?: number; notifications?: 
       maxTextLength: 3900,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: NO_AUTH,
       maxAttachmentBytes: options.maxAttachmentBytes ?? 1000,
       notifications: {
@@ -591,6 +593,8 @@ async function startBackgroundApi() {
       maxTextLength: 3900,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: NO_AUTH,
       maxAttachmentBytes: 1000,
     }),

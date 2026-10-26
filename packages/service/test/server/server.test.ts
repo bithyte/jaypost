@@ -87,6 +87,8 @@ async function start(
       maxTextLength: 3900,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth,
       maxAttachmentBytes,
       ...(notify === undefined ? {} : { notifications: { notify } }),
@@ -206,6 +208,8 @@ test('server uses the provider text limit', async () => {
       maxTextLength: 10,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: NO_AUTH,
     }),
   )
@@ -567,6 +571,8 @@ test('a router with several bots sends each call to the bot its token picks', as
     maxTextLength,
     providerName: 'test',
     resolveVoters: () => ({ kind: 'noOwner' }),
+    describe: () => ({ provider: 'test', displayName: 'test' }),
+    rejectForKeys: () => undefined,
   })
   const botsByToken = new Map([
     [TOKEN, toBot(askFirst, 100)],
@@ -725,6 +731,8 @@ async function startReal(
       maxTextLength: options.maxTextLength ?? 3900,
       providerName: 'test',
       resolveVoters: options.resolveVoters ?? (() => ({ kind: 'noOwner' })),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: options.auth ?? NO_AUTH,
       maxAttachmentBytes: options.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES,
       ...(options.maxOptionCount === undefined ? {} : { maxOptionCount: options.maxOptionCount }),
@@ -889,6 +897,8 @@ test('only async create checks pairing', async () => {
       maxTextLength: 3900,
       providerName: 'test',
       resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
       auth: NO_AUTH,
     }),
   )
