@@ -71,10 +71,10 @@ Asks a question from the shell and prints the answer. `-o` adds a button, `-d` i
 ### `jaypost notify`
 
 ```
-jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--port N]
+jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--delete-after SECONDS|TIMESTAMP] [--port N]
 ```
 
-Sends a message that doesn't need an answer. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell). `jaypost send notify` still works as the old name.
+Sends a message that doesn't need an answer. `--delete-after` deletes it after that many seconds, or at that ISO 8601 time with a timezone (default 8 hours; not shifted by quiet hours, capped at 47 hours). Direct mode ignores it. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell). `jaypost send notify` still works as the old name.
 
 ### `jaypost mcp`
 

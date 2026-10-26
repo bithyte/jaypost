@@ -189,6 +189,25 @@ async function startFakeService(status: number, body: unknown): Promise<number> 
   return (server.address() as AddressInfo).port
 }
 
+/** A service that records each request body and answers `{"ok":true}`. */
+async function startRecordingService(): Promise<{ port: number; bodies: unknown[] }> {
+  const bodies: unknown[] = []
+  const server = createServer((request, response) => {
+    let text = ''
+    request.on('data', (chunk) => (text += chunk))
+    request.on('end', () => {
+      if (text !== '') {
+        bodies.push(JSON.parse(text))
+      }
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end('{"ok":true}')
+    })
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  fakeServers.push(server)
+  return { port: (server.address() as AddressInfo).port, bodies }
+}
+
 const fakeServers: Server[] = []
 afterEach(async () => {
   await Promise.all(
@@ -259,6 +278,22 @@ test('request validation error goes to stderr', async () => {
   expect(out).toEqual([])
   expect(errors).toHaveLength(1)
   expect(errors[0]).toMatch(/^jaypost: .*timeoutOption/)
+})
+
+test('notify forwards deleteAfter as given', async () => {
+  const { port, bodies } = await startRecordingService()
+  const { deps } = createDeps(port)
+  expect(await runSendNotify({ text: 'hi', deleteAfter: '300' }, deps)).toBe(0)
+  expect(bodies).toEqual([{ text: 'hi', deleteAfter: '300' }])
+})
+
+test('notify exits 1 with the service message on a bad deleteAfter', async () => {
+  const { port } = await startApi()
+  const { deps, errors } = createDeps(port)
+  expect(await runSendNotify({ text: 'hi', deleteAfter: '5m' }, deps)).toBe(1)
+  expect(errors.join('\n')).toContain(
+    'deleteAfter must be a positive number of seconds or an ISO 8601 timestamp with a timezone',
+  )
 })
 
 test('notify sends and prints nothing', async () => {

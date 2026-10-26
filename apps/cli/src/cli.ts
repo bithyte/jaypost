@@ -833,6 +833,10 @@ export async function main(argv: readonly string[]): Promise<number> {
       'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
     .option(
+      '--delete-after <seconds|timestamp>',
+      'delete the message after this many seconds or at this ISO 8601 time (default 8h; ignored in direct mode)',
+    )
+    .option(
       '--port <n>',
       'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
       parsePort,
@@ -845,6 +849,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly format?: MessageFormat
           readonly attach?: string
           readonly attachName?: string
+          readonly deleteAfter?: string
           readonly port?: number
         },
       ) => {
@@ -860,6 +865,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.project === undefined ? {} : { project: options.project }),
           ...(options.format === undefined ? {} : { format: options.format }),
           ...(attachment === undefined ? {} : { attachment }),
+          ...(options.deleteAfter === undefined ? {} : { deleteAfter: options.deleteAfter }),
         }
         code =
           mode.kind === 'direct'
