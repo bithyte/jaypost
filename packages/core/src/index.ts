@@ -70,8 +70,8 @@ export type {
   NotifyRequest,
   SendNotificationOptions,
 } from './notify/index.ts'
-export { formatCode, generateCode, Pairing } from './pairing/index.ts'
-export type { PairResult } from './pairing/index.ts'
+export { formatCode, generateCode, isCodeShaped, Pairing, PairingCodes } from './pairing/index.ts'
+export type { PairingClaim, PairResult } from './pairing/index.ts'
 export {
   collectSettings,
   DEFAULT_PROVIDER,

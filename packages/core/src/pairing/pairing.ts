@@ -21,7 +21,8 @@ export function formatCode(code: string): string {
   return `${code.slice(0, 4)}-${code.slice(4)}`
 }
 
-function normalizeCode(text: string): string {
+/** Uppercases and strips dashes and whitespace so typed codes compare equal. */
+export function normalizeCode(text: string): string {
   return text.trim().toUpperCase().replace(CODE_SEPARATOR_PATTERN, '')
 }
 
