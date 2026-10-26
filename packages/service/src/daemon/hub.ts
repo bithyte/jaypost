@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import {
   findOwnerSetting,
   formatCode,
@@ -5,38 +6,76 @@ import {
   parseQuietHours,
   resolveMaxAttachmentBytes,
 } from '@jaypost/core'
-import type { Provider, QuietHours, QuietPatch } from '@jaypost/core'
+import type { CredentialCheck, Provider, QuietHours, QuietPatch } from '@jaypost/core'
 import {
+  addBot,
   AUTHORIZATION_PATTERN,
   claimPairing,
   createKey,
+  createPairing,
   findKeyByHash,
+  generateAdminKey,
   generateApiKey,
   hashKey,
   parseAuditLog,
   readAuditFiles,
+  removeBot,
+  removePairing,
+  resetPairing,
   resolveBotFiles,
   revokeKey,
   selectAuditEntries,
+  updateKey,
   updatePairingQuiet,
+  writeAdminKeyFile,
 } from '@jaypost/store'
 import type {
+  AuditEntry,
   AuditReadResult,
   BotRecord,
-  KeyDetails,
   KeyRecord,
   KeyTarget,
-  NotFound,
   PairingRecord,
   Registry,
   RegistryStore,
 } from '@jaypost/store'
-import type { StatusInfo } from '@jaypost/protocol'
+import type {
+  AddBotBody,
+  AdminBot,
+  AdminKey,
+  AdminPairing,
+  CreatedKey,
+  CreateKeyBody,
+  CreatePairingBody,
+  PairingInvite,
+  RemovedKeys,
+  RotatedAdminKey,
+  StatusInfo,
+  UpdateKeyBody,
+} from '@jaypost/protocol'
 import { NO_BOT_LIMITS } from '../server/index.ts'
-import type { BotRoute, BotRouter, KeyRoute, LogQuery, OpenApiOptions } from '../server/index.ts'
+import type {
+  AdminApi,
+  AdminFailure,
+  AdminLogQuery,
+  BotRoute,
+  BotRouter,
+  KeyRoute,
+  LogQuery,
+  OpenApiOptions,
+} from '../server/index.ts'
+import {
+  parseBotSettings,
+  toAdminKey,
+  toAdminPairing,
+  toInvalid,
+  toKeyDetails,
+  toKeyTarget,
+  toNotFound,
+} from './admin.ts'
 import { startBot } from './bot.ts'
 import { BotSupervisor } from './supervisor.ts'
-import type { BotPeople, BotState, CreatedKey, HubOptions, RunningBot } from './types.ts'
+import type { BotPeople, BotState, HubOptions, RunningBot } from './types.ts'
 
 type Limits = Omit<OpenApiOptions, 'port' | 'version'>
 
@@ -79,14 +118,18 @@ function isPending(pairing: PairingRecord): pairing is PairingRecord & { readonl
   return pairing.person === undefined && pairing.code !== undefined
 }
 
+function toDuplicate(botId: string): AdminFailure {
+  return { kind: 'duplicate', error: `bot ${botId} already uses these credentials` }
+}
+
 /**
- * Owns the registry: keeps it in memory, runs one `BotSupervisor` per stored bot, and routes each
- * API call by its key to that key's bot and person. Every change applies a registry operation,
- * saves it, and only then swaps the registry in memory and updates the running bots, so a failed
- * save throws and changes nothing. The one exception is a pairing claim from the chat: it stays in
- * memory when the save fails, and that's logged.
+ * Owns the registry: keeps it in memory, runs one `BotSupervisor` per stored bot, routes each API
+ * call by its key to that key's bot and person, and serves the admin routes. Every change applies
+ * a registry operation, saves it, and only then swaps the registry in memory and updates the
+ * running bots, so a failed save throws and changes nothing. The one exception is a pairing claim
+ * from the chat: it stays in memory when the save fails, and that's logged.
  */
-export class Hub {
+export class Hub implements AdminApi {
   readonly #store: RegistryStore
   readonly #providersByName: ReadonlyMap<string, Provider>
   readonly #configPath: string
@@ -97,8 +140,10 @@ export class Hub {
   readonly #supervisors = new Map<string, BotSupervisor>()
   readonly #router: BotRouter
   #registry: Registry
-  readonly #adminKeyHash: string
+  readonly #adminKeyPath: string
+  #adminKeyHash: string
   #isRecovering = false
+  #isStopped = false
   #started: Promise<void> = Promise.resolve()
 
   constructor(options: HubOptions) {
@@ -106,6 +151,7 @@ export class Hub {
     this.#registry = options.registry
     this.#providersByName = new Map(options.providers.map((provider) => [provider.name, provider]))
     this.#configPath = options.configPath
+    this.#adminKeyPath = options.adminKeyPath
     this.#adminKeyHash = hashKey(options.adminKey)
     this.#version = options.version
     this.#now = options.now ?? (() => new Date())
@@ -154,63 +200,341 @@ export class Hub {
 
   /** Stops every bot; each freezes its saved state before the first await. Never rejects. */
   async stop(): Promise<void> {
+    this.#isStopped = true
     await Promise.all([...this.#supervisors.values()].map((supervisor) => supervisor.stop()))
   }
 
+  /** Whether `authorization` carries the admin key, compared in constant time. Never throws. */
+  isAdmin(authorization: string | undefined): boolean {
+    const presented =
+      authorization === undefined ? undefined : AUTHORIZATION_PATTERN.exec(authorization)?.[1]
+    if (presented === undefined) {
+      return false
+    }
+    // Both are sha256 hex digests, so the lengths always match.
+    return timingSafeEqual(Buffer.from(hashKey(presented)), Buffer.from(this.#adminKeyHash))
+  }
+
+  listBots(): { readonly bots: readonly AdminBot[] } {
+    return { bots: this.#registry.bots.map((record) => this.#describeBot(record)) }
+  }
+
   /**
-   * A new key on `target`'s pairing (Task 4's `createKey`), saved before it takes effect. A new
-   * pending pairing's code goes to its running bot at once. Throws when the save fails.
+   * Parses the settings, refuses credentials a stored bot already uses (409), asks the provider to
+   * check them (400 with its reason), then saves the bot and waits for its first start attempt.
+   * Never logs or returns a setting's value. Throws when the save fails.
    */
-  createKey(target: KeyTarget, details: KeyDetails): CreatedKey | NotFound {
+  async addBot(body: AddBotBody): Promise<{ readonly bot: AdminBot } | AdminFailure> {
+    const provider = this.#providersByName.get(body.provider)
+    if (provider === undefined) {
+      const names = [...this.#providersByName.keys()].map((name) => JSON.stringify(name))
+      return toInvalid(`provider must be one of ${names.join(', ')}`)
+    }
+    const settings = parseBotSettings(provider, body.settings)
+    if (!settings.ok) {
+      return toInvalid(settings.error)
+    }
+    const input = {
+      provider,
+      settings: settings.value,
+      ...(body.label === undefined ? {} : { label: body.label }),
+    }
+    const early = addBot(this.#registry, input, this.#now())
+    if (early.kind === 'duplicate') {
+      return toDuplicate(early.botId)
+    }
+    let check: CredentialCheck
+    try {
+      check = await provider.setup.checkCredentials(settings.value)
+    } catch {
+      // The error may quote a request URL that holds the token.
+      return toInvalid(`couldn't check the credentials with ${provider.name}`)
+    }
+    if (!check.ok) {
+      return toInvalid(check.reason)
+    }
+    // The registry may have changed while the provider answered.
+    const result = addBot(this.#registry, input, this.#now())
+    if (result.kind === 'duplicate') {
+      return toDuplicate(result.botId)
+    }
+    this.#commit(result.registry)
+    this.#log(`added bot ${result.bot.id} (${provider.name})`)
+    // A bot added while the service stops would outlive it; the next start runs it.
+    if (!this.#isStopped) {
+      await this.#supervise(result.bot.id)
+    }
+    return { bot: this.#describeBot(result.bot) }
+  }
+
+  /**
+   * Removes the bot with its pairings and keys, then stops its runtime, rejecting every open
+   * question with its timeout option. Its files stay. Throws when the save fails.
+   */
+  async removeBot(botId: string): Promise<RemovedKeys | AdminFailure> {
+    const result = removeBot(this.#registry, botId)
+    if (result.kind === 'notFound') {
+      return toNotFound(result)
+    }
+    this.#commit(result.registry)
+    const supervisor = this.#supervisors.get(botId)
+    this.#supervisors.delete(botId)
+    this.#log(`removed bot ${botId}`)
+    await supervisor?.abandon()
+    return { removedKeys: [...result.keyIds] }
+  }
+
+  listPairings(query: {
+    readonly bot?: string
+  }): { readonly pairings: readonly AdminPairing[] } | AdminFailure {
+    const { bot } = query
+    if (bot !== undefined && this.#findBot(bot) === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'bot', id: bot })
+    }
+    const { pairings, keys } = this.#registry
+    return {
+      pairings: pairings
+        .filter((pairing) => bot === undefined || pairing.botId === bot)
+        .map((pairing) => toAdminPairing(pairing, keys)),
+    }
+  }
+
+  /**
+   * An approver invite: a pending pairing whose code goes to its running bot at once. A bot that
+   * doesn't pair answers with its one local pairing. Throws when the save fails.
+   */
+  createPairing(body: CreatePairingBody): PairingInvite | AdminFailure {
+    const result = createPairing(
+      this.#registry,
+      body.bot,
+      this.#generateCode(),
+      this.#isPairingBot(body.bot),
+      this.#now(),
+    )
+    if (result.kind === 'notFound') {
+      return toNotFound(result)
+    }
+    this.#commit(result.registry)
+    return this.#invite(result.pairing)
+  }
+
+  /**
+   * Drops the pairing's person and gives it a new code; its keys and quiet settings stay. Their
+   * open questions are rejected with their timeout option, since nobody can answer them now.
+   * Throws when the save fails.
+   */
+  resetPairing(pairingId: string): PairingInvite | AdminFailure {
+    const pairing = this.#findPairing(pairingId)
+    if (pairing === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
+    }
+    if (!this.#isPairingBot(pairing.botId)) {
+      return toInvalid(`pairing ${pairingId} is on bot ${pairing.botId}, which doesn't pair`)
+    }
+    const result = resetPairing(this.#registry, pairingId, this.#generateCode())
+    if (result.kind === 'notFound') {
+      return toNotFound(result)
+    }
+    this.#commit(result.registry)
+    this.#release(pairing, this.#listKeyIds(pairingId))
+    return this.#invite(result.pairing)
+  }
+
+  /**
+   * Removes the pairing and its keys; their open questions are rejected with their timeout option
+   * and a pending code stops working. Throws when the save fails.
+   */
+  removePairing(pairingId: string): RemovedKeys | AdminFailure {
+    const pairing = this.#findPairing(pairingId)
+    const result = removePairing(this.#registry, pairingId)
+    if (result.kind === 'notFound' || pairing === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
+    }
+    this.#commit(result.registry)
+    this.#findRunning(pairing.botId)?.codes.remove(pairingId)
+    this.#release(pairing, result.keyIds)
+    return { removedKeys: [...result.keyIds] }
+  }
+
+  listKeys(query: {
+    readonly bot?: string
+    readonly pairing?: string
+  }): { readonly keys: readonly AdminKey[] } | AdminFailure {
+    if (query.bot !== undefined && this.#findBot(query.bot) === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'bot', id: query.bot })
+    }
+    if (query.pairing !== undefined && this.#findPairing(query.pairing) === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'pairing', id: query.pairing })
+    }
+    return {
+      keys: this.#registry.keys.flatMap((key) => {
+        const pairing = this.#findPairing(key.pairingId)
+        const isMatch =
+          pairing !== undefined &&
+          (query.bot === undefined || pairing.botId === query.bot) &&
+          (query.pairing === undefined || pairing.id === query.pairing)
+        return isMatch ? [toAdminKey(key, pairing.botId)] : []
+      }),
+    }
+  }
+
+  /**
+   * A new key on the body's pairing, saved before it takes effect; the plaintext key is returned
+   * only here. A new pending pairing's code goes to its running bot at once. Throws when the save
+   * fails.
+   */
+  createKey(body: CreateKeyBody): CreatedKey | AdminFailure {
+    const target = toKeyTarget(body)
+    if (target === undefined) {
+      return toInvalid('exactly one of bot, pairing and sameAsKey is required')
+    }
     const key = generateApiKey()
-    const at = this.#now()
     const result = createKey(
       this.#registry,
       target,
       hashKey(key),
-      details,
-      this.#generateCode(),
+      toKeyDetails(body),
+      // Only a new pairing uses the code.
+      target.kind === 'newPairing' ? this.#generateCode() : '',
       this.#isPairingTarget(target),
-      at,
+      this.#now(),
     )
     if (result.kind === 'notFound') {
-      return result
+      return toNotFound(result)
     }
     this.#commit(result.registry)
-    const { pairing } = result
-    const running = this.#findRunning(pairing.botId)
-    if (!isPending(pairing)) {
-      return { kind: 'created', id: result.key.id, key, pairing }
-    }
-    running?.codes.add(pairing.id, pairing.code)
-    const instructions = running?.bot.pairingInstructions?.(pairing.code)
+    const { code, instructions } = this.#invite(result.pairing)
     return {
-      kind: 'created',
       id: result.key.id,
       key,
-      pairing,
-      code: formatCode(pairing.code),
+      pairing: result.pairing.id,
+      ...(code === undefined ? {} : { code }),
       ...(instructions === undefined ? {} : { instructions }),
     }
   }
 
+  /** Sets or (with null) deletes a key's label and external id. Throws when the save fails. */
+  updateKey(keyId: string, body: UpdateKeyBody): { readonly key: AdminKey } | AdminFailure {
+    const result = updateKey(this.#registry, keyId, {
+      ...(body.label === undefined ? {} : { label: body.label }),
+      ...(body.externalId === undefined ? {} : { externalId: body.externalId }),
+    })
+    if (result.kind === 'notFound') {
+      return toNotFound(result)
+    }
+    this.#commit(result.registry)
+    const pairing = this.#findPairing(result.key.pairingId)
+    return { key: toAdminKey(result.key, pairing?.botId ?? '') }
+  }
+
   /** Removes the key, then rejects its open questions with their timeout option. Throws when the save fails. */
-  revokeKey(keyId: string): { readonly kind: 'revoked' } | NotFound {
+  revokeKey(keyId: string): Readonly<Record<string, never>> | AdminFailure {
     const pairing = this.#findPairingOfKey(keyId)
     const result = revokeKey(this.#registry, keyId)
     if (result.kind === 'notFound') {
-      return result
+      return toNotFound(result)
     }
     this.#commit(result.registry)
     if (pairing !== undefined) {
       this.#findRunning(pairing.botId)?.bot.rejectForKeys([keyId])
     }
-    return { kind: 'revoked' }
+    return {}
+  }
+
+  /**
+   * Every stored bot's questions (or one bot's), each with its bot, merged oldest first and then
+   * filtered. Lines from before keys existed are the seed key's. `pairing` and `key` may name
+   * removed ones, so their history stays readable. Throws when a log can't be read.
+   */
+  readLog(query: AdminLogQuery): AuditReadResult | AdminFailure {
+    const { bot } = query
+    const record = bot === undefined ? undefined : this.#findBot(bot)
+    if (bot !== undefined && record === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'bot', id: bot })
+    }
+    const now = this.#now()
+    const entries: AuditEntry[] = []
+    let skippedCount = 0
+    for (const { id } of record === undefined ? this.#registry.bots : [record]) {
+      const raw = readAuditFiles(resolveBotFiles(this.#configPath, id).auditPath)
+      const read = parseAuditLog(raw, now)
+      skippedCount += read.skippedCount
+      entries.push(...read.entries.map((entry) => this.#toAdminEntry(id, entry)))
+    }
+    const merged = entries.toSorted((left, right) => left.askedAt.localeCompare(right.askedAt))
+    return { entries: selectAuditEntries(merged, query), skippedCount }
+  }
+
+  /**
+   * Writes a new admin key to the admin key file, then swaps it in; the old key stops working at
+   * once. Throws when the write fails, and the old key keeps working.
+   */
+  rotateAdminKey(): RotatedAdminKey {
+    const adminKey = generateAdminKey()
+    writeAdminKeyFile(this.#adminKeyPath, adminKey)
+    this.#adminKeyHash = hashKey(adminKey)
+    this.#log('rotated the admin key')
+    return { adminKey }
   }
 
   #commit(registry: Registry): void {
     this.#store.save(registry)
     this.#registry = registry
+  }
+
+  /** A pairing as an invite: its code and instructions while pending, sent to its running bot. */
+  #invite(pairing: PairingRecord): PairingInvite {
+    const shown = toAdminPairing(pairing, this.#registry.keys)
+    if (!isPending(pairing)) {
+      return { pairing: shown }
+    }
+    const running = this.#findRunning(pairing.botId)
+    running?.codes.add(pairing.id, pairing.code)
+    const instructions = running?.bot.pairingInstructions?.(pairing.code)
+    return {
+      pairing: shown,
+      code: formatCode(pairing.code),
+      ...(instructions === undefined ? {} : { instructions }),
+    }
+  }
+
+  /** The pairing's person is gone: their bot forgets them and their keys' questions are rejected. */
+  #release(pairing: PairingRecord, keyIds: readonly string[]): void {
+    const running = this.#findRunning(pairing.botId)
+    if (pairing.person !== undefined) {
+      running?.forgetPerson(pairing.person)
+    }
+    running?.bot.rejectForKeys(keyIds)
+  }
+
+  #describeBot(record: BotRecord): AdminBot {
+    const state = this.#findState(record.id)
+    const displayName =
+      state.kind === 'running' ? state.running.bot.describe().displayName : undefined
+    const pairingIds = this.#registry.pairings
+      .filter((pairing) => pairing.botId === record.id)
+      .map((pairing) => pairing.id)
+    return {
+      id: record.id,
+      provider: record.provider,
+      ...(record.label === undefined ? {} : { label: record.label }),
+      ...(displayName === undefined ? {} : { displayName }),
+      state: state.kind,
+      ...(state.kind === 'failed' ? { error: state.reason } : {}),
+      pairingCount: pairingIds.length,
+      keyCount: this.#registry.keys.filter((key) => pairingIds.includes(key.pairingId)).length,
+    }
+  }
+
+  /** An entry of `botId`'s log with its bot; a seed bot line without a key is the seed key's. */
+  #toAdminEntry(botId: string, entry: AuditEntry): AuditEntry {
+    const seed = this.#registry.seed
+    const isSeedLine = entry.key === undefined && seed?.botId === botId
+    return {
+      ...entry,
+      ...(isSeedLine ? { key: seed.keyId, pairing: seed.pairingId } : {}),
+      bot: botId,
+    }
   }
 
   #supervise(botId: string): Promise<void> {
@@ -377,10 +701,7 @@ export class Hub {
     const pairing = this.#registry.pairings.find((other) => other.id === routed.id) ?? routed
     const record = this.#findBot(pairing.botId)
     const provider = record === undefined ? undefined : this.#providersByName.get(record.provider)
-    const state: BotState = this.#supervisors.get(pairing.botId)?.state ?? {
-      kind: 'failed',
-      reason: 'not started',
-    }
+    const state = this.#findState(pairing.botId)
     const running = state.kind === 'running' ? state.running : undefined
     const described =
       running?.bot.describe() ?? (record === undefined ? {} : { provider: record.provider })
@@ -434,13 +755,26 @@ export class Hub {
 
   /** Whether a new pairing on the target's bot waits for a code; only `newPairing` makes one. */
   #isPairingTarget(target: KeyTarget): boolean {
-    if (target.kind !== 'newPairing') {
-      return true
-    }
-    const record = this.#findBot(target.botId)
+    return target.kind !== 'newPairing' || this.#isPairingBot(target.botId)
+  }
+
+  /** Whether the bot's provider pairs; a bot whose provider is gone can't run, and a code costs nothing. */
+  #isPairingBot(botId: string): boolean {
+    const record = this.#findBot(botId)
     const provider = record === undefined ? undefined : this.#providersByName.get(record.provider)
-    // A bot whose provider is gone can't run; a code costs nothing.
     return provider === undefined || findOwnerSetting(provider) !== undefined
+  }
+
+  #findState(botId: string): BotState {
+    return this.#supervisors.get(botId)?.state ?? { kind: 'failed', reason: 'not started' }
+  }
+
+  #findPairing(pairingId: string): PairingRecord | undefined {
+    return this.#registry.pairings.find((pairing) => pairing.id === pairingId)
+  }
+
+  #listKeyIds(pairingId: string): readonly string[] {
+    return this.#registry.keys.filter((key) => key.pairingId === pairingId).map((key) => key.id)
   }
 
   #findBot(botId: string): BotRecord | undefined {

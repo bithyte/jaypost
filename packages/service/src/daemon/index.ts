@@ -8,7 +8,6 @@ export type {
   BotPeople,
   BotState,
   BotSupervisorOptions,
-  CreatedKey,
   HubOptions,
   RunningBot,
 } from './types.ts'

@@ -1,5 +1,5 @@
 import type { PairingCodes, Provider, QuietHours, QuietPatch } from '@jaypost/core'
-import type { BotRecord, PairingRecord, Registry, RegistryStore } from '@jaypost/store'
+import type { BotRecord, Registry, RegistryStore } from '@jaypost/store'
 import type { ApiBot } from '../server/index.ts'
 
 /** The registry's view of one bot's people, injected so the bot never touches storage. Calls never throw. */
@@ -43,6 +43,11 @@ export type RunningBot = {
    */
   readonly stop: () => Promise<void>
   /**
+   * Drops what the bot keeps in memory for `person` (their quiet hours and mute), so it's read
+   * again from `people` if they pair again. Call it once they're no longer paired on this bot.
+   */
+  readonly forgetPerson: (person: string) => void
+  /**
    * For a runtime that failed: rejects every open question with its timeout option and drops their
    * saved records, so the next start doesn't expire them again, then stops like `stop`; never
    * rejects.
@@ -81,22 +86,11 @@ export type HubOptions = {
   /** Bot directories live next to it. */
   readonly configPath: string
   readonly adminKey: string
-  /** Where the admin key file is, for rotating it. */
+  /** Where the admin key file is; rotating the key rewrites it. */
   readonly adminKeyPath: string
   /** Shown in /openapi.yaml. */
   readonly version: string
   readonly now?: () => Date
   readonly generateCode?: () => string
   readonly log?: (line: string) => void
-}
-
-/** A new API key. `key` is the plaintext, shown only here; `code` and `instructions` while pending. */
-export type CreatedKey = {
-  readonly kind: 'created'
-  readonly id: string
-  readonly key: string
-  readonly pairing: PairingRecord
-  /** Formatted for display, like `/status` shows it. */
-  readonly code?: string
-  readonly instructions?: string
 }

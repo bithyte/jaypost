@@ -10,7 +10,21 @@ import {
   MAX_TIMEOUT_SECONDS,
   MAX_WAIT_SECONDS,
 } from '@jaypost/core'
-import { statusInfoSchema } from '@jaypost/protocol'
+import {
+  addBotBodySchema,
+  adminBotSchema,
+  adminKeySchema,
+  adminPairingSchema,
+  createdKeySchema,
+  createKeyBodySchema,
+  createPairingBodySchema,
+  logEntrySchema,
+  MAX_LABEL_LENGTH,
+  removedKeysSchema,
+  rotatedAdminKeySchema,
+  statusInfoSchema,
+  updateKeyBodySchema,
+} from '@jaypost/protocol'
 import { MAX_BODY_BYTES } from './constants.ts'
 import type { OpenApiOptions } from './types.ts'
 
@@ -146,6 +160,11 @@ function toApprovalRequestSchema(body: JsonSchema): JsonSchema {
 /** Adds descriptions of the limit fields to both branches of the generated Status schema. */
 function toStatusSchema(status: JsonSchema): JsonSchema {
   const descriptions: Readonly<Record<string, string>> = {
+    key: "The caller key's id.",
+    pairing: "The id of the caller key's pairing.",
+    state:
+      "Where the key's bot is: `starting`, `running`, or `failed` (with `error`) and retried with backoff. Question routes answer 503 unless `running`.",
+    error: 'Why the bot failed; present only when `state` is `failed`.',
     maxTextLength: 'Most characters a request text may have.',
     maxOptionCount: 'Most options a request may have; absent means no provider limit',
   }
@@ -165,6 +184,293 @@ function toStatusSchema(status: JsonSchema): JsonSchema {
   }
 }
 
+/** A Zod schema as a component, without `$schema`; `input` for request bodies. */
+function toComponentSchema(schema: z.ZodType, io: 'input' | 'output' = 'output'): JsonSchema {
+  const { $schema: _schema, ...json } = z.toJSONSchema(schema, { io })
+  return json
+}
+
+// Fresh objects per use, like attachmentReference.
+function componentReference(name: string): { $ref: string } {
+  return { $ref: `#/components/schemas/${name}` }
+}
+
+function jsonBody(name: string) {
+  return { required: true, content: { 'application/json': { schema: componentReference(name) } } }
+}
+
+function jsonResponse(description: string, name: string) {
+  return { description, content: { 'application/json': { schema: componentReference(name) } } }
+}
+
+/** A 200/201 whose body is `{ [property]: <schema> }`. */
+function wrappedResponse(description: string, property: string, schema: JsonSchema) {
+  return {
+    description,
+    content: {
+      'application/json': {
+        schema: { type: 'object', properties: { [property]: schema }, required: [property] },
+      },
+    },
+  }
+}
+
+function listOf(name: string): JsonSchema {
+  return { type: 'array', items: componentReference(name) }
+}
+
+function idParameter(name: string) {
+  return { $ref: `#/components/parameters/${name}` }
+}
+
+function filterParameter(name: string, description: string) {
+  return { name, in: 'query', required: false, description, schema: { type: 'string' } }
+}
+
+function unknownId() {
+  return { $ref: '#/components/responses/UnknownId' }
+}
+
+type AdminOperation = {
+  readonly operationId: string
+  readonly summary: string
+  readonly description?: string
+  readonly parameters?: readonly unknown[]
+  readonly requestBody?: unknown
+  readonly responses: Readonly<Record<string, unknown>>
+  /** False for reads, which save nothing and so can't fail a save. */
+  readonly saves?: boolean
+}
+
+/** An admin route: tagged `admin`, behind the admin key, with its 401 (and 500 when it saves). */
+function adminOperation(operation: AdminOperation) {
+  const { saves, responses, ...rest } = operation
+  return {
+    tags: ['admin'],
+    security: [{ adminKey: [] }],
+    ...rest,
+    responses: {
+      ...responses,
+      '401': { $ref: '#/components/responses/Unauthorized' },
+      ...(saves === false ? {} : { '500': { $ref: '#/components/responses/SaveFailed' } }),
+    },
+  }
+}
+
+function logQueryParameters() {
+  return [
+    filterParameter(
+      'since',
+      'Only questions asked since then: a duration like `30m`, `12h` or `7d`, a date or an ISO date-time.',
+    ),
+    filterParameter('project', 'Only questions with this `project`.'),
+    {
+      name: 'limit',
+      in: 'query',
+      required: false,
+      description: 'Only the last this many questions.',
+      schema: { type: 'integer', minimum: 1 },
+    },
+  ]
+}
+
+/** The /admin paths. */
+function createAdminPaths() {
+  return {
+    '/admin/bots': {
+      get: adminOperation({
+        operationId: 'listBots',
+        summary: 'List bots',
+        saves: false,
+        responses: {
+          '200': wrappedResponse(
+            'Every stored bot, never its settings.',
+            'bots',
+            listOf('AdminBot'),
+          ),
+        },
+      }),
+      post: adminOperation({
+        operationId: 'addBot',
+        summary: 'Add a bot and start it',
+        description:
+          'Parses each setting, asks the provider to check the credentials, saves the bot and waits for its first start attempt. No restart needed.',
+        requestBody: jsonBody('AddBotBody'),
+        responses: {
+          '201': wrappedResponse('Added.', 'bot', componentReference('AdminBot')),
+          '400': errorResponse(
+            'Unknown provider; a missing, invalid or unknown setting; the owner setting; or credentials the provider rejected, with its reason. Never quotes a setting value.',
+          ),
+          '409': errorResponse('Another stored bot already uses these credentials.'),
+        },
+      }),
+    },
+    '/admin/bots/{id}': {
+      delete: adminOperation({
+        operationId: 'removeBot',
+        summary: 'Remove a bot with its pairings and keys',
+        description:
+          'Stops the bot. Its open questions are answered with their timeout option. Its log files stay on disk.',
+        parameters: [idParameter('BotId')],
+        responses: {
+          '200': jsonResponse(
+            'Removed; `removedKeys` are the keys that went with it.',
+            'RemovedKeys',
+          ),
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/pairings': {
+      get: adminOperation({
+        operationId: 'listPairings',
+        summary: 'List pairings',
+        saves: false,
+        parameters: [filterParameter('bot', "Only this bot's pairings.")],
+        responses: {
+          '200': wrappedResponse(
+            'The pairings, with their keys and, while pending, their code.',
+            'pairings',
+            listOf('AdminPairing'),
+          ),
+          '400': errorResponse('A filter was given more than once.'),
+          '404': unknownId(),
+        },
+      }),
+      post: adminOperation({
+        operationId: 'createPairing',
+        summary: 'Invite an approver',
+        description:
+          "A pairing with no key, waiting for its code. On a bot that doesn't pair, the bot's one pairing.",
+        requestBody: jsonBody('CreatePairingBody'),
+        responses: {
+          '201': jsonResponse('The pairing and, while pending, its code.', 'PairingInvite'),
+          '400': { $ref: '#/components/responses/AdminBadRequest' },
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/pairings/{id}/reset': {
+      post: adminOperation({
+        operationId: 'resetPairing',
+        summary: "Remove a pairing's person and wait for a new one",
+        description:
+          'Its keys stay and wait for the new code. Their open questions are answered with their timeout option.',
+        parameters: [idParameter('PairingId')],
+        responses: {
+          '200': jsonResponse('The pending pairing and its new code.', 'PairingInvite'),
+          '400': errorResponse("The pairing is on a bot that doesn't pair."),
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/pairings/{id}': {
+      delete: adminOperation({
+        operationId: 'removePairing',
+        summary: 'Remove a pairing and revoke its keys',
+        description: 'Their open questions are answered with their timeout option.',
+        parameters: [idParameter('PairingId')],
+        responses: {
+          '200': jsonResponse('Removed; `removedKeys` are the revoked keys.', 'RemovedKeys'),
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/keys': {
+      get: adminOperation({
+        operationId: 'listKeys',
+        summary: 'List API keys',
+        saves: false,
+        parameters: [
+          filterParameter('bot', "Only keys on this bot's pairings."),
+          filterParameter('pairing', 'Only keys on this pairing.'),
+        ],
+        responses: {
+          '200': wrappedResponse(
+            'The keys, never their hashes or plaintext.',
+            'keys',
+            listOf('AdminKey'),
+          ),
+          '400': errorResponse('A filter was given more than once.'),
+          '404': unknownId(),
+        },
+      }),
+      post: adminOperation({
+        operationId: 'createKey',
+        summary: 'Create an API key',
+        description:
+          'On a new pairing (`bot`), the key waits until someone sends the code to the bot. On an existing pairing (`pairing` or `sameAsKey`), it works at once.',
+        requestBody: jsonBody('CreateKeyBody'),
+        responses: {
+          '201': jsonResponse(
+            'The key. `key` is the plaintext, shown only in this response.',
+            'CreatedKey',
+          ),
+          '400': { $ref: '#/components/responses/AdminBadRequest' },
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/keys/{id}': {
+      patch: adminOperation({
+        operationId: 'updateKey',
+        summary: "Change a key's label or external id",
+        parameters: [idParameter('KeyId')],
+        requestBody: jsonBody('UpdateKeyBody'),
+        responses: {
+          '200': wrappedResponse('The key as it is now.', 'key', componentReference('AdminKey')),
+          '400': { $ref: '#/components/responses/AdminBadRequest' },
+          '404': unknownId(),
+        },
+      }),
+      delete: adminOperation({
+        operationId: 'revokeKey',
+        summary: 'Revoke an API key',
+        description:
+          'Its open questions are answered with their timeout option. Its pairing stays.',
+        parameters: [idParameter('KeyId')],
+        responses: {
+          '200': {
+            description: 'Revoked; an empty object.',
+            content: { 'application/json': { schema: { type: 'object' } } },
+          },
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/log': {
+      get: adminOperation({
+        operationId: 'readAdminLog',
+        summary: "Every bot's questions",
+        description:
+          'Oldest first, each with its bot. `pairing` and `key` may name removed ones, so their history stays readable.',
+        saves: false,
+        parameters: [
+          filterParameter('bot', "Only this bot's questions."),
+          filterParameter('pairing', "Only this pairing's questions."),
+          filterParameter('key', "Only this key's questions."),
+          ...logQueryParameters(),
+        ],
+        responses: {
+          '200': jsonResponse('The questions.', 'LogPage'),
+          '400': errorResponse('A query parameter is invalid or given more than once.'),
+          '404': unknownId(),
+        },
+      }),
+    },
+    '/admin/admin-key': {
+      post: adminOperation({
+        operationId: 'rotateAdminKey',
+        summary: 'Replace the admin key',
+        description: 'Writes the new key to the admin key file; the old key stops working at once.',
+        responses: {
+          '200': jsonResponse('The new admin key.', 'RotatedAdminKey'),
+        },
+      }),
+    },
+  }
+}
+
 /** OpenAPI 3.1 document of the HTTP API, for a service on `port` with the given text limit. */
 export function createOpenApiDocument(options: OpenApiOptions) {
   const { version, port, maxTextLength, maxAttachmentBytes, maxOptionCount } = options
@@ -180,6 +486,13 @@ export function createOpenApiDocument(options: OpenApiOptions) {
     },
     servers: [{ url: `http://127.0.0.1:${port}` }],
     security: [{ bearerAuth: [] }],
+    tags: [
+      {
+        name: 'admin',
+        description:
+          'Managing bots, pairings and keys. Needs the admin key; an API key gets 401 like a missing one.',
+      },
+    ],
     paths: {
       '/request': {
         post: {
@@ -381,6 +694,19 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           },
         },
       },
+      '/log': {
+        get: {
+          operationId: 'log',
+          summary: "The caller key's questions",
+          description: 'Oldest first. Only the questions asked with the caller key.',
+          parameters: logQueryParameters(),
+          responses: {
+            '200': jsonResponse('The questions.', 'LogPage'),
+            '400': errorResponse('A query parameter is invalid or given more than once.'),
+            '401': { $ref: '#/components/responses/Unauthorized' },
+          },
+        },
+      },
       '/openapi.yaml': {
         get: {
           operationId: 'openapi',
@@ -394,6 +720,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           },
         },
       },
+      ...createAdminPaths(),
     },
     components: {
       securitySchemes: {
@@ -401,7 +728,13 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           type: 'http',
           scheme: 'bearer',
           description:
-            'The token `init` saved to `~/.config/jaypost/token`. A service installed without a token ignores the header.',
+            'An API key, such as the one `init` saved to `~/.config/jaypost/token`. A service installed without a token treats a call without the header as its first key.',
+        },
+        adminKey: {
+          type: 'http',
+          scheme: 'bearer',
+          description:
+            'The admin key, in `~/.config/jaypost/admin-key` on the machine running the service. Only the admin routes take it.',
         },
       },
       schemas: {
@@ -491,6 +824,47 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           maxTextLength,
         ),
         Status: toStatusSchema(status),
+        LogEntry: toComponentSchema(logEntrySchema),
+        LogPage: {
+          type: 'object',
+          properties: {
+            entries: listOf('LogEntry'),
+            skippedCount: {
+              type: 'integer',
+              minimum: 0,
+              description: "Log lines that couldn't be read.",
+            },
+          },
+          required: ['entries', 'skippedCount'],
+        },
+        AddBotBody: {
+          ...toComponentSchema(addBotBodySchema, 'input'),
+          description: `\`settings\` by config key, as \`init\` asks for them, without the owner. \`label\` is at most ${MAX_LABEL_LENGTH} characters.`,
+        },
+        CreatePairingBody: toComponentSchema(createPairingBodySchema, 'input'),
+        CreateKeyBody: {
+          ...toComponentSchema(createKeyBodySchema, 'input'),
+          description: `Exactly one of \`bot\` (a new pairing on that bot), \`pairing\` or \`sameAsKey\` (that key's pairing). \`label\` and \`externalId\` are stored and never interpreted, at most ${MAX_LABEL_LENGTH} characters.`,
+        },
+        UpdateKeyBody: {
+          ...toComponentSchema(updateKeyBodySchema, 'input'),
+          description: 'A string sets the field, `null` deletes it, and a missing field stays.',
+        },
+        AdminBot: toComponentSchema(adminBotSchema),
+        AdminPairing: toComponentSchema(adminPairingSchema),
+        AdminKey: toComponentSchema(adminKeySchema),
+        CreatedKey: toComponentSchema(createdKeySchema),
+        PairingInvite: {
+          type: 'object',
+          properties: {
+            pairing: componentReference('AdminPairing'),
+            code: { type: 'string', description: 'Present while the pairing waits for it.' },
+            instructions: { type: 'string', description: 'How to send the code to the bot.' },
+          },
+          required: ['pairing'],
+        },
+        RemovedKeys: toComponentSchema(removedKeysSchema),
+        RotatedAdminKey: toComponentSchema(rotatedAdminKeySchema),
         Error: {
           type: 'object',
           properties: { error: { type: 'string' } },
@@ -505,12 +879,35 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           description: 'Id from `POST /request/async`.',
           schema: { type: 'string' },
         },
+        BotId: {
+          name: 'id',
+          in: 'path',
+          required: true,
+          description: 'A bot id, such as `b1`.',
+          schema: { type: 'string' },
+        },
+        PairingId: {
+          name: 'id',
+          in: 'path',
+          required: true,
+          description: 'A pairing id, such as `p1`.',
+          schema: { type: 'string' },
+        },
+        KeyId: {
+          name: 'id',
+          in: 'path',
+          required: true,
+          description: 'An API key id, such as `k1`.',
+          schema: { type: 'string' },
+        },
       },
       responses: {
         UnknownRequest: errorResponse(
           'Unknown id: never created, expired 24 h after settling, or lost to a restart.',
         ),
-        Unauthorized: errorResponse('Missing or wrong bearer token.'),
+        Unauthorized: errorResponse(
+          'Missing or wrong bearer token. On admin routes, anything but the admin key.',
+        ),
         BadRequest: errorResponse(
           'Body is not valid JSON or fails validation; `error` is the first problem found. Nothing is sent.',
         ),
@@ -519,7 +916,16 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           'Notifications or attachments are not supported by this provider.',
         ),
         SendFailed: errorResponse("The message couldn't be sent."),
-        NotPaired: errorResponse('No owner is paired yet.'),
+        NotPaired: errorResponse(
+          "The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).",
+        ),
+        AdminBadRequest: errorResponse(
+          'Body is not valid JSON or fails validation; `error` names the field, never its value.',
+        ),
+        UnknownId: errorResponse('Unknown id, named in `error`: `unknown key "k9"`.'),
+        SaveFailed: errorResponse(
+          "The registry or admin key file couldn't be written; nothing changed.",
+        ),
       },
     },
   }

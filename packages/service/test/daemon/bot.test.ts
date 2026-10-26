@@ -241,6 +241,16 @@ test("each person's saved mute is read from people", async () => {
   ])
 })
 
+test('forgetting a person drops their cached quiet state', async () => {
+  const quiet = new Map<string, Quiet>([['u1', { mutedUntil: new Date(Date.now() + 3_600_000) }]])
+  const { running, runtime } = await start({ people: createPeople({ persons: ['u1'], quiet }) })
+  expect(runtime.handlers?.command('quiet', '', 'u1')).toContain('Muted until')
+  quiet.delete('u1')
+  expect(runtime.handlers?.command('quiet', '', 'u1')).toContain('Muted until')
+  running.forgetPerson('u1')
+  expect(runtime.handlers?.command('quiet', '', 'u1')).toContain('Not muted.')
+})
+
 test("a failed quiet save keeps the mute and says it won't last", async () => {
   const { provider, notified } = createNotifyingProvider()
   const saveQuiet = () => {

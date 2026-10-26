@@ -162,6 +162,9 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     },
     codes,
     recover,
+    forgetPerson: (person) => {
+      quietByPerson.delete(person)
+    },
     stop: async () => {
       store.freeze()
       notifications?.stop()

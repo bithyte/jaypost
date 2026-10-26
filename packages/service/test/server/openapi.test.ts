@@ -241,3 +241,70 @@ test('/vote is documented with its body and report', () => {
   ])
   expect(ApprovalRequest.properties?.retry).toMatchObject({ type: 'integer', maximum: 100 })
 })
+
+test('the openapi document lists the admin routes under the adminKey scheme', () => {
+  const document = createOpenApiDocument(ATTACHMENT_OPTIONS)
+  expect(document.components.securitySchemes.adminKey).toMatchObject({
+    type: 'http',
+    scheme: 'bearer',
+  })
+  expect(document.tags).toContainEqual(expect.objectContaining({ name: 'admin' }))
+  const routes = [
+    ['/admin/bots', 'get'],
+    ['/admin/bots', 'post'],
+    ['/admin/bots/{id}', 'delete'],
+    ['/admin/pairings', 'get'],
+    ['/admin/pairings', 'post'],
+    ['/admin/pairings/{id}/reset', 'post'],
+    ['/admin/pairings/{id}', 'delete'],
+    ['/admin/keys', 'get'],
+    ['/admin/keys', 'post'],
+    ['/admin/keys/{id}', 'patch'],
+    ['/admin/keys/{id}', 'delete'],
+    ['/admin/log', 'get'],
+    ['/admin/admin-key', 'post'],
+  ] as const
+  const paths: Record<string, Record<string, unknown>> = document.paths
+  const adminOperations = Object.entries(paths)
+    .filter(([path]) => path.startsWith('/admin/'))
+    .flatMap(([path, item]) => Object.keys(item).map((method) => [path, method]))
+  expect(adminOperations.toSorted()).toEqual(routes.map((route) => [...route]).toSorted())
+  for (const [path, method] of routes) {
+    expect(paths[path]?.[method], `${method} ${path}`).toMatchObject({
+      tags: ['admin'],
+      security: [{ adminKey: [] }],
+      responses: { '401': { $ref: '#/components/responses/Unauthorized' } },
+    })
+  }
+  const { AddBotBody, CreateKeyBody, AdminKey, CreatedKey } = document.components.schemas
+  expect(AddBotBody.required).toEqual(['provider', 'settings'])
+  expect(Object.keys(CreateKeyBody.properties ?? {})).toEqual([
+    'bot',
+    'pairing',
+    'sameAsKey',
+    'label',
+    'externalId',
+  ])
+  expect(Object.keys(AdminKey.properties ?? {})).not.toContain('hash')
+  expect(CreatedKey.required).toEqual(['id', 'key', 'pairing'])
+  expect(document.paths['/admin/bots'].post.responses).toMatchObject({
+    '201': expect.anything(),
+    '400': expect.anything(),
+    '409': expect.anything(),
+  })
+})
+
+test('GET /log and the key fields of /status are documented', () => {
+  const document = createOpenApiDocument(ATTACHMENT_OPTIONS)
+  const log = document.paths['/log'].get
+  expect(log.parameters.map((parameter) => parameter.name)).toEqual(['since', 'project', 'limit'])
+  expect(log.responses['200']).toMatchObject({
+    content: { 'application/json': { schema: { $ref: '#/components/schemas/LogPage' } } },
+  })
+  expect(log).not.toHaveProperty('security')
+  const status = JSON.stringify(document.components.schemas.Status)
+  for (const field of ['key', 'pairing', 'state', 'error']) {
+    expect(status).toContain(`"${field}"`)
+  }
+  expect(status).toContain('retried with backoff')
+})

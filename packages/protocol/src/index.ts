@@ -1,2 +1,33 @@
-export { statusInfoSchema, voteReportSchema } from './schema.ts'
-export type { StatusInfo } from './types.ts'
+export {
+  addBotBodySchema,
+  adminBotSchema,
+  adminKeySchema,
+  adminPairingSchema,
+  createdKeySchema,
+  createKeyBodySchema,
+  createPairingBodySchema,
+  logEntrySchema,
+  logPageSchema,
+  MAX_LABEL_LENGTH,
+  pairingInviteSchema,
+  removedKeysSchema,
+  rotatedAdminKeySchema,
+  updateKeyBodySchema,
+} from './admin.ts'
+export { botStateSchema, statusInfoSchema, voteReportSchema } from './schema.ts'
+export type {
+  AddBotBody,
+  AdminBot,
+  AdminKey,
+  AdminPairing,
+  CreatedKey,
+  CreateKeyBody,
+  CreatePairingBody,
+  LogEntry,
+  LogPage,
+  PairingInvite,
+  RemovedKeys,
+  RotatedAdminKey,
+  StatusInfo,
+  UpdateKeyBody,
+} from './types.ts'

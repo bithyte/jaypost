@@ -3,11 +3,15 @@ export { createOpenApiDocument, formatOpenApiYaml } from './openapi.ts'
 export { createSingleBotRouter, toLimits } from './router.ts'
 export { createApiServer } from './server.ts'
 export type {
+  AdminApi,
+  AdminFailure,
+  AdminLogQuery,
   ApiBot,
   BotRoute,
   BotRouter,
   KeyRoute,
   LogQuery,
   OpenApiOptions,
+  Parsed,
   SingleBotOptions,
 } from './types.ts'

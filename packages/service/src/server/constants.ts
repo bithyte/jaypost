@@ -33,3 +33,6 @@ export const GET_ONLY_PATHS: readonly string[] = ['/status', '/openapi.yaml', '/
 
 /** A GET /log `limit`: a positive integer. */
 export const LOG_LIMIT_PATTERN = /^[1-9]\d{0,8}$/
+
+/** The status an admin route answers for each kind of failure. */
+export const ADMIN_FAILURE_STATUS = { invalid: 400, notFound: 404, duplicate: 409 } as const

@@ -63,13 +63,26 @@ export class BotSupervisor {
 
   /** Cancels any retry and stops the runtime; its state is frozen before the first await. */
   async stop(): Promise<void> {
+    await this.#halt()?.stop()
+  }
+
+  /**
+   * For a bot that is gone: cancels any retry and abandons the runtime, so its open questions are
+   * rejected with their timeout option and none stay saved. Never rejects.
+   */
+  async abandon(): Promise<void> {
+    await this.#halt()?.abandon()
+  }
+
+  /** Stops supervising; returns the runtime that was running, if any, for the caller to end. */
+  #halt(): RunningBot | undefined {
     this.#isStopped = true
     this.#generation += 1
     clearTimeout(this.#retryTimer)
     clearTimeout(this.#stableTimer)
     const running = this.#state.kind === 'running' ? this.#state.running : undefined
     this.#state = { kind: 'failed', reason: 'stopped' }
-    await running?.stop()
+    return running
   }
 
   async #attempt(): Promise<void> {

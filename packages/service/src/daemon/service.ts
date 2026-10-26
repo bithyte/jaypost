@@ -106,7 +106,7 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     ...(options.now === undefined ? {} : { now: options.now }),
   })
   hub.start()
-  const server = createApiServer(hub.router)
+  const server = createApiServer(hub.router, hub)
   return {
     server,
     hub,

@@ -19,6 +19,7 @@ function createRunning(): FakeRunning {
     bot: {} as ApiBot,
     codes: new PairingCodes(),
     recover: async () => undefined,
+    forgetPerson: () => undefined,
     stop: vi.fn(async () => undefined),
     abandon: vi.fn(async () => undefined),
   }
@@ -108,6 +109,20 @@ test('fatal abandons the runtime and retries; stop cancels the retry', async () 
   expect(start).toHaveBeenCalledTimes(2)
   expect(second.stop).toHaveBeenCalledTimes(1)
   expect(second.abandon).not.toHaveBeenCalled()
+})
+
+test('abandon ends the running bot without stopping it and cancels any retry', async () => {
+  vi.useFakeTimers()
+  const { start, runnings } = createRepeatingStart()
+  const supervisor = new BotSupervisor({ start, log: vi.fn() })
+  await supervisor.run()
+  await supervisor.abandon()
+  expect(runnings[0]?.abandon).toHaveBeenCalledTimes(1)
+  expect(runnings[0]?.stop).not.toHaveBeenCalled()
+  expect(supervisor.state).toEqual({ kind: 'failed', reason: 'stopped' })
+  supervisor.fail('late fatal')
+  await vi.advanceTimersByTimeAsync(600_000)
+  expect(start).toHaveBeenCalledTimes(1)
 })
 
 test('a bot that fails right after starting keeps backing off', async () => {

@@ -1,6 +1,19 @@
 import type { ApprovalService, NotificationService, RequestCaller, VoterIds } from '@jaypost/core'
 import type { ApiAuth, AuditReadResult } from '@jaypost/store'
-import type { StatusInfo } from '@jaypost/protocol'
+import type {
+  AddBotBody,
+  AdminBot,
+  AdminKey,
+  AdminPairing,
+  CreatedKey,
+  CreateKeyBody,
+  CreatePairingBody,
+  PairingInvite,
+  RemovedKeys,
+  RotatedAdminKey,
+  StatusInfo,
+  UpdateKeyBody,
+} from '@jaypost/protocol'
 
 /** One running bot behind the HTTP API: its questions, notifications and its provider's limits. */
 export type ApiBot = {
@@ -91,3 +104,58 @@ export type OpenApiOptions = {
   /** Most options a request may have; absent means no provider limit. */
   readonly maxOptionCount?: number
 }
+
+/** Why an admin call changed nothing: 400, 404 or 409, with an `error` that never quotes a body. */
+export type AdminFailure = {
+  readonly kind: 'invalid' | 'notFound' | 'duplicate'
+  readonly error: string
+}
+
+/** What GET /admin/log may narrow every bot's log to. */
+export type AdminLogQuery = LogQuery & {
+  readonly bot?: string
+  readonly pairing?: string
+  readonly key?: string
+}
+
+/**
+ * The admin routes' view of the service, one method per route. Each returns the response body, or
+ * an `AdminFailure` (bodies never have `kind`). A change is saved before it takes effect: a failed
+ * save throws (500) and changes nothing.
+ */
+export type AdminApi = {
+  /** Whether `authorization` carries the admin key; API keys never do. Never throws. */
+  readonly isAdmin: (authorization: string | undefined) => boolean
+  readonly listBots: () => { readonly bots: readonly AdminBot[] }
+  /** Checks the credentials with the provider first; the new bot starts at once. */
+  readonly addBot: (body: AddBotBody) => Promise<{ readonly bot: AdminBot } | AdminFailure>
+  /** Stops the bot, rejecting its open questions with their timeout option. */
+  readonly removeBot: (botId: string) => Promise<RemovedKeys | AdminFailure>
+  readonly listPairings: (query: {
+    readonly bot?: string
+  }) => { readonly pairings: readonly AdminPairing[] } | AdminFailure
+  readonly createPairing: (body: CreatePairingBody) => PairingInvite | AdminFailure
+  /** Drops the person, keeps the keys and rejects their open questions with the timeout option. */
+  readonly resetPairing: (pairingId: string) => PairingInvite | AdminFailure
+  readonly removePairing: (pairingId: string) => RemovedKeys | AdminFailure
+  readonly listKeys: (query: {
+    readonly bot?: string
+    readonly pairing?: string
+  }) => { readonly keys: readonly AdminKey[] } | AdminFailure
+  readonly createKey: (body: CreateKeyBody) => CreatedKey | AdminFailure
+  readonly updateKey: (
+    keyId: string,
+    body: UpdateKeyBody,
+  ) => { readonly key: AdminKey } | AdminFailure
+  /** Rejects the key's open questions with their timeout option. */
+  readonly revokeKey: (keyId: string) => Readonly<Record<string, never>> | AdminFailure
+  /** Throws when a log can't be read. */
+  readonly readLog: (query: AdminLogQuery) => AuditReadResult | AdminFailure
+  /** Writes the new key to the admin key file first; the old key stops working at once. */
+  readonly rotateAdminKey: () => RotatedAdminKey
+}
+
+/** A parsed body or query, or the first problem found; `error` never quotes the input. */
+export type Parsed<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string }

@@ -10,6 +10,9 @@ servers:
   - url: http://127.0.0.1:8787
 security:
   - bearerAuth: []
+tags:
+  - name: admin
+    description: Managing bots, pairings and keys. Needs the admin key; an API key gets 401 like a missing one.
 paths:
   /request:
     post:
@@ -226,6 +229,46 @@ paths:
                 $ref: "#/components/schemas/Status"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /log:
+    get:
+      operationId: log
+      summary: The caller key's questions
+      description: Oldest first. Only the questions asked with the caller key.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: "Only questions asked since then: a duration like `30m`, `12h` or `7d`, a date or an ISO date-time."
+          schema:
+            type: string
+        - name: project
+          in: query
+          required: false
+          description: Only questions with this `project`.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Only the last this many questions.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The questions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogPage"
+        "400":
+          description: A query parameter is invalid or given more than once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /openapi.yaml:
     get:
       operationId: openapi
@@ -238,12 +281,445 @@ paths:
             application/yaml:
               schema:
                 type: string
+  /admin/bots:
+    get:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: listBots
+      summary: List bots
+      responses:
+        "200":
+          description: Every stored bot, never its settings.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bots:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminBot"
+                required:
+                  - bots
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: addBot
+      summary: Add a bot and start it
+      description: Parses each setting, asks the provider to check the credentials, saves the bot and waits for its first start attempt. No restart needed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddBotBody"
+      responses:
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bot:
+                    $ref: "#/components/schemas/AdminBot"
+                required:
+                  - bot
+        "400":
+          description: Unknown provider; a missing, invalid or unknown setting; the owner setting; or credentials the provider rejected, with its reason. Never quotes a setting value.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: Another stored bot already uses these credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/bots/{id}:
+    delete:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: removeBot
+      summary: Remove a bot with its pairings and keys
+      description: Stops the bot. Its open questions are answered with their timeout option. Its log files stay on disk.
+      parameters:
+        - $ref: "#/components/parameters/BotId"
+      responses:
+        "200":
+          description: Removed; `removedKeys` are the keys that went with it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemovedKeys"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/pairings:
+    get:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: listPairings
+      summary: List pairings
+      parameters:
+        - name: bot
+          in: query
+          required: false
+          description: Only this bot's pairings.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pairings, with their keys and, while pending, their code.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pairings:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminPairing"
+                required:
+                  - pairings
+        "400":
+          description: A filter was given more than once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+    post:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: createPairing
+      summary: Invite an approver
+      description: A pairing with no key, waiting for its code. On a bot that doesn't pair, the bot's one pairing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePairingBody"
+      responses:
+        "201":
+          description: The pairing and, while pending, its code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingInvite"
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/pairings/{id}/reset:
+    post:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: resetPairing
+      summary: Remove a pairing's person and wait for a new one
+      description: Its keys stay and wait for the new code. Their open questions are answered with their timeout option.
+      parameters:
+        - $ref: "#/components/parameters/PairingId"
+      responses:
+        "200":
+          description: The pending pairing and its new code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PairingInvite"
+        "400":
+          description: The pairing is on a bot that doesn't pair.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/pairings/{id}:
+    delete:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: removePairing
+      summary: Remove a pairing and revoke its keys
+      description: Their open questions are answered with their timeout option.
+      parameters:
+        - $ref: "#/components/parameters/PairingId"
+      responses:
+        "200":
+          description: Removed; `removedKeys` are the revoked keys.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RemovedKeys"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/keys:
+    get:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: listKeys
+      summary: List API keys
+      parameters:
+        - name: bot
+          in: query
+          required: false
+          description: Only keys on this bot's pairings.
+          schema:
+            type: string
+        - name: pairing
+          in: query
+          required: false
+          description: Only keys on this pairing.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The keys, never their hashes or plaintext.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminKey"
+                required:
+                  - keys
+        "400":
+          description: A filter was given more than once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+    post:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: createKey
+      summary: Create an API key
+      description: On a new pairing (`bot`), the key waits until someone sends the code to the bot. On an existing pairing (`pairing` or `sameAsKey`), it works at once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKeyBody"
+      responses:
+        "201":
+          description: The key. `key` is the plaintext, shown only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedKey"
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/keys/{id}:
+    patch:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: updateKey
+      summary: Change a key's label or external id
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateKeyBody"
+      responses:
+        "200":
+          description: The key as it is now.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key:
+                    $ref: "#/components/schemas/AdminKey"
+                required:
+                  - key
+        "400":
+          $ref: "#/components/responses/AdminBadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+    delete:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: revokeKey
+      summary: Revoke an API key
+      description: Its open questions are answered with their timeout option. Its pairing stays.
+      parameters:
+        - $ref: "#/components/parameters/KeyId"
+      responses:
+        "200":
+          description: Revoked; an empty object.
+          content:
+            application/json:
+              schema:
+                type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
+  /admin/log:
+    get:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: readAdminLog
+      summary: Every bot's questions
+      description: Oldest first, each with its bot. `pairing` and `key` may name removed ones, so their history stays readable.
+      parameters:
+        - name: bot
+          in: query
+          required: false
+          description: Only this bot's questions.
+          schema:
+            type: string
+        - name: pairing
+          in: query
+          required: false
+          description: Only this pairing's questions.
+          schema:
+            type: string
+        - name: key
+          in: query
+          required: false
+          description: Only this key's questions.
+          schema:
+            type: string
+        - name: since
+          in: query
+          required: false
+          description: "Only questions asked since then: a duration like `30m`, `12h` or `7d`, a date or an ISO date-time."
+          schema:
+            type: string
+        - name: project
+          in: query
+          required: false
+          description: Only questions with this `project`.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          description: Only the last this many questions.
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: The questions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogPage"
+        "400":
+          description: A query parameter is invalid or given more than once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/UnknownId"
+  /admin/admin-key:
+    post:
+      tags:
+        - admin
+      security:
+        - adminKey: []
+      operationId: rotateAdminKey
+      summary: Replace the admin key
+      description: Writes the new key to the admin key file; the old key stops working at once.
+      responses:
+        "200":
+          description: The new admin key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RotatedAdminKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/SaveFailed"
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      description: The token `init` saved to `~/.config/jaypost/token`. A service installed without a token ignores the header.
+      description: An API key, such as the one `init` saved to `~/.config/jaypost/token`. A service installed without a token treats a call without the header as its first key.
+    adminKey:
+      type: http
+      scheme: bearer
+      description: The admin key, in `~/.config/jaypost/admin-key` on the machine running the service. Only the admin routes take it.
   schemas:
     ApprovalRequest:
       type: object
@@ -453,16 +929,20 @@ components:
               const: true
             key:
               type: string
+              description: The caller key's id.
             pairing:
               type: string
+              description: The id of the caller key's pairing.
             state:
               type: string
               enum:
                 - starting
                 - running
                 - failed
+              description: "Where the key's bot is: `starting`, `running`, or `failed` (with `error`) and retried with backoff. Question routes answer 503 unless `running`."
             error:
               type: string
+              description: Why the bot failed; present only when `state` is `failed`.
             provider:
               type: string
             displayName:
@@ -489,16 +969,20 @@ components:
               type: string
             key:
               type: string
+              description: The caller key's id.
             pairing:
               type: string
+              description: The id of the caller key's pairing.
             state:
               type: string
               enum:
                 - starting
                 - running
                 - failed
+              description: "Where the key's bot is: `starting`, `running`, or `failed` (with `error`) and retried with backoff. Question routes answer 503 unless `running`."
             error:
               type: string
+              description: Why the bot failed; present only when `state` is `failed`.
             provider:
               type: string
             displayName:
@@ -519,6 +1003,247 @@ components:
             - paired
             - code
           additionalProperties: {}
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        askedAt:
+          type: string
+        project:
+          type: string
+        text:
+          type: string
+        options:
+          type: array
+          items:
+            type: string
+        timeoutOption:
+          type: string
+        timeoutSeconds:
+          type: number
+        status:
+          type: string
+        answer:
+          type: string
+        settledAt:
+          type: string
+        key:
+          type: string
+        pairing:
+          type: string
+        bot:
+          type: string
+      required:
+        - id
+        - askedAt
+        - text
+        - options
+        - timeoutOption
+        - timeoutSeconds
+        - status
+      additionalProperties: {}
+    LogPage:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LogEntry"
+        skippedCount:
+          type: integer
+          minimum: 0
+          description: Log lines that couldn't be read.
+      required:
+        - entries
+        - skippedCount
+    AddBotBody:
+      type: object
+      properties:
+        provider:
+          type: string
+        settings:
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type:
+              - string
+              - number
+        label:
+          type: string
+          maxLength: 200
+      required:
+        - provider
+        - settings
+      additionalProperties: false
+      description: "`settings` by config key, as `init` asks for them, without the owner. `label` is at most 200 characters."
+    CreatePairingBody:
+      type: object
+      properties:
+        bot:
+          type: string
+      required:
+        - bot
+      additionalProperties: false
+    CreateKeyBody:
+      type: object
+      properties:
+        bot:
+          type: string
+        pairing:
+          type: string
+        sameAsKey:
+          type: string
+        label:
+          type: string
+          maxLength: 200
+        externalId:
+          type: string
+          maxLength: 200
+      additionalProperties: false
+      description: Exactly one of `bot` (a new pairing on that bot), `pairing` or `sameAsKey` (that key's pairing). `label` and `externalId` are stored and never interpreted, at most 200 characters.
+    UpdateKeyBody:
+      type: object
+      properties:
+        label:
+          anyOf:
+            - type: string
+              maxLength: 200
+            - type: "null"
+        externalId:
+          anyOf:
+            - type: string
+              maxLength: 200
+            - type: "null"
+      additionalProperties: false
+      description: A string sets the field, `null` deletes it, and a missing field stays.
+    AdminBot:
+      type: object
+      properties:
+        id:
+          type: string
+        provider:
+          type: string
+        label:
+          type: string
+        displayName:
+          type: string
+        state:
+          type: string
+          enum:
+            - starting
+            - running
+            - failed
+        error:
+          type: string
+        pairingCount:
+          type: number
+        keyCount:
+          type: number
+      required:
+        - id
+        - provider
+        - state
+        - pairingCount
+        - keyCount
+      additionalProperties: {}
+    AdminPairing:
+      type: object
+      properties:
+        id:
+          type: string
+        bot:
+          type: string
+        person:
+          type: string
+        state:
+          type: string
+          enum:
+            - paired
+            - pending
+        code:
+          type: string
+        keys:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - bot
+        - state
+        - keys
+      additionalProperties: {}
+    AdminKey:
+      type: object
+      properties:
+        id:
+          type: string
+        pairing:
+          type: string
+        bot:
+          type: string
+        label:
+          type: string
+        externalId:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - pairing
+        - bot
+        - createdAt
+      additionalProperties: {}
+    CreatedKey:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+        pairing:
+          type: string
+        code:
+          type: string
+        instructions:
+          type: string
+      required:
+        - id
+        - key
+        - pairing
+      additionalProperties: {}
+    PairingInvite:
+      type: object
+      properties:
+        pairing:
+          $ref: "#/components/schemas/AdminPairing"
+        code:
+          type: string
+          description: Present while the pairing waits for it.
+        instructions:
+          type: string
+          description: How to send the code to the bot.
+      required:
+        - pairing
+    RemovedKeys:
+      type: object
+      properties:
+        removedKeys:
+          type: array
+          items:
+            type: string
+      required:
+        - removedKeys
+      additionalProperties: {}
+    RotatedAdminKey:
+      type: object
+      properties:
+        adminKey:
+          type: string
+      required:
+        - adminKey
+      additionalProperties: {}
     Error:
       type: object
       properties:
@@ -534,6 +1259,27 @@ components:
       description: Id from `POST /request/async`.
       schema:
         type: string
+    BotId:
+      name: id
+      in: path
+      required: true
+      description: A bot id, such as `b1`.
+      schema:
+        type: string
+    PairingId:
+      name: id
+      in: path
+      required: true
+      description: A pairing id, such as `p1`.
+      schema:
+        type: string
+    KeyId:
+      name: id
+      in: path
+      required: true
+      description: An API key id, such as `k1`.
+      schema:
+        type: string
   responses:
     UnknownRequest:
       description: "Unknown id: never created, expired 24 h after settling, or lost to a restart."
@@ -542,7 +1288,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Unauthorized:
-      description: Missing or wrong bearer token.
+      description: Missing or wrong bearer token. On admin routes, anything but the admin key.
       content:
         application/json:
           schema:
@@ -572,7 +1318,25 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     NotPaired:
-      description: No owner is paired yet.
+      description: The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    AdminBadRequest:
+      description: Body is not valid JSON or fails validation; `error` names the field, never its value.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    UnknownId:
+      description: 'Unknown id, named in `error`: `unknown key "k9"`.'
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    SaveFailed:
+      description: The registry or admin key file couldn't be written; nothing changed.
       content:
         application/json:
           schema:

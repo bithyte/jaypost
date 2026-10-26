@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { VOTE_RULES } from '@jaypost/core'
 
 /** Where the key's bot is; `failed` comes with `error`, and the bot is retried with backoff. */
-const BOT_STATE_SCHEMA = z.enum(['starting', 'running', 'failed'])
+export const botStateSchema = z.enum(['starting', 'running', 'failed'])
 
 /**
  * Shape of the /status response; `code` is present only while unpaired. `bot` is a Telegram-only
@@ -14,7 +14,7 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
     paired: z.literal(true),
     key: z.string().optional(),
     pairing: z.string().optional(),
-    state: BOT_STATE_SCHEMA.optional(),
+    state: botStateSchema.optional(),
     error: z.string().optional(),
     provider: z.string().optional(),
     displayName: z.string().optional(),
@@ -28,7 +28,7 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
     code: z.string(),
     key: z.string().optional(),
     pairing: z.string().optional(),
-    state: BOT_STATE_SCHEMA.optional(),
+    state: botStateSchema.optional(),
     error: z.string().optional(),
     provider: z.string().optional(),
     displayName: z.string().optional(),

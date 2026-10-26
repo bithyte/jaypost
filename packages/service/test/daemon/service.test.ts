@@ -104,8 +104,8 @@ function requireRunning(): RunningService {
 }
 
 function createKeyFor(keyId: string): { readonly id: string; readonly key: string } {
-  const created = requireRunning().hub.createKey({ kind: 'sameAsKey', keyId }, {})
-  if (created.kind !== 'created') {
+  const created = requireRunning().hub.createKey({ sameAsKey: keyId })
+  if ('kind' in created) {
     throw new Error(`no key ${keyId}`)
   }
   return created
@@ -255,8 +255,8 @@ test('two keys on one pairing share the person; a key on another pairing reaches
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath })
   const sameKey = createKeyFor('k1')
-  const other = requireRunning().hub.createKey({ kind: 'newPairing', botId: 'b1' }, {})
-  if (other.kind !== 'created') {
+  const other = requireRunning().hub.createKey({ bot: 'b1' })
+  if ('kind' in other) {
     throw new Error('no key')
   }
   expect(runtime.handlers?.pair?.('u2', CODE)).toBe('paired')
@@ -274,8 +274,8 @@ test('someone already paired who redeems another code gets that key on their pai
   const provider = createPairingFakeProvider()
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath })
-  const created = requireRunning().hub.createKey({ kind: 'newPairing', botId: 'b1' }, {})
-  if (created.kind !== 'created') {
+  const created = requireRunning().hub.createKey({ bot: 'b1' })
+  if ('kind' in created) {
     throw new Error('no key')
   }
   expect(runtime.handlers?.pair?.('u1', CODE)).toBe('paired')
@@ -311,18 +311,15 @@ test('an unpaired key gets 503 and its code from /status', async () => {
   const provider = createPairingFakeProvider()
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath })
-  const created = requireRunning().hub.createKey(
-    { kind: 'newPairing', botId: 'b1' },
-    { label: 'ci' },
-  )
-  expect(created).toMatchObject({
-    kind: 'created',
+  const created = requireRunning().hub.createKey({ bot: 'b1', label: 'ci' })
+  expect(created).toEqual({
     id: 'k2',
-    pairing: { id: 'p2', botId: 'b1', code: CODE },
+    key: expect.stringMatching(/^jpk_/),
+    pairing: 'p2',
     code: 'K7QM-4XPD',
     instructions: 'Say K7QM4XPD to fake',
   })
-  if (created.kind !== 'created') {
+  if ('kind' in created) {
     throw new Error('no key')
   }
   const refused = await post(url, '/request', REQUEST, created.key)
@@ -508,6 +505,33 @@ test('a blocking question open at a fatal error is answered at once and settled 
   expect(settled).toMatchObject([{ outcome: 'rejected', answer: 'Decline' }])
 })
 
+test("a late code on an abandoned runtime can't take over a pairing already claimed", async () => {
+  const provider = createPairingFakeProvider()
+  const log = vi.fn()
+  const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
+  const { url, runtime } = await start(provider, { configPath, log })
+  const created = requireRunning().hub.createPairing({ bot: 'b1' })
+  expect(created).toMatchObject({ pairing: { id: 'p2', state: 'pending' } })
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  runtime.handlers?.fatal('connection lost')
+  await vi.advanceTimersByTimeAsync(5_000)
+  const restarted = provider.runtimes.at(-1)
+  expect(restarted).not.toBe(runtime)
+  expect(restarted?.handlers?.pair?.('u2', CODE)).toBe('paired')
+  // The old runtime's codes still hold p2's code; the hub must refuse its claim.
+  expect(runtime.handlers?.pair?.('u9', CODE)).toBe('paired')
+  expect(log).toHaveBeenCalledWith("[b1] ignored a claim of pairing p2, which isn't pending")
+  expect(requireRunning().hub.registry.pairings).toMatchObject([
+    { id: 'p1', person: 'u1' },
+    { id: 'p2', person: 'u2' },
+  ])
+  expect(readRegistry(configPath).pairings).toMatchObject([
+    { id: 'p1', person: 'u1' },
+    { id: 'p2', person: 'u2' },
+  ])
+  expect(await getStatus(url, TOKEN)).toMatchObject({ paired: true, state: 'running' })
+})
+
 test('the api answers while a bot is still starting', async () => {
   const { promise, resolve } = Promise.withResolvers<{ ok: true; displayName: string }>()
   const provider = createFakeProvider({ runtime: { checkCredentials: () => promise } })
@@ -534,8 +558,11 @@ test('restarting with the same env keeps admin changes', async () => {
   const configPath = createConfigPath(provider, { apiToken: TOKEN })
   await start(provider, { configPath })
   const created = createKeyFor('k1')
-  expect(requireRunning().hub.revokeKey('k1')).toEqual({ kind: 'revoked' })
-  expect(requireRunning().hub.revokeKey('k1')).toEqual({ kind: 'notFound', what: 'key', id: 'k1' })
+  expect(requireRunning().hub.revokeKey('k1')).toEqual({})
+  expect(requireRunning().hub.revokeKey('k1')).toEqual({
+    kind: 'notFound',
+    error: 'unknown key "k1"',
+  })
   await stopRunning()
   const { url } = await start(provider, { configPath })
   const error = muteConsole()
@@ -570,7 +597,7 @@ test.skipIf(IS_ROOT)('a registry write failure leaves memory unchanged', async (
   const registry = hub.registry
   chmodSync(dirname(configPath), 0o500)
   try {
-    expect(() => hub.createKey({ kind: 'sameAsKey', keyId: 'k1' }, {})).toThrow()
+    expect(() => hub.createKey({ sameAsKey: 'k1' })).toThrow()
     expect(() => hub.revokeKey('k1')).toThrow()
   } finally {
     chmodSync(dirname(configPath), 0o700)

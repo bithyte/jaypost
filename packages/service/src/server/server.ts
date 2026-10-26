@@ -13,19 +13,20 @@ import {
   VoterSendError,
 } from '@jaypost/core'
 import type { ApprovalRequest, RequestState, Vote } from '@jaypost/core'
-import { LOCAL_PERSON, parseSince, UNAUTHORIZED_ERROR } from '@jaypost/store'
+import { LOCAL_PERSON, UNAUTHORIZED_ERROR } from '@jaypost/store'
 import {
   ATTACHMENTS_UNSUPPORTED_ERROR,
   BOT_UNAVAILABLE_ERROR,
   GET_ONLY_PATHS,
-  LOG_LIMIT_PATTERN,
   MAX_BODY_BYTES,
   NOT_PAIRED_ERROR,
   REQUEST_ID_PATH_PATTERN,
   UNKNOWN_REQUEST_ERROR,
 } from './constants.ts'
+import { registerAdminRoutes } from './admin.ts'
 import { formatOpenApiYaml } from './openapi.ts'
-import type { ApiBot, BotRouter, KeyRoute, LogQuery } from './types.ts'
+import { parseLogQuery } from './query.ts'
+import type { AdminApi, ApiBot, BotRouter, KeyRoute, Parsed } from './types.ts'
 
 /** HTTP body of a background question's state. */
 function toStateBody(id: string, state: RequestState) {
@@ -57,10 +58,6 @@ function abortOnClose(reply: FastifyReply): AbortSignal {
   }
   return controller.signal
 }
-
-type Parsed<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: string }
 
 /** Who questions go to: the key's person, or nobody in particular on a provider that doesn't pair. */
 function toRecipient(person: string | undefined): string | undefined {
@@ -143,38 +140,6 @@ function parseVote(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<Vote> {
   }
 }
 
-/** A GET /log query; unknown fields are ignored. */
-function parseLogQuery(query: Readonly<Record<string, unknown>>, now: Date): Parsed<LogQuery> {
-  const { since: rawSince, project, limit: rawLimit } = query
-  if (rawSince !== undefined && typeof rawSince !== 'string') {
-    return { ok: false, error: 'since must be given once' }
-  }
-  const since = rawSince === undefined ? undefined : parseSince(rawSince, now)
-  if (rawSince !== undefined && since === undefined) {
-    return {
-      ok: false,
-      error: 'since must be a duration like 30m, 12h or 7d, a date or an ISO date-time',
-    }
-  }
-  if (project !== undefined && typeof project !== 'string') {
-    return { ok: false, error: 'project must be given once' }
-  }
-  if (
-    rawLimit !== undefined &&
-    (typeof rawLimit !== 'string' || !LOG_LIMIT_PATTERN.test(rawLimit))
-  ) {
-    return { ok: false, error: 'limit must be a positive integer' }
-  }
-  return {
-    ok: true,
-    value: {
-      ...(since === undefined ? {} : { since }),
-      ...(project === undefined ? {} : { project }),
-      ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
-    },
-  }
-}
-
 /** How the 502 log line names the bot: `b2 (telegram)`. */
 function describeBot(route: KeyRoute | undefined): string {
   const bot = route?.bot
@@ -189,9 +154,10 @@ function describeBot(route: KeyRoute | undefined): string {
  * whose pairing waits for its code 503 `not paired` on the question routes. Aborting the
  * connection cancels a pending /request or /vote; background questions outlive their connections
  * and only their key reads or cancels them. Errors return JSON bodies. A bot without
- * notifications answers POST /notify 501.
+ * notifications answers POST /notify 501. With `admin`, the /admin routes are served too, behind
+ * the admin key only.
  */
-export function createApiServer(router: BotRouter): FastifyInstance {
+export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyInstance {
   const routesByRequest = new WeakMap<FastifyRequest, KeyRoute>()
   // Only reached after the guard routed the call.
   const requireRoute = (request: FastifyRequest): KeyRoute => {
@@ -275,6 +241,9 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       reply.code(503).send({ error: BOT_UNAVAILABLE_ERROR })
     }
     return route.bot
+  }
+  if (admin !== undefined) {
+    registerAdminRoutes(app, admin)
   }
   app.get('/status', guard, async (request) => requireRoute(request).status())
   app.get<{ Querystring: Record<string, unknown> }>('/log', guard, async (request, reply) => {
