@@ -724,3 +724,46 @@ test('seeding a provider that does not pair moves every key to one local pairing
     isNew: false,
   })
 })
+
+test('seeding with a new fingerprint reuses the owner pairing when the seed pairing is gone', () => {
+  let registry = applySeed(createEmptyRegistry(), SEED, true, createCodes(), AT).registry
+  registry = expectKind(removePairing(registry, 'p1'), 'removed').registry
+  registry = expectKind(
+    createKey(registry, { kind: 'newPairing', botId: 'b1' }, 'h2', {}, 'CODE0001', true, AT),
+    'created',
+  ).registry
+  registry = expectKind(claimPairing(registry, 'p2', '111'), 'claimed').registry
+  const result = applySeed(registry, { ...SEED, fingerprint: 'f2' }, true, createCodes(), LATER)
+  expect(result).toStrictEqual({
+    registry: {
+      ...SEEDED,
+      lastIds: { bot: 1, pairing: 2, key: 3 },
+      pairings: [{ id: 'p2', botId: 'b1', person: '111', createdAt: CREATED }],
+      keys: [
+        { id: 'k2', pairingId: 'p2', hash: 'h2', createdAt: CREATED },
+        { id: 'k3', pairingId: 'p2', hash: 'h1', createdAt: CREATED_LATER },
+      ],
+      seed: { ...SEEDED.seed, fingerprint: 'f2', pairingId: 'p2', keyId: 'k3' },
+    },
+    isNew: false,
+  })
+})
+
+test('seeding a terminal-like provider reuses the local pairing when the seed pairing is gone', () => {
+  const seed = { fingerprint: 'f1', provider: 'terminallike', settings: {} }
+  let registry = applySeed(createEmptyRegistry(), seed, false, createCodes(), AT).registry
+  registry = expectKind(removePairing(registry, 'p1'), 'removed').registry
+  registry = expectKind(createPairing(registry, 'b1', 'CODE0001', false, AT), 'created').registry
+  const result = applySeed(registry, { ...seed, fingerprint: 'f2' }, false, createCodes(), LATER)
+  expect(result).toStrictEqual({
+    registry: {
+      ...SEEDED,
+      lastIds: { bot: 1, pairing: 2, key: 2 },
+      bots: [{ id: 'b1', provider: 'terminallike', settings: {}, createdAt: CREATED }],
+      pairings: [{ id: 'p2', botId: 'b1', person: 'local', createdAt: CREATED }],
+      keys: [{ id: 'k2', pairingId: 'p2', createdAt: CREATED_LATER }],
+      seed: { fingerprint: 'f2', botId: 'b1', pairingId: 'p2', keyId: 'k2', isOpen: true },
+    },
+    isNew: false,
+  })
+})

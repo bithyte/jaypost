@@ -133,7 +133,10 @@ export type UpdateKeyResult =
   | { readonly kind: 'updated'; readonly registry: Registry; readonly key: KeyRecord }
   | NotFound
 
-/** `isNew` is true only when the seed records were created for the first time. */
+/**
+ * `isNew` means this call created the seed record (the registry had none); it doesn't mean the
+ * registry was empty, and it is false on an update that changed the registry.
+ */
 export type SeedResult = {
   readonly registry: Registry
   readonly isNew: boolean

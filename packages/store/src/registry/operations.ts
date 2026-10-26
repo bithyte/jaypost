@@ -269,6 +269,38 @@ function updateSeedBot(
   }
 }
 
+/**
+ * The seed pairing on `botId`; when it is gone, the bot's pairing for the seed person (the owner,
+ * or `LOCAL_PERSON` without `pairs`), so there is still one pairing per bot and person.
+ */
+function findSeedPairing(
+  registry: Registry,
+  pairingId: string,
+  botId: string,
+  person: string | undefined,
+): PairingRecord | undefined {
+  const seedPairing = registry.pairings.find(
+    (pairing) => pairing.id === pairingId && pairing.botId === botId,
+  )
+  if (seedPairing !== undefined || person === undefined) {
+    return seedPairing
+  }
+  return registry.pairings.find((pairing) => pairing.botId === botId && pairing.person === person)
+}
+
+/** A bot that doesn't pair has one local pairing, so every other one folds into `pairing`. */
+function foldIntoLocal(registry: Registry, pairing: PairingRecord): Added<PairingRecord> {
+  const { code: _code, ...rest } = pairing
+  const local = { ...rest, person: LOCAL_PERSON }
+  const otherIds = registry.pairings
+    .filter((other) => other.botId === pairing.botId && other.id !== pairing.id)
+    .map((other) => other.id)
+  return {
+    registry: mergePairings(replacePairing(registry, local), otherIds, local),
+    record: local,
+  }
+}
+
 /** The seed pairing on `botId`, re-created if gone, claimed by the owner when it has no person. */
 function updateSeedPairing(
   registry: Registry,
@@ -279,28 +311,18 @@ function updateSeedPairing(
   generateCode: () => string,
   at: Date,
 ): Added<PairingRecord> {
-  const existing = registry.pairings.find(
-    (pairing) => pairing.id === pairingId && pairing.botId === botId,
-  )
-  if (existing === undefined) {
-    return insertSeedPairing(registry, botId, seed, pairs, generateCode, at)
-  }
+  const found = findSeedPairing(registry, pairingId, botId, pairs ? seed.owner : LOCAL_PERSON)
+  const resolved =
+    found === undefined
+      ? insertSeedPairing(registry, botId, seed, pairs, generateCode, at)
+      : { registry, record: found }
   if (!pairs) {
-    // A bot that doesn't pair has one local pairing, so every other one folds into it.
-    const { code: _code, ...rest } = existing
-    const local = { ...rest, person: LOCAL_PERSON }
-    const otherIds = registry.pairings
-      .filter((pairing) => pairing.botId === botId && pairing.id !== existing.id)
-      .map((pairing) => pairing.id)
-    return {
-      registry: mergePairings(replacePairing(registry, local), otherIds, local),
-      record: local,
-    }
+    return foldIntoLocal(resolved.registry, resolved.record)
   }
-  if (existing.person !== undefined || seed.owner === undefined) {
-    return { registry, record: existing }
+  if (resolved.record.person !== undefined || seed.owner === undefined) {
+    return resolved
   }
-  const claimed = claim(registry, existing, seed.owner)
+  const claimed = claim(resolved.registry, resolved.record, seed.owner)
   return { registry: claimed.registry, record: claimed.pairing }
 }
 
@@ -498,7 +520,8 @@ function resolveKeyTarget(
 
 /**
  * `person` redeemed the pairing's code. One pairing per bot and person: when another pairing on
- * the bot has them, this one's keys move there and it is deleted (`merged`). Never throws.
+ * the bot has them, this one's keys move there and it is deleted (`merged`). Call it for pending
+ * pairings only: it doesn't check for a person already set, and would replace them. Never throws.
  */
 export function claimPairing(
   registry: Registry,
@@ -599,8 +622,9 @@ export function updatePairingQuiet(
 }
 
 /**
- * Seeds bot 1, pairing 1 and key 1 from init or the env. A registry without a seed gets them
- * created (`isNew`); an unchanged fingerprint returns `registry` as is, so admin changes survive a
+ * Seeds bot 1, pairing 1 and key 1 from init or the env. A registry without a seed record gets
+ * them created (`isNew`, which means the seed record was created, not that the registry was empty
+ * or that anything changed); an unchanged fingerprint returns `registry` as is, so admin changes survive a
  * restart; a new fingerprint updates the seed records in place, re-creating any that were
  * removed under new ids. Never throws.
  */
