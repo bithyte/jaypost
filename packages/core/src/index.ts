@@ -95,4 +95,4 @@ export type {
   VoterIds,
 } from './provider/index.ts'
 export { parseQuietHours, QUIET_COMMANDS, QuietService } from './quiet/index.ts'
-export type { QuietHours } from './quiet/index.ts'
+export type { QuietHours, QuietPatch } from './quiet/index.ts'

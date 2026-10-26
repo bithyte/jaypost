@@ -43,6 +43,41 @@ export {
 } from './config/index.ts'
 export type { Config } from './config/index.ts'
 export { findEnvValue } from './config/paths.ts'
+export {
+  addBot,
+  ADMIN_KEY_ENV_VAR,
+  ADMIN_KEY_FILE_NAME,
+  ADMIN_KEY_PREFIX,
+  API_KEY_PREFIX,
+  applySeed,
+  BOTS_DIRECTORY_NAME,
+  claimPairing,
+  createEmptyRegistry,
+  createKey,
+  createPairing,
+  findKeyByHash,
+  generateAdminKey,
+  generateApiKey,
+  hashKey,
+  LOCAL_PERSON,
+  REGISTRY_FILE_NAME,
+  removeBot,
+  removePairing,
+  resetPairing,
+  revokeKey,
+  updateKey,
+  updatePairingQuiet,
+} from './registry/index.ts'
+export type {
+  BotRecord,
+  KeyRecord,
+  KeyTarget,
+  NotFound,
+  PairingRecord,
+  Registry,
+  SeedInput,
+  SeedRecord,
+} from './registry/index.ts'
 export { resolveStatePath, StateStore } from './state/index.ts'
 export {
   ensureLinger,
