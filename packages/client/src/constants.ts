@@ -29,6 +29,9 @@ export const BACKGROUND_TOO_OLD_MESSAGE =
 /** Shown when a question with `retry` timed out without the service saying it re-asked. */
 export const RETRY_TOO_OLD_MESSAGE =
   'jaypost service is too old to re-ask after a timeout (run jaypost init to upgrade)'
+/** Shown when the service has no GET /log. */
+export const LOG_TOO_OLD_MESSAGE =
+  'jaypost service is too old to read its log over the API (run jaypost init to upgrade)'
 /** Shown when the service has no /vote. */
 export const VOTE_TOO_OLD_MESSAGE =
   'jaypost service is too old for votes (run jaypost init to upgrade)'

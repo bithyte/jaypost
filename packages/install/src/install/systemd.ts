@@ -4,7 +4,7 @@ import {
   ensureLinger,
   MissingCommandError,
   readAuditFiles,
-  resolveAuditPath,
+  resolveSeedAuditPath,
   updateConfigFile,
 } from '@jaypost/store'
 import {
@@ -192,7 +192,7 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
       })
     },
     async readAuditLog(record) {
-      return readAuditFiles(resolveAuditPath(resolveConfigFile(record)))
+      return readAuditFiles(resolveSeedAuditPath(resolveConfigFile(record)))
     },
     async readAdminKey(record) {
       return readAdminKeyFile(resolveConfigFile(record))

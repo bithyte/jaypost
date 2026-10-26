@@ -8,6 +8,7 @@ import {
   CANCELLED_MESSAGE,
   FETCH_GRACE_MS,
   LEGACY_MAX_TIMEOUT_SECONDS,
+  LOG_TOO_OLD_MESSAGE,
   MAX_TIMER_MS,
   NOT_PAIRED_MESSAGE,
   NOT_SUPPORTED_MESSAGE,
@@ -30,6 +31,7 @@ import type {
   AskOptions,
   AskResult,
   Failure,
+  LogFilter,
   RawApiResult,
   RawResponse,
   StateBody,
@@ -327,6 +329,9 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
   if (status === 404 && path === '/notify') {
     return { kind: 'failed', reason: 'tooOld', message: TOO_OLD_MESSAGE }
   }
+  if (status === 404 && (path === '/log' || path.startsWith('/log?'))) {
+    return { kind: 'failed', reason: 'tooOld', message: LOG_TOO_OLD_MESSAGE }
+  }
   if (status === 404 && path === '/vote') {
     return { kind: 'failed', reason: 'tooOld', message: VOTE_TOO_OLD_MESSAGE }
   }
@@ -380,4 +385,21 @@ export function readStringField(text: string, key: string): string | undefined {
     // not JSON, caller falls back to the raw text
   }
   return undefined
+}
+
+/** `?name=value&...` of the defined fields, or '' when there are none. */
+export function toQuery(fields: Readonly<Record<string, string | undefined>>): string {
+  const entries = Object.entries(fields).filter(
+    (entry): entry is [string, string] => entry[1] !== undefined,
+  )
+  return entries.length === 0 ? '' : `?${new URLSearchParams(entries).toString()}`
+}
+
+/** The query fields GET /log and GET /admin/log share. */
+export function toLogQueryFields(filter: LogFilter): Readonly<Record<string, string | undefined>> {
+  return {
+    ...(filter.since === undefined ? {} : { since: filter.since.toISOString() }),
+    ...(filter.project === undefined ? {} : { project: filter.project }),
+    ...(filter.limit === undefined ? {} : { limit: String(filter.limit) }),
+  }
 }

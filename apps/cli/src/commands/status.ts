@@ -3,6 +3,7 @@ import { describeUnauthorized } from '@jaypost/client'
 import { findExistingInstall } from '@jaypost/install'
 import { formatPairingText } from './pairing-text.ts'
 import type { StatusDeps } from './types.ts'
+import type { StatusInfo } from '@jaypost/protocol'
 
 function describeTokenSource(token: ClientToken, tokenFile: string): string {
   switch (token.kind) {
@@ -15,8 +16,18 @@ function describeTokenSource(token: ClientToken, tokenFile: string): string {
   }
 }
 
+/** The key and pairing lines, and the bot's error when it failed; older services send neither. */
+function printKey(status: StatusInfo, print: (text: string) => void): void {
+  if (status.key !== undefined && status.pairing !== undefined) {
+    print(`Key:     ${status.key} (pairing ${status.pairing})`)
+  }
+  if (status.state === 'failed') {
+    print(`Bot:     failed (${status.error ?? 'no reason given'})`)
+  }
+}
+
 /**
- * Prints install, running and pairing state. Returns 0 only when installed and running; 1
+ * Prints install, running, key and pairing state. Returns 0 only when installed and running; 1
  * otherwise, including an unusable or rejected token.
  */
 export async function runStatus(deps: StatusDeps): Promise<number> {
@@ -59,6 +70,7 @@ export async function runStatus(deps: StatusDeps): Promise<number> {
 ${describeUnauthorized(deps.token.kind === 'token')}`)
       return 1
     case 'answered':
+      printKey(fetched.status, print)
       if (fetched.status.paired) {
         print('Pairing: paired')
       } else {

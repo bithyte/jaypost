@@ -5,6 +5,8 @@ import {
   parseToken,
   readTokenFile,
   removeTokenFile,
+  resolveAdminKeyPath,
+  resolveConfigPath,
   writeTokenFile,
 } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
@@ -22,6 +24,7 @@ import type { InstallRecord, Secrets, TargetName } from '@jaypost/install'
 import { runStep } from '../progress/index.ts'
 import { findOwnerSetting, findProvider, listSecretValues } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
+import { isNativeInstall } from './admin-endpoint.ts'
 import { TARGET_LABELS } from './constants.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact, resolveProviderSettings, selectProvider } from './provider-setup.ts'
@@ -288,6 +291,11 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
       auth.kind === 'token'
         ? `API token saved to ${deps.paths.tokenFile}. Agents in containers need JAYPOST_TOKEN set to it.`
         : 'No API token: any local process can use the API.',
+    )
+    print(
+      isNativeInstall(installed)
+        ? `Admin key: ${resolveAdminKeyPath(installed.configFile ?? resolveConfigPath(env))}`
+        : 'Admin commands: jaypost key create --help',
     )
     print(`Logs: ${target.logsHint(installed)}`)
     return 0

@@ -10,10 +10,13 @@ import {
 } from 'node:fs'
 import { delimiter, dirname, join, resolve, sep } from 'node:path'
 import {
+  BOTS_DIRECTORY_NAME,
   isMissingFileError,
   readConfigFile,
   removeAuditFiles,
+  resolveAdminKeyPath,
   resolveAuditPath,
+  resolveRegistryPath,
   resolveStatePath,
   updateConfigFile,
 } from '@jaypost/store'
@@ -212,8 +215,8 @@ export function printPathHint(
 }
 
 /**
- * Deletes config, state, audit files and the binary copy; for an npm install prints how to remove
- * the package.
+ * Deletes config, the registry, the admin key, every bot's directory, the pre-upgrade state and
+ * audit files and the binary copy; for an npm install prints how to remove the package.
  */
 export function purgeServiceFiles(
   record: InstallRecord,
@@ -222,6 +225,9 @@ export function purgeServiceFiles(
   print: (text: string) => void = (text) => console.log(text),
 ): void {
   rmSync(configFile, { force: true })
+  rmSync(resolveRegistryPath(configFile), { force: true })
+  rmSync(resolveAdminKeyPath(configFile), { force: true })
+  rmSync(join(dirname(configFile), BOTS_DIRECTORY_NAME), { recursive: true, force: true })
   rmSync(resolveStatePath(configFile), { force: true })
   removeAuditFiles(resolveAuditPath(configFile))
   if (record.cliKind === 'binary') {

@@ -115,6 +115,8 @@ export type ApiPath =
   | '/request/async'
   | '/vote'
   | '/status'
+  | '/log'
+  | `/log?${string}`
   | `/request/${string}`
   | `/admin/${string}`
 
@@ -278,13 +280,17 @@ export type AdminCallerOptions = {
 /** An admin route's parsed answer, or why there isn't one; `message` is ready to show. */
 export type AdminResult<T> = { readonly kind: 'ok'; readonly value: T } | Failure
 
-/** What `AdminCaller.readLog` narrows every bot's log to; absent fields don't filter. */
-export type AdminLogFilter = {
+/** What `Caller.readLog` narrows the key's log to; absent fields don't filter. */
+export type LogFilter = {
   /** Only questions asked at or after this time. */
   readonly since?: Date
   readonly project?: string
   /** The last `limit` entries. */
   readonly limit?: number
+}
+
+/** What `AdminCaller.readLog` narrows every bot's log to; absent fields don't filter. */
+export type AdminLogFilter = LogFilter & {
   readonly bot?: string
   readonly pairing?: string
   readonly key?: string

@@ -556,7 +556,35 @@ test('single provider: no provider prompt and unchanged output', async () => {
     'Done. Try it: jaypost ping',
     'Check state: jaypost status',
     savedToLine(),
+    'Admin commands: jaypost key create --help',
     'Logs: logs for quadlet',
+  ])
+})
+
+test('a native install ends with where the admin key is', async () => {
+  const configFile = join(tmp, 'service', 'config.json')
+  const systemd = fake('systemd')
+  systemd.install = vi.fn(async (o) => ({
+    target: 'systemd' as const,
+    port: o.port,
+    version: o.version,
+    configFile,
+  }))
+  const d = deps({
+    targets: {
+      quadlet: fake('quadlet'),
+      compose: fake('compose'),
+      systemd,
+      launchd: fake('launchd'),
+    },
+  })
+  expect(await runInit({ target: 'systemd' }, d)).toBe(0)
+  expect(notes()).toEqual([
+    'Done. Try it: jaypost ping',
+    'Check state: jaypost status',
+    savedToLine(),
+    `Admin key: ${join(tmp, 'service', 'admin-key')}`,
+    'Logs: logs for systemd',
   ])
 })
 

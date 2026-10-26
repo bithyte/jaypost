@@ -83,7 +83,11 @@ export type Target = {
   readonly restart: (record: InstallRecord) => Promise<void>
   readonly clearOwner: (record: InstallRecord) => Promise<void>
   readonly isRunning: (record: InstallRecord) => Promise<boolean>
-  /** Raw contents of audit.jsonl.1 then audit.jsonl; '' when neither exists. Throws when it can't read. */
+  /**
+   * Raw contents of the seed bot's audit.jsonl.1 then audit.jsonl (the ones next to the config
+   * before an upgrade made the registry); '' when neither exists. Throws when it can't read them or
+   * the registry is corrupt.
+   */
   readonly readAuditLog: (record: InstallRecord) => Promise<string>
   /**
    * The admin key the service wrote; containers read it with `jaypost admin-key show` inside.

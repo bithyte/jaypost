@@ -10,6 +10,7 @@ import {
   DEFAULT_PORT,
   isPortFree,
   loadConfig,
+  loadServiceConfig,
   MODE_ENV_VAR,
   parseSince,
   PORT_ENV_VAR,
@@ -98,7 +99,7 @@ const DIGITS_PATTERN = /^\d+$/
 
 function resolvePort(): number {
   try {
-    return loadConfig(process.env, SERVICE_PROVIDERS).port
+    return loadServiceConfig(process.env).port
   } catch {
     const port = Number(process.env[PORT_ENV_VAR])
     return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT
@@ -444,6 +445,7 @@ function runLogCommand(args: LogArgs): Promise<number> {
     targets: createRealTargets(paths),
     paths,
     env: process.env,
+    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
     version: VERSION,
     now: () => new Date(),
     print: (text) => writeAll(`${text}\n`),
@@ -466,6 +468,7 @@ function runResetOwnerCommand(): Promise<number> {
         progress: createStderrProgress('plain'),
         signal: controller.signal,
         token,
+        fetchStatus: defaultFetchStatus,
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
@@ -786,18 +789,30 @@ export async function main(argv: readonly string[]): Promise<number> {
     .option('--project <name>', 'only questions from this project', parseProjectOption)
     .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
     .option('--json', 'print one JSON entry per line')
+    .option('--bot <id>', "only this bot's questions; reads through the API")
+    .option('--pairing <id>', "only this pairing's questions; reads through the API")
+    .option('--key <id>', "only this key's questions; reads through the API")
+    .option('--all', "every bot's questions, not only the first bot's; reads through the API")
     .action(
       async (options: {
         readonly since?: Date
         readonly project?: string
         readonly limit?: number
         readonly json?: boolean
+        readonly bot?: string
+        readonly pairing?: string
+        readonly key?: string
+        readonly all?: boolean
       }) => {
         code = await runLogCommand({
           ...(options.since === undefined ? {} : { since: options.since }),
           ...(options.project === undefined ? {} : { project: options.project }),
           ...(options.limit === undefined ? {} : { limit: options.limit }),
           ...(options.json === undefined ? {} : { json: options.json }),
+          ...(options.bot === undefined ? {} : { bot: options.bot }),
+          ...(options.pairing === undefined ? {} : { pairing: options.pairing }),
+          ...(options.key === undefined ? {} : { key: options.key }),
+          ...(options.all === undefined ? {} : { all: options.all }),
         })
       },
     )

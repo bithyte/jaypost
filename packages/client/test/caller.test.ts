@@ -22,6 +22,7 @@ import {
   ATTACHMENT_TOO_OLD_MESSAGE,
   BACKGROUND_TOO_OLD_MESSAGE,
   Caller,
+  LOG_TOO_OLD_MESSAGE,
   TIMEOUT_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
@@ -257,6 +258,41 @@ test('status parses the daemon status', async () => {
     kind: 'status',
     status: { paired: true, bot: 'b', maxTextLength: 3900 },
   })
+})
+
+test('readLog sends the filter as a query with the token and parses the page', async () => {
+  const page = {
+    entries: [
+      {
+        id: 'a',
+        askedAt: '2026-10-19T06:00:00.000Z',
+        text: 'ok?',
+        options: ['Yes'],
+        timeoutOption: 'Yes',
+        timeoutSeconds: 60,
+        status: 'pending',
+      },
+    ],
+    skippedCount: 1,
+  }
+  const seen: string[] = []
+  const port = await startStub((request, response) => {
+    seen.push(`${request.method} ${request.url} ${request.headers.authorization ?? ''}`)
+    response.end(JSON.stringify(page))
+  })
+  const token: ClientToken = { kind: 'token', token: TOKEN, source: 'file' }
+  const filter = { since: new Date('2026-10-19T00:00:00.000Z'), project: 'web', limit: 5 }
+  expect(await caller(port, token).readLog(filter, CALL)).toEqual({ kind: 'log', page })
+  expect(await caller(port, token).readLog({}, CALL)).toEqual({ kind: 'log', page })
+  expect(seen).toEqual([
+    `GET /log?since=2026-10-19T00%3A00%3A00.000Z&project=web&limit=5 Bearer ${TOKEN}`,
+    `GET /log Bearer ${TOKEN}`,
+  ])
+})
+
+test('readLog from a service without GET /log says it is too old', async () => {
+  const port = await startStub(reply(404, '{"error":"not found"}'))
+  expect(await caller(port).readLog({}, CALL)).toEqual(failed('tooOld', LOG_TOO_OLD_MESSAGE))
 })
 
 test('an unreadable status is unreadable', async () => {

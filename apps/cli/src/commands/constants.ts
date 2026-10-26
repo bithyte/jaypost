@@ -12,6 +12,8 @@ export const TARGET_LABELS: Readonly<Record<TargetName, string>> = {
 export const DEFAULT_START_TIMEOUT_MS = 60_000
 /** Delay between /status polls while waiting for pairing. */
 export const POLL_INTERVAL_MS = 1000
+/** How many /status polls fit in the start timeout. */
+export const START_POLL_COUNT = DEFAULT_START_TIMEOUT_MS / POLL_INTERVAL_MS
 /** Per-request timeout for one /status call. */
 export const STATUS_TIMEOUT_MS = 2000
 

@@ -1,6 +1,6 @@
 import { MAX_WAIT_SECONDS } from '@jaypost/core'
-import { statusInfoSchema } from '@jaypost/protocol'
-import type { StatusInfo } from '@jaypost/protocol'
+import { logPageSchema, statusInfoSchema } from '@jaypost/protocol'
+import type { LogPage, StatusInfo } from '@jaypost/protocol'
 import { checkAttachmentLimit, readAttachment } from './attachment.ts'
 import { FETCH_GRACE_MS } from './constants.ts'
 import {
@@ -8,12 +8,15 @@ import {
   isStateBody,
   postApi,
   requestApi,
+  toLogQueryFields,
+  toQuery,
   toSendTimeoutMs,
   unreadable,
   voteApi,
 } from './http.ts'
 import type {
   ApiOptions,
+  ApiPath,
   AskBody,
   AttachmentBody,
   AttachmentSource,
@@ -22,6 +25,7 @@ import type {
   CallerOptions,
   Done,
   Failure,
+  LogFilter,
   Message,
   NotifyBody,
   Pending,
@@ -218,6 +222,31 @@ export class Caller {
       return session
     }
     return this.#fetchStatus(session, call.signal, call.timeoutMs ?? FETCH_GRACE_MS)
+  }
+
+  /** The questions of this caller's key from GET /log, oldest first. */
+  async readLog(
+    filter: LogFilter,
+    call: CallOptions,
+  ): Promise<{ readonly kind: 'log'; readonly page: LogPage } | Failure> {
+    const session = this.#begin()
+    if (session.kind === 'failed') {
+      return session
+    }
+    const query = toQuery(toLogQueryFields(filter))
+    const path: ApiPath = query === '' ? '/log' : `/log?${query.slice(1)}`
+    const result = await callApi(session.endpoint, 'GET', path, undefined, {
+      ...this.#apiOptions(session, call.signal),
+      timeoutMs: FETCH_GRACE_MS,
+    })
+    if (result.kind === 'failed') {
+      return result
+    }
+    const parsed = logPageSchema.safeParse(result.body)
+    if (!parsed.success) {
+      return unreadable(JSON.stringify(result.body))
+    }
+    return { kind: 'log', page: parsed.data }
   }
 
   #begin(): ({ readonly kind: 'session' } & Session) | Failure {

@@ -34,7 +34,7 @@ import {
   FETCH_GRACE_MS,
   ROUTE_NOT_FOUND_ERROR,
 } from './constants.ts'
-import { fetchApi, readStringField, unreadable } from './http.ts'
+import { fetchApi, readStringField, toLogQueryFields, toQuery, unreadable } from './http.ts'
 import type {
   AdminCallerOptions,
   AdminLogFilter,
@@ -149,9 +149,7 @@ export class AdminCaller {
   /** Every bot's log, oldest first, narrowed by `filter`. */
   readLog(filter: AdminLogFilter): Promise<AdminResult<LogPage>> {
     const query = toQuery({
-      ...(filter.since === undefined ? {} : { since: filter.since.toISOString() }),
-      ...(filter.project === undefined ? {} : { project: filter.project }),
-      ...(filter.limit === undefined ? {} : { limit: String(filter.limit) }),
+      ...toLogQueryFields(filter),
       ...(filter.bot === undefined ? {} : { bot: filter.bot }),
       ...(filter.pairing === undefined ? {} : { pairing: filter.pairing }),
       ...(filter.key === undefined ? {} : { key: filter.key }),
@@ -193,14 +191,6 @@ export class AdminCaller {
     const parsed = schema.safeParse(json)
     return parsed.success ? { kind: 'ok', value: parsed.data } : unreadable(response.text.trim())
   }
-}
-
-/** `?name=value&...` of the defined fields, or '' when there are none. */
-function toQuery(fields: Readonly<Record<string, string | undefined>>): string {
-  const entries = Object.entries(fields).filter(
-    (entry): entry is [string, string] => entry[1] !== undefined,
-  )
-  return entries.length === 0 ? '' : `?${new URLSearchParams(entries).toString()}`
 }
 
 function toAdminFailure(response: RawResponse): Failure {

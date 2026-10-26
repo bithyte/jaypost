@@ -32,7 +32,8 @@ export async function defaultFetchStatus(port: number, token?: string): Promise<
   return result.reason === 'unauthorized' ? UNAUTHORIZED_STATUS : UNREACHABLE_STATUS
 }
 
-function createAbortableSleep(signal?: AbortSignal): (delayMs: number) => Promise<void> {
+/** A sleep that ends early, without throwing, once `signal` aborts. */
+export function createAbortableSleep(signal?: AbortSignal): (delayMs: number) => Promise<void> {
   // Rejects on abort; the loop checks the signal right after.
   return (delayMs) => delay(delayMs, undefined, { signal }).catch(() => {})
 }

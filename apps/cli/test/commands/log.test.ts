@@ -1,8 +1,23 @@
-import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeEach, expect, test, vi } from 'vite-plus/test'
-import { runLog } from '../../src/commands/index.ts'
+import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
+import {
+  applySeed,
+  createEmptyRegistry,
+  loadSeed,
+  migrateLegacyBotFiles,
+  NO_CLIENT_TOKEN,
+  RegistryStore,
+  resolveAdminKeyPath,
+  resolveBotFiles,
+  resolveRegistryPath,
+} from '@jaypost/store'
+import { startService } from '@jaypost/service'
+import type { RunningService } from '@jaypost/service'
+import { createPairingFakeProvider } from '@jaypost/testing'
+import { runAudit, runLog } from '../../src/commands/index.ts'
 import type { LogArgs, LogDeps } from '../../src/commands/index.ts'
 import { resolveInstallPaths, writeInstall } from '@jaypost/install'
 import type { InstallPaths, Target, TargetName } from '@jaypost/install'
@@ -10,17 +25,25 @@ import type { InstallPaths, Target, TargetName } from '@jaypost/install'
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 const NOW = new Date('2026-10-19T08:00:00Z')
+const API_TOKEN = 'a'.repeat(43)
+const PAIRING_PROVIDERS = [createPairingFakeProvider()]
 
 let tmp: string
 let paths: InstallPaths
 let out: string[]
 let err: string[]
+let running: RunningService | undefined
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'log-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   out = []
   err = []
+})
+
+afterEach(async () => {
+  await running?.stop()
+  running = undefined
 })
 
 function asked(id: string, at: string, project?: string): string {
@@ -35,6 +58,21 @@ function asked(id: string, at: string, project?: string): string {
     timeoutOption: 'Decline',
     timeoutSeconds: 300,
     attachment: undefined,
+  })}\n`
+}
+
+function askedBy(id: string, at: string, key: string): string {
+  return `${JSON.stringify({
+    v: 1,
+    event: 'asked',
+    id,
+    at,
+    text: `question ${id}`,
+    options: ['Approve', 'Decline'],
+    timeoutOption: 'Decline',
+    timeoutSeconds: 300,
+    key,
+    pairing: 'p1',
   })}\n`
 }
 
@@ -77,6 +115,7 @@ function deps(targets: LogDeps['targets'], over: Partial<LogDeps> = {}): LogDeps
     targets,
     paths,
     env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
+    token: NO_CLIENT_TOKEN,
     version: '1.0.0',
     now: () => NOW,
     print: (text) => out.push(text),
@@ -252,3 +291,155 @@ test.skipIf(process.getuid?.() === 0)(
     expect(err[0]).toContain(file)
   },
 )
+
+type Started = { readonly port: number; readonly adminKey: string; readonly configPath: string }
+
+/** A real service whose bot 1 (fakepair) is paired to u1 with key 1, its log holding `log`. */
+async function start(log: string): Promise<Started> {
+  const directory = join(tmp, 'service')
+  mkdirSync(directory)
+  const configPath = join(directory, 'config.json')
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      provider: 'fakepair',
+      fakeKey: 'seed-bot',
+      fakeOwner: 'u1',
+      apiToken: API_TOKEN,
+    }),
+  )
+  running = await startService({
+    version: '1.0.0',
+    configPath,
+    providers: PAIRING_PROVIDERS,
+    seed: loadSeed({ JAYPOST_CONFIG: configPath }, PAIRING_PROVIDERS),
+    log: vi.fn(),
+  })
+  await running.started
+  await running.server.listen({ port: 0, host: '127.0.0.1' })
+  const { port } = running.server.server.address() as AddressInfo
+  const files = resolveBotFiles(configPath, 'b1')
+  mkdirSync(files.directory, { recursive: true })
+  writeFileSync(files.auditPath, log)
+  const adminKey = readFileSync(resolveAdminKeyPath(configPath), 'utf8').trim()
+  return { port, adminKey, configPath }
+}
+
+/** Targets where systemd is the install on `port`, reading `adminKey` and `log`. */
+function installedOn(port: number, adminKey: string, log = '') {
+  const systemd = fake('systemd', log)
+  systemd.readAdminKey = vi.fn(async () => adminKey)
+  writeInstall(paths.installFile, { target: 'systemd', port, version: '1.0.0' })
+  return { quadlet: fake('quadlet'), compose: fake('compose'), systemd, launchd: fake('launchd') }
+}
+
+const TWO_KEYS_LOG =
+  askedBy('a', '2026-10-19T06:00:00.000Z', 'k1') + askedBy('b', '2026-10-19T06:01:00.000Z', 'k2')
+
+test('audit dump prints bot 1 lines after the upgrade moved them', () => {
+  const directory = join(tmp, 'data')
+  mkdirSync(directory)
+  const configPath = join(directory, 'config.json')
+  writeFileSync(configPath, JSON.stringify({ provider: 'fakepair', fakeKey: 'k', fakeOwner: 'u1' }))
+  writeFileSync(join(directory, 'audit.jsonl'), asked('a', '2026-10-19T06:00:00.000Z'))
+  const env = { JAYPOST_CONFIG: configPath }
+  const loaded = loadSeed(env, PAIRING_PROVIDERS)
+  if (loaded.kind !== 'seed') {
+    throw new Error(loaded.message)
+  }
+  const seeded = applySeed(createEmptyRegistry(), loaded.seed, true, () => 'SEED1111', NOW)
+  new RegistryStore(resolveRegistryPath(configPath)).save(seeded.registry)
+  migrateLegacyBotFiles(configPath, 'b1')
+  expect(existsSync(join(directory, 'audit.jsonl'))).toBe(false)
+  const written: string[] = []
+  expect(runAudit(['dump'], env, (text) => written.push(text))).toBe(0)
+  expect(written).toEqual([asked('a', '2026-10-19T06:00:00.000Z')])
+})
+
+test('log --key k2 goes through the admin route with the local admin key', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, started.adminKey)
+  expect(await runLog({ key: 'k2', json: true }, deps(targets))).toBe(0)
+  expect(targets.systemd.readAdminKey).toHaveBeenCalled()
+  expect(targets.systemd.readAuditLog).not.toHaveBeenCalled()
+  expect((out[0] ?? '').split('\n').map((line) => JSON.parse(line))).toEqual([
+    expect.objectContaining({ id: 'b', key: 'k2', pairing: 'p1', bot: 'b1' }),
+  ])
+  expect(err).toEqual([])
+})
+
+test('log --all reads every bot through the admin route', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, started.adminKey)
+  expect(await runLog({ all: true, json: true }, deps(targets))).toBe(0)
+  expect((out[0] ?? '').split('\n').map((line) => JSON.parse(line).id)).toEqual(['a', 'b'])
+})
+
+test('log without flags still reads the install files', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(
+    started.port,
+    started.adminKey,
+    asked('f', '2026-10-19T06:00:00.000Z'),
+  )
+  expect(await runLog({}, deps(targets))).toBe(0)
+  expect(targets.systemd.readAuditLog).toHaveBeenCalled()
+  expect(targets.systemd.readAdminKey).not.toHaveBeenCalled()
+  expect(out).toHaveLength(1)
+  expect(out[0]).toContain('question f')
+  expect(out[0]).not.toContain('question b')
+})
+
+test('log with JAYPOST_URL and no admin key reads GET /log with the client token', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, started.adminKey)
+  const env = { HOME: tmp, JAYPOST_URL: `http://127.0.0.1:${started.port}` }
+  const token = { kind: 'token', token: API_TOKEN, source: 'env' } as const
+  expect(await runLog({ json: true }, deps(targets, { env, token }))).toBe(0)
+  expect(targets.systemd.readAdminKey).not.toHaveBeenCalled()
+  expect((out[0] ?? '').split('\n').map((line) => JSON.parse(line).id)).toEqual(['a'])
+  expect(err).toEqual([])
+})
+
+test('log --key without a readable admin key says it shows only the client key', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, started.adminKey)
+  targets.systemd.readAdminKey = vi.fn(async () => {
+    throw new Error('no admin key here')
+  })
+  const token = { kind: 'token', token: API_TOKEN, source: 'file' } as const
+  expect(await runLog({ key: 'k2', json: true }, deps(targets, { token }))).toBe(0)
+  expect((out[0] ?? '').split('\n').map((line) => JSON.parse(line).id)).toEqual(['a'])
+  expect(err).toEqual([
+    "no admin key here; showing only this client's questions, without --bot, --pairing, --key or --all",
+  ])
+})
+
+test('log through the API reports a rejected admin key and exits 1', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, 'jpa_wrong'.padEnd(47, 'x'))
+  expect(await runLog({ pairing: 'p1' }, deps(targets))).toBe(1)
+  expect(err).toEqual([
+    'jaypost service rejected the admin key; check JAYPOST_ADMIN_KEY, or the admin key file if the key was rotated',
+  ])
+  expect(out).toEqual([])
+})
+
+test('log with a corrupt registry and no install exits 1 without quoting it', async () => {
+  const directory = join(tmp, 'elsewhere')
+  mkdirSync(directory)
+  const configPath = join(directory, 'config.json')
+  writeFileSync(resolveRegistryPath(configPath), '{"bots": "secret-bot-token"')
+  const targets = {
+    quadlet: fake('quadlet'),
+    compose: fake('compose'),
+    systemd: fake('systemd'),
+    launchd: fake('launchd'),
+  }
+  expect(await runLog({}, deps(targets, { env: { HOME: tmp, JAYPOST_CONFIG: configPath } }))).toBe(
+    1,
+  )
+  expect(err).toEqual([
+    `registry file ${JSON.stringify(resolveRegistryPath(configPath))} contains invalid JSON`,
+  ])
+})

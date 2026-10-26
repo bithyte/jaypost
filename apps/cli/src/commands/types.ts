@@ -128,7 +128,11 @@ export type ResetOwnerDeps = {
   readonly wait: WaitForPairing
   readonly progress: Progress
   readonly signal?: AbortSignal
+  /** Key 1's token; its /status names the pairing to reset. */
   readonly token: ClientToken
+  readonly fetchStatus: FetchStatus
+  /** Delay between /status polls while the service starts; defaults to an abortable timer. */
+  readonly sleep?: (delayMs: number) => Promise<void>
 }
 
 /** Everything `runStatus` touches outside itself, injected for tests. */
@@ -142,12 +146,20 @@ export type StatusDeps = {
   readonly print: (text: string) => void
 }
 
-/** Parsed `log` flags; absent fields mean the user didn't pass them. */
+/**
+ * Parsed `log` flags; absent fields mean the user didn't pass them. `bot`, `pairing`, `key` and
+ * `all` read through the service's API instead of the install's files.
+ */
 export type LogArgs = {
   readonly since?: Date
   readonly project?: string
   readonly limit?: number
   readonly json?: boolean
+  readonly bot?: string
+  readonly pairing?: string
+  readonly key?: string
+  /** Every bot's log, not only the seed bot's. */
+  readonly all?: boolean
 }
 
 /** Everything `runLog` touches outside itself, injected for tests. */
@@ -155,6 +167,8 @@ export type LogDeps = {
   readonly targets: Readonly<Record<TargetName, Target>>
   readonly paths: InstallPaths
   readonly env: NodeJS.ProcessEnv
+  /** Sent to GET /log when no admin key resolves. */
+  readonly token: ClientToken
   /** The running CLI's version, for the development exemption on the too-old check. */
   readonly version: string
   readonly now: () => Date
