@@ -16,6 +16,10 @@ export const MAX_HEADER_LENGTH = 200
 export const MAX_SUGGESTION_LINE_LENGTH = 1000
 /** Cap on the SessionStart /status call, so a hung service can't stall session startup. */
 export const SETUP_STATUS_TIMEOUT_MS = 2000
+/** The `notification_type` Claude Code sends when it's waiting for the next prompt. */
+export const IDLE_PROMPT_NOTIFICATION = 'idle_prompt'
+/** Idle prompts go stale fast; the user asked for 5 minutes at most. */
+export const IDLE_PROMPT_DELETE_AFTER_SECONDS = 300
 /** Project name when no flag, `CLAUDE_PROJECT_DIR` or `cwd` gives one. */
 export const DEFAULT_PROJECT = 'claude'
 export const ASK_USER_QUESTION_TOOL = 'AskUserQuestion'

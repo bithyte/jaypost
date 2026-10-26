@@ -47,6 +47,8 @@ Add this to `~/.claude/settings.json`, or to a project's `.claude/settings.json`
 }
 ```
 
+Notifications for `idle_prompt` delete themselves after 5 minutes; the other types keep the 8-hour default.
+
 Not verified yet: whether Claude Code shows the terminal dialog while the hook is still running. The supported flow is to answer on the phone, or tap `Ask in terminal` to hand the prompt back to the keyboard. If a terminal answer doesn't stop the hook, the question stays in Telegram until its timeout. `--timeout 120` shortens that.
 
 The buttons:

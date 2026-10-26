@@ -362,6 +362,49 @@ test('notification goes to /notify', async () => {
   expect(errors).toEqual([])
 })
 
+async function startNotifyStub(): Promise<{ port: number; bodies: Record<string, unknown>[] }> {
+  const bodies: Record<string, unknown>[] = []
+  const stub = createServer((request, response) => {
+    let raw = ''
+    request.setEncoding('utf8')
+    request.on('data', (chunk: string) => (raw += chunk))
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' })
+      if (request.method === 'GET') {
+        response.end(JSON.stringify({ paired: true }))
+        return
+      }
+      bodies.push(JSON.parse(raw))
+      response.end(JSON.stringify({ ok: true }))
+    })
+  })
+  stubs.push(stub)
+  await new Promise<void>((resolve) => stub.listen(0, '127.0.0.1', resolve))
+  const { port } = stub.address() as AddressInfo
+  return { port, bodies }
+}
+
+test('an idle prompt notification is deleted after 300 seconds', async () => {
+  const { port, bodies } = await startNotifyStub()
+  const { deps } = createDeps(port, NOTIFICATION_EVENT)
+  expect(await runHook({}, deps)).toBe(0)
+  expect(bodies).toEqual([
+    { project: 'api', text: 'Claude Code\n\nClaude is waiting for your input', deleteAfter: 300 },
+  ])
+})
+
+test('other notification types keep the default lifetime', async () => {
+  const { port, bodies } = await startNotifyStub()
+  const input = JSON.stringify({
+    ...JSON.parse(NOTIFICATION_EVENT),
+    notification_type: 'elicitation_dialog',
+  })
+  const { deps } = createDeps(port, input)
+  expect(await runHook({}, deps)).toBe(0)
+  expect(bodies).toHaveLength(1)
+  expect(Object.hasOwn(bodies[0] ?? {}, 'deleteAfter')).toBe(false)
+})
+
 test('caps the question to the service text limit minus the project line', async () => {
   const { port, service, messenger } = await startApi({ maxTextLength: 400 })
   const input = JSON.stringify({

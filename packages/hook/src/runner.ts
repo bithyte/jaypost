@@ -6,6 +6,8 @@ import {
   ASK_USER_QUESTION_TOOL,
   DEFAULT_STOP_TIMEOUT_SECONDS,
   DONE_OPTION,
+  IDLE_PROMPT_DELETE_AFTER_SECONDS,
+  IDLE_PROMPT_NOTIFICATION,
   MAX_HOOK_TEXT_LENGTH,
   REPLY_PREFIX,
   REWAKE_EXIT_CODE,
@@ -232,7 +234,13 @@ async function notify(
   deps: HookDeps,
 ): Promise<number> {
   const result = await caller.notify(
-    { project, text: formatNotificationText(event, maxLength) },
+    {
+      project,
+      text: formatNotificationText(event, maxLength),
+      ...(event.notificationType === IDLE_PROMPT_NOTIFICATION
+        ? { deleteAfter: IDLE_PROMPT_DELETE_AFTER_SECONDS }
+        : {}),
+    },
     { signal: deps.signal },
   )
   if (result.kind === 'failed') {
