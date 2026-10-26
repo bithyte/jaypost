@@ -2,6 +2,7 @@ import { SendError } from '../approval/index.ts'
 import type { MessageReference } from '../approval/index.ts'
 import { MAX_NOTIFICATION_TTL_MS, MAX_TIMER_DELAY_MS, NOTIFICATION_TTL_MS } from './constants.ts'
 import type {
+  DeleteAfter,
   NotificationRecord,
   NotificationServiceOptions,
   NotificationStore,
@@ -13,7 +14,9 @@ import type {
 /**
  * Sends notifications and deletes each one after `NOTIFICATION_TTL_MS` unless dismissed first.
  * While quiet they're sent silently and the expiry starts when the quiet period ends; if that would
- * pass `MAX_NOTIFICATION_TTL_MS` after the send, they're left until dismissed.
+ * pass `MAX_NOTIFICATION_TTL_MS` after the send, they're left until dismissed. An explicit
+ * `deleteAfter` replaces the 8 hours, ignores quiet hours (apart from sending silently), and is
+ * clamped to `MAX_NOTIFICATION_TTL_MS`; one already past is deleted right away.
  */
 export class NotificationService {
   #notifier: Notifier
@@ -67,7 +70,9 @@ export class NotificationService {
     }
     const now = this.#now()
     const ttlMs =
-      quietEnd === undefined ? NOTIFICATION_TTL_MS : quietEnd.getTime() - now + NOTIFICATION_TTL_MS
+      request.deleteAfter === undefined
+        ? this.#defaultTtlMs(quietEnd, now)
+        : NotificationService.#explicitTtlMs(request.deleteAfter, now)
     if (ttlMs > MAX_NOTIFICATION_TTL_MS) {
       return
     }
@@ -132,6 +137,18 @@ export class NotificationService {
     }
     this.#store?.removeNotification(id)
     return true
+  }
+
+  #defaultTtlMs(quietEnd: Date | undefined, now: number): number {
+    return quietEnd === undefined
+      ? NOTIFICATION_TTL_MS
+      : quietEnd.getTime() - now + NOTIFICATION_TTL_MS
+  }
+
+  static #explicitTtlMs(deleteAfter: DeleteAfter, now: number): number {
+    const delayMs =
+      deleteAfter.kind === 'seconds' ? deleteAfter.seconds * 1000 : deleteAfter.atMs - now
+    return Math.max(Math.min(delayMs, MAX_NOTIFICATION_TTL_MS), 0)
   }
 
   #schedule(id: string, reference: MessageReference, delayMs: number): void {

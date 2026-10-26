@@ -4,6 +4,8 @@ import type { FormattedText } from '../../src/format/index.ts'
 import type { Attachment, MessageReference } from '../../src/approval/index.ts'
 import { NOTIFICATION_TTL_MS, NotificationService } from '../../src/notify/index.ts'
 import type {
+  DeleteAfter,
+  NotifyRequest,
   NotificationRecord,
   Notifier,
   NotificationServiceOptions,
@@ -454,4 +456,74 @@ test('a notification without an attachment passes undefined', async () => {
     deleteAfter: undefined,
   })
   expect(m.attachments).toEqual([undefined])
+})
+
+const TTL_CAP_MS = 169_200_000
+
+function deleteAfterRequest(deleteAfter: DeleteAfter): NotifyRequest {
+  return { message: { text: 'hi', spans: [] }, attachment: undefined, deleteAfter }
+}
+
+test('deleteAfter seconds deletes at that time', async () => {
+  const m = new FakeNotifier()
+  const { svc } = setup(m, { now: () => NOW })
+  await svc.notify(deleteAfterRequest({ kind: 'seconds', seconds: 300 }))
+  await vi.advanceTimersByTimeAsync(299_999)
+  expect(m.deleted).toEqual([])
+  await vi.advanceTimersByTimeAsync(1)
+  expect(m.deleted).toEqual([{ chatId: 1, messageId: 1 }])
+})
+
+test('deleteAfter timestamp deletes at that time and records it', async () => {
+  const m = new FakeNotifier()
+  const store = createStore()
+  const { svc } = setup(m, { store, now: () => NOW })
+  await svc.notify(deleteAfterRequest({ kind: 'timestamp', atMs: NOW + 600_000 }))
+  expect(store.added).toEqual([
+    { id: 'id1', reference: { chatId: 1, messageId: 1 }, expiresAtMs: NOW + 600_000 },
+  ])
+  await vi.advanceTimersByTimeAsync(599_999)
+  expect(m.deleted).toEqual([])
+  await vi.advanceTimersByTimeAsync(1)
+  expect(m.deleted).toEqual([{ chatId: 1, messageId: 1 }])
+})
+
+test('deleteAfter ignores quiet hours but still sends silently', async () => {
+  const m = new FakeNotifier()
+  const { svc } = setup(m, { now: () => NOW, quiet: quietUntil(8 * HOUR_MS) })
+  await svc.notify(deleteAfterRequest({ kind: 'seconds', seconds: 300 }))
+  expect(m.silent).toEqual([true])
+  await vi.advanceTimersByTimeAsync(300_000)
+  expect(m.deleted).toEqual([{ chatId: 1, messageId: 1 }])
+})
+
+test('deleteAfter past 47h is clamped to 47h', async () => {
+  const m = new FakeNotifier()
+  const store = createStore()
+  const { svc } = setup(m, { store, now: () => NOW })
+  await svc.notify(deleteAfterRequest({ kind: 'seconds', seconds: 1e9 }))
+  expect(store.added.map((record) => record.expiresAtMs)).toEqual([NOW + TTL_CAP_MS])
+  await vi.advanceTimersByTimeAsync(TTL_CAP_MS - 1)
+  expect(m.deleted).toEqual([])
+  await vi.advanceTimersByTimeAsync(1)
+  expect(m.deleted).toEqual([{ chatId: 1, messageId: 1 }])
+})
+
+test('a deleteAfter timestamp already past at send time deletes right away', async () => {
+  const m = new FakeNotifier()
+  const store = createStore()
+  const { svc } = setup(m, { store, now: () => NOW })
+  await svc.notify(deleteAfterRequest({ kind: 'timestamp', atMs: NOW - 1000 }))
+  expect(store.added.map((record) => record.expiresAtMs)).toEqual([NOW])
+  await vi.advanceTimersByTimeAsync(0)
+  expect(m.deleted).toEqual([{ chatId: 1, messageId: 1 }])
+})
+
+test('dismiss clears a deleteAfter expiry', async () => {
+  const m = new FakeNotifier()
+  const { svc } = setup(m, { now: () => NOW })
+  await svc.notify(deleteAfterRequest({ kind: 'seconds', seconds: 300 }))
+  expect(svc.dismiss('id1')).toBe(true)
+  await vi.advanceTimersByTimeAsync(300_000)
+  expect(m.deleted).toEqual([])
 })
