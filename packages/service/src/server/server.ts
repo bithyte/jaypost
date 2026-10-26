@@ -13,15 +13,19 @@ import {
   VoterSendError,
 } from '@jaypost/core'
 import type { ApprovalRequest, RequestState, Vote } from '@jaypost/core'
-import { UNAUTHORIZED_ERROR } from '@jaypost/store'
+import { LOCAL_PERSON, parseSince, UNAUTHORIZED_ERROR } from '@jaypost/store'
 import {
   ATTACHMENTS_UNSUPPORTED_ERROR,
+  BOT_UNAVAILABLE_ERROR,
+  GET_ONLY_PATHS,
+  LOG_LIMIT_PATTERN,
   MAX_BODY_BYTES,
+  NOT_PAIRED_ERROR,
   REQUEST_ID_PATH_PATTERN,
   UNKNOWN_REQUEST_ERROR,
 } from './constants.ts'
 import { formatOpenApiYaml } from './openapi.ts'
-import type { ApiBot, BotRouter } from './types.ts'
+import type { ApiBot, BotRouter, KeyRoute, LogQuery } from './types.ts'
 
 /** HTTP body of a background question's state. */
 function toStateBody(id: string, state: RequestState) {
@@ -58,17 +62,21 @@ type Parsed<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: string }
 
-/** Sends the question to the bot's owner unless it already names a recipient. */
-function addRecipient(bot: ApiBot, request: ApprovalRequest): ApprovalRequest {
-  const recipient = bot.recipient()
-  return request.recipient !== undefined || recipient === undefined
-    ? request
-    : { ...request, recipient }
+/** Who questions go to: the key's person, or nobody in particular on a provider that doesn't pair. */
+function toRecipient(person: string | undefined): string | undefined {
+  return person === LOCAL_PERSON ? undefined : person
+}
+
+/** The question from the caller's key, sent to its person. */
+function addressTo(route: KeyRoute, request: ApprovalRequest): ApprovalRequest {
+  const recipient = toRecipient(route.person)
+  return { ...request, caller: route.caller, ...(recipient === undefined ? {} : { recipient }) }
 }
 
 /** A /request body: the question and its re-asks, if any. */
 function parseAsk(
   bot: ApiBot,
+  route: KeyRoute,
   json: unknown,
 ): Parsed<{ readonly request: ApprovalRequest; readonly retryCount: number | undefined }> {
   const parsed = parseApprovalRequest(
@@ -86,12 +94,12 @@ function parseAsk(
   }
   return {
     ok: true,
-    value: { request: addRecipient(bot, parsed.value), retryCount: retry.retryCount },
+    value: { request: addressTo(route, parsed.value), retryCount: retry.retryCount },
   }
 }
 
 /** A /request/async body; `retry` is refused, since nothing would re-ask a background question. */
-function parseBackgroundAsk(bot: ApiBot, json: unknown): Parsed<ApprovalRequest> {
+function parseBackgroundAsk(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<ApprovalRequest> {
   const parsed = parseApprovalRequest(
     json,
     bot.maxTextLength,
@@ -101,11 +109,11 @@ function parseBackgroundAsk(bot: ApiBot, json: unknown): Parsed<ApprovalRequest>
   if (parsed.ok && hasKey(json, 'retry')) {
     return { ok: false, error: "retry isn't supported on /request/async" }
   }
-  return parsed.ok ? { ok: true, value: addRecipient(bot, parsed.value) } : parsed
+  return parsed.ok ? { ok: true, value: addressTo(route, parsed.value) } : parsed
 }
 
-/** A /vote body with its voters resolved by the bot's provider. */
-function parseVote(bot: ApiBot, json: unknown): Parsed<Vote> {
+/** A /vote body with its voters resolved by the bot's provider; no voters means the key's person. */
+function parseVote(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<Vote> {
   const parsed = parseVoteRequest(
     json,
     bot.maxTextLength,
@@ -116,34 +124,82 @@ function parseVote(bot: ApiBot, json: unknown): Parsed<Vote> {
     return parsed
   }
   const { request, voters, rule, retryCount } = parsed.value
-  const resolved = bot.resolveVoters(voters, bot.recipient())
+  const resolved = bot.resolveVoters(voters, toRecipient(route.person))
   switch (resolved.kind) {
     case 'invalid':
       return { ok: false, error: `invalid user id ${JSON.stringify(resolved.voter)}` }
     case 'noOwner':
       return { ok: false, error: 'voters is required, since this provider has no owner' }
     case 'voters':
-      return { ok: true, value: { request, voters: resolved.voters, rule, retryCount } }
+      return {
+        ok: true,
+        value: {
+          request: { ...request, caller: route.caller },
+          voters: resolved.voters,
+          rule,
+          retryCount,
+        },
+      }
   }
+}
+
+/** A GET /log query; unknown fields are ignored. */
+function parseLogQuery(query: Readonly<Record<string, unknown>>, now: Date): Parsed<LogQuery> {
+  const { since: rawSince, project, limit: rawLimit } = query
+  if (rawSince !== undefined && typeof rawSince !== 'string') {
+    return { ok: false, error: 'since must be given once' }
+  }
+  const since = rawSince === undefined ? undefined : parseSince(rawSince, now)
+  if (rawSince !== undefined && since === undefined) {
+    return {
+      ok: false,
+      error: 'since must be a duration like 30m, 12h or 7d, a date or an ISO date-time',
+    }
+  }
+  if (project !== undefined && typeof project !== 'string') {
+    return { ok: false, error: 'project must be given once' }
+  }
+  if (
+    rawLimit !== undefined &&
+    (typeof rawLimit !== 'string' || !LOG_LIMIT_PATTERN.test(rawLimit))
+  ) {
+    return { ok: false, error: 'limit must be a positive integer' }
+  }
+  return {
+    ok: true,
+    value: {
+      ...(since === undefined ? {} : { since }),
+      ...(project === undefined ? {} : { project }),
+      ...(rawLimit === undefined ? {} : { limit: Number(rawLimit) }),
+    },
+  }
+}
+
+/** How the 502 log line names the bot: `b2 (telegram)`. */
+function describeBot(route: KeyRoute | undefined): string {
+  const bot = route?.bot
+  return bot === undefined ? 'unknown' : `${bot.botId} (${bot.providerName})`
 }
 
 /**
  * Builds the HTTP API (POST /request, POST /request/async, GET and DELETE /request/:id,
- * POST /vote, POST /notify, GET /status, GET /openapi.yaml) without listening. Every route but
- * /openapi.yaml asks `router` for the call's bot first and answers 401 when there is none, before
- * parsing the body. Aborting the connection cancels a pending /request or /vote; background
- * questions outlive their connections. Errors return JSON bodies. A bot without notifications
- * answers POST /notify 501.
+ * POST /vote, POST /notify, GET /status, GET /log, GET /openapi.yaml) without listening. Every
+ * route but /openapi.yaml asks `router` for the call's key first and answers 401 when there is
+ * none, before parsing the body. A key whose bot isn't running gets 503 `bot unavailable` and one
+ * whose pairing waits for its code 503 `not paired` on the question routes. Aborting the
+ * connection cancels a pending /request or /vote; background questions outlive their connections
+ * and only their key reads or cancels them. Errors return JSON bodies. A bot without
+ * notifications answers POST /notify 501.
  */
 export function createApiServer(router: BotRouter): FastifyInstance {
-  const botsByRequest = new WeakMap<FastifyRequest, ApiBot>()
+  const routesByRequest = new WeakMap<FastifyRequest, KeyRoute>()
   // Only reached after the guard routed the call.
-  const requireBot = (request: FastifyRequest): ApiBot => {
-    const bot = botsByRequest.get(request)
-    if (bot === undefined) {
-      throw new Error(`no bot routed for ${request.url}`)
+  const requireRoute = (request: FastifyRequest): KeyRoute => {
+    const route = routesByRequest.get(request)
+    if (route === undefined) {
+      throw new Error(`no key routed for ${request.url}`)
     }
-    return bot
+    return route
   }
   // Pending requests can hang for minutes; close() shouldn't wait for them.
   // A question can hold its response for up to 24 h; these timeouts must never cap it.
@@ -170,7 +226,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     if (path !== undefined && REQUEST_ID_PATH_PATTERN.test(path)) {
       return reply.code(405).header('Allow', 'GET, DELETE').send({ error: 'method not allowed' })
     }
-    if (path === '/status' || path === '/openapi.yaml') {
+    if (path !== undefined && GET_ONLY_PATHS.includes(path)) {
       return reply.code(405).header('Allow', 'GET').send({ error: 'method not allowed' })
     }
     return reply.code(404).send({ error: 'not found' })
@@ -178,12 +234,12 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   app.setErrorHandler((error: FastifyError, request, reply) => {
     if (error instanceof VoterSendError) {
       // Names only the voter, never the cause.
-      console.error(`${error.message} via ${botsByRequest.get(request)?.providerName ?? 'unknown'}`)
+      console.error(`${error.message} via ${describeBot(routesByRequest.get(request))}`)
       return reply.code(502).send({ error: 'failed to send message', voter: error.voter })
     }
     if (error instanceof SendError) {
       // Log the message only; the cause can hold provider internals.
-      console.error(`${error.message} via ${botsByRequest.get(request)?.providerName ?? 'unknown'}`)
+      console.error(`${error.message} via ${describeBot(routesByRequest.get(request))}`)
       return reply.code(502).send({ error: 'failed to send message' })
     }
     if (error.statusCode === 413) {
@@ -200,8 +256,8 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   const guard = {
     onRequest: async (request: FastifyRequest, reply: FastifyReply) => {
       const route = router.route(request.headers.authorization)
-      if (route.kind === 'bot') {
-        botsByRequest.set(request, route.bot)
+      if (route.kind === 'key') {
+        routesByRequest.set(request, route)
         return
       }
       console.error(
@@ -213,34 +269,46 @@ export function createApiServer(router: BotRouter): FastifyInstance {
         .send({ error: UNAUTHORIZED_ERROR })
     },
   }
-  app.get('/status', guard, async (request) => {
-    const bot = requireBot(request)
-    return {
-      ...bot.status(),
-      maxAttachmentBytes: bot.maxAttachmentBytes ?? 0,
-      maxTextLength: bot.maxTextLength,
-      ...(bot.maxOptionCount === undefined ? {} : { maxOptionCount: bot.maxOptionCount }),
+  // Replies 503 itself and returns undefined when the key's bot isn't running.
+  const requireBot = (route: KeyRoute, reply: FastifyReply): ApiBot | undefined => {
+    if (route.bot === undefined) {
+      reply.code(503).send({ error: BOT_UNAVAILABLE_ERROR })
     }
+    return route.bot
+  }
+  app.get('/status', guard, async (request) => requireRoute(request).status())
+  app.get<{ Querystring: Record<string, unknown> }>('/log', guard, async (request, reply) => {
+    const route = requireRoute(request)
+    const query = parseLogQuery(request.query, new Date())
+    if (!query.ok) {
+      return reply.code(400).send({ error: query.error })
+    }
+    const { entries, skippedCount } = route.readLog(query.value)
+    return { entries, skippedCount }
   })
   // Containers publish the same port on the host, so the local port is the one clients use.
   app.get('/openapi.yaml', async (request, reply) =>
     reply
       .type('application/yaml; charset=utf-8')
-      .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.openApi })),
+      .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.openApi() })),
   )
-  // Replies 503/400/501 itself and returns undefined, or returns what `parse` made of the body.
-  // Drops the raw body from the Fastify request so a long wait doesn't keep an attachment's bytes
-  // alive; the parsed JSON goes out of scope on return for the same reason.
+  // Replies 503/400/501 itself and returns undefined, or returns the bot and what `parse` made of
+  // the body. Drops the raw body from the Fastify request so a long wait doesn't keep an
+  // attachment's bytes alive; the parsed JSON goes out of scope on return for the same reason.
   const readBody = <T>(
-    bot: ApiBot,
     request: FastifyRequest<{ Body: string | undefined }>,
     reply: FastifyReply,
-    parse: (bot: ApiBot, json: unknown) => Parsed<T>,
-  ): T | undefined => {
+    parse: (bot: ApiBot, route: KeyRoute, json: unknown) => Parsed<T>,
+  ): { readonly bot: ApiBot; readonly value: T } | undefined => {
+    const route = requireRoute(request)
     const body = request.body
     request.body = undefined
-    if (!bot.status().paired) {
-      reply.code(503).send({ error: 'not paired' })
+    const bot = requireBot(route, reply)
+    if (bot === undefined) {
+      return undefined
+    }
+    if (route.person === undefined) {
+      reply.code(503).send({ error: NOT_PAIRED_ERROR })
       return undefined
     }
     let json: unknown
@@ -254,24 +322,23 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       reply.code(501).send({ error: ATTACHMENTS_UNSUPPORTED_ERROR })
       return undefined
     }
-    const parsed = parse(bot, json)
+    const parsed = parse(bot, route, json)
     if (!parsed.ok) {
       reply.code(400).send({ error: parsed.error })
       return undefined
     }
-    return parsed.value
+    return { bot, value: parsed.value }
   }
   app.post<{ Body: string | undefined }>('/request', guard, async (request, reply) => {
-    const bot = requireBot(request)
-    let ask = readBody(bot, request, reply, parseAsk)
-    if (ask === undefined) {
+    let read = readBody(request, reply, parseAsk)
+    if (read === undefined) {
       return reply
     }
     const signal = abortOnClose(reply)
-    const { retryCount } = ask
-    const pending = askWithRetries(bot.service, ask.request, retryCount ?? 0, signal)
+    const { retryCount } = read.value
+    const pending = askWithRetries(read.bot.service, read.value.request, retryCount ?? 0, signal)
     // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
-    ask = undefined
+    read = undefined
     const result = await pending
     if (result.kind === 'cancelled') {
       // Normally because the client is gone, so this write is a no-op.
@@ -283,26 +350,24 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       : { ...result.outcome, rounds: result.roundCount }
   })
   app.post<{ Body: string | undefined }>('/request/async', guard, async (request, reply) => {
-    const bot = requireBot(request)
-    const approval = readBody(bot, request, reply, parseBackgroundAsk)
-    if (approval === undefined) {
+    const read = readBody(request, reply, parseBackgroundAsk)
+    if (read === undefined) {
       return reply
     }
-    const { id, expiresAt } = await bot.service.start(approval)
+    const { id, expiresAt } = await read.bot.service.start(read.value)
     return reply
       .code(202)
       .header('Location', `/request/${id}`)
       .send(toStateBody(id, { kind: 'pending', expiresAt }))
   })
   app.post<{ Body: string | undefined }>('/vote', guard, async (request, reply) => {
-    const bot = requireBot(request)
-    let vote = readBody(bot, request, reply, parseVote)
-    if (vote === undefined) {
+    let read = readBody(request, reply, parseVote)
+    if (read === undefined) {
       return reply
     }
-    const { rule } = vote
-    const pending = runVote(bot.service, vote, abortOnClose(reply))
-    vote = undefined
+    const { rule } = read.value
+    const pending = runVote(read.bot.service, read.value, abortOnClose(reply))
+    read = undefined
     const result = await pending
     if (result.kind === 'cancelled') {
       return reply.code(500).send({ error: 'request was cancelled' })
@@ -313,18 +378,23 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     '/request/:id',
     guard,
     async (request, reply) => {
-      const { service } = requireBot(request)
+      const route = requireRoute(request)
+      const bot = requireBot(route, reply)
+      if (bot === undefined) {
+        return reply
+      }
       const { id } = request.params
       const wait = parseWaitSeconds(request.query.wait)
       if (!wait.ok) {
         return reply.code(400).send({ error: wait.error })
       }
+      const key = route.caller.key
       let state: RequestState | undefined
       if (wait.seconds === 0) {
-        state = service.get(id, undefined)
+        state = bot.service.get(id, key)
       } else {
         // Only stops this wait; the question stays open when the poller goes away.
-        state = await service.waitFor(id, undefined, wait.seconds * 1000, abortOnClose(reply))
+        state = await bot.service.waitFor(id, key, wait.seconds * 1000, abortOnClose(reply))
       }
       if (state === undefined) {
         return reply.code(404).send({ error: UNKNOWN_REQUEST_ERROR })
@@ -333,22 +403,30 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     },
   )
   app.delete<{ Params: { id: string } }>('/request/:id', guard, async (request, reply) => {
-    const { service } = requireBot(request)
+    const route = requireRoute(request)
+    const bot = requireBot(route, reply)
+    if (bot === undefined) {
+      return reply
+    }
     const { id } = request.params
-    const state = await service.cancel(id, undefined)
+    const state = await bot.service.cancel(id, route.caller.key)
     if (state === undefined) {
       return reply.code(404).send({ error: UNKNOWN_REQUEST_ERROR })
     }
     return toStateBody(id, state)
   })
   app.post<{ Body: string | undefined }>('/notify', guard, async (request, reply) => {
-    const bot = requireBot(request)
+    const route = requireRoute(request)
+    const bot = requireBot(route, reply)
+    if (bot === undefined) {
+      return reply
+    }
     const { notifications } = bot
     if (notifications === undefined) {
       return reply.code(501).send({ error: 'notifications not supported' })
     }
-    if (!bot.status().paired) {
-      return reply.code(503).send({ error: 'not paired' })
+    if (route.person === undefined) {
+      return reply.code(503).send({ error: NOT_PAIRED_ERROR })
     }
     const body = request.body
     request.body = undefined
@@ -366,7 +444,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     if (!parsed.ok) {
       return reply.code(400).send({ error: parsed.error })
     }
-    await notifications.notify(parsed.value, bot.recipient())
+    await notifications.notify(parsed.value, toRecipient(route.person))
     return { ok: true }
   })
   return app

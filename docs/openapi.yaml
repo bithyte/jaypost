@@ -451,6 +451,18 @@ components:
             paired:
               type: boolean
               const: true
+            key:
+              type: string
+            pairing:
+              type: string
+            state:
+              type: string
+              enum:
+                - starting
+                - running
+                - failed
+            error:
+              type: string
             provider:
               type: string
             displayName:
@@ -474,6 +486,18 @@ components:
               type: boolean
               const: false
             code:
+              type: string
+            key:
+              type: string
+            pairing:
+              type: string
+            state:
+              type: string
+              enum:
+                - starting
+                - running
+                - failed
+            error:
               type: string
             provider:
               type: string

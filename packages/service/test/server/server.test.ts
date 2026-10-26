@@ -3,8 +3,8 @@ import type { AddressInfo } from 'node:net'
 import type { FastifyInstance } from 'fastify'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { parse } from 'yaml'
-import { NO_AUTH } from '@jaypost/store'
-import type { ApiAuth } from '@jaypost/store'
+import { LOCAL_PERSON, NO_AUTH } from '@jaypost/store'
+import type { ApiAuth, AuditReadResult } from '@jaypost/store'
 import { ApprovalService, MAX_ATTACHMENT_BYTES, SendError } from '@jaypost/core'
 import type {
   ApprovalRequest,
@@ -18,7 +18,7 @@ import type {
 import { createApiServer, createSingleBotRouter } from '../../src/server/index.ts'
 import { MAX_BODY_BYTES } from '../../src/server/constants.ts'
 import type { StatusInfo } from '@jaypost/protocol'
-import type { ApiBot, BotRouter } from '../../src/server/index.ts'
+import type { ApiBot, BotRoute, KeyRoute } from '../../src/server/index.ts'
 
 const TEST_VERSION = '1.2.3'
 
@@ -145,6 +145,7 @@ test('200 with outcome', async () => {
     timeoutSeconds: 30,
     attachment: undefined,
     reaskOnTimeout: false,
+    caller: { key: 'k1', pairing: 'p1' },
   })
 })
 
@@ -555,6 +556,43 @@ test('without a token a stray authorization header is ignored', async () => {
   expect(res.status).toBe(200)
 })
 
+function toBot(request: RequestFn, maxTextLength: number): ApiBot {
+  return {
+    botId: 'b1',
+    service: createStub(request),
+    maxTextLength,
+    providerName: 'test',
+    resolveVoters: () => ({ kind: 'noOwner' }),
+    describe: () => ({ provider: 'test', displayName: 'test' }),
+    rejectForKeys: () => undefined,
+  }
+}
+
+function toRoute(
+  bot: ApiBot | undefined,
+  options: { readonly key?: string; readonly person?: string; readonly log?: AuditReadResult } = {},
+): KeyRoute {
+  const key = options.key ?? 'k1'
+  return {
+    kind: 'key',
+    caller: { key, pairing: 'p1' },
+    person: options.person,
+    bot,
+    status: () => ({ paired: options.person !== undefined, code: 'ABCD-EFGH', key }),
+    readLog: () => options.log ?? { entries: [], skippedCount: 0 },
+  }
+}
+
+async function startRouted(route: (authorization: string | undefined) => BotRoute) {
+  server = createApiServer({
+    route,
+    openApi: () => ({ version: TEST_VERSION, maxTextLength: 100, maxAttachmentBytes: 0 }),
+  })
+  await server.listen({ port: 0, host: '127.0.0.1' })
+  const { port } = server.server.address() as AddressInfo
+  return `http://127.0.0.1:${port}`
+}
+
 test('a router with several bots sends each call to the bot its token picks', async () => {
   const askFirst = vi.fn<RequestFn>(async () => ({
     kind: 'completed',
@@ -564,31 +602,17 @@ test('a router with several bots sends each call to the bot its token picks', as
     kind: 'completed',
     outcome: { answer: 'second', timedOut: false },
   }))
-  const toBot = (request: RequestFn, maxTextLength: number): ApiBot => ({
-    service: createStub(request),
-    recipient: () => undefined,
-    status: () => ({ paired: true }),
-    maxTextLength,
-    providerName: 'test',
-    resolveVoters: () => ({ kind: 'noOwner' }),
-    describe: () => ({ provider: 'test', displayName: 'test' }),
-    rejectForKeys: () => undefined,
-  })
-  const botsByToken = new Map([
-    [TOKEN, toBot(askFirst, 100)],
-    [WRONG, toBot(askSecond, 200)],
+  const routesByToken = new Map([
+    [TOKEN, toRoute(toBot(askFirst, 100), { person: 'u1' })],
+    [WRONG, toRoute(toBot(askSecond, 200), { key: 'k2', person: 'u2' })],
   ])
-  const router: BotRouter = {
-    route: (authorization) => {
-      const bot = botsByToken.get(authorization?.replace('Bearer ', '') ?? '')
-      return bot === undefined ? { kind: 'unauthorized', reason: 'wrong' } : { kind: 'bot', bot }
-    },
-    openApi: { version: TEST_VERSION, maxTextLength: 100, maxAttachmentBytes: 0 },
-  }
-  server = createApiServer(router)
-  await server.listen({ port: 0, host: '127.0.0.1' })
-  const { port } = server.server.address() as AddressInfo
-  const url = `http://127.0.0.1:${port}`
+  const url = await startRouted(
+    (authorization) =>
+      routesByToken.get(authorization?.replace('Bearer ', '') ?? '') ?? {
+        kind: 'unauthorized',
+        reason: 'wrong',
+      },
+  )
   const ask = (token: string) =>
     call(url, 'POST', '/request', { authorization: `Bearer ${token}` }, JSON.stringify(valid))
   const status = (token: string) =>
@@ -597,12 +621,84 @@ test('a router with several bots sends each call to the bot its token picks', as
   expect(await (await ask(WRONG)).json()).toEqual({ answer: 'second', timedOut: false })
   expect(await (await status(WRONG)).json()).toEqual({
     paired: true,
-    maxAttachmentBytes: 0,
-    maxTextLength: 200,
+    code: 'ABCD-EFGH',
+    key: 'k2',
   })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   expect((await ask('c'.repeat(43))).status).toBe(401)
-  expect(askFirst).toHaveBeenCalledTimes(1)
-  expect(askSecond).toHaveBeenCalledTimes(1)
+  error.mockRestore()
+  expect(askFirst.mock.calls[0]?.[0]).toMatchObject({
+    recipient: 'u1',
+    caller: { key: 'k1', pairing: 'p1' },
+  })
+  expect(askSecond.mock.calls[0]?.[0]).toMatchObject({
+    recipient: 'u2',
+    caller: { key: 'k2', pairing: 'p1' },
+  })
+})
+
+test('a key whose bot is not running gets 503 on every question route', async () => {
+  const url = await startRouted(() => toRoute(undefined, { person: 'u1' }))
+  const routes = [
+    ['POST', '/request', JSON.stringify(valid)],
+    ['POST', '/request/async', JSON.stringify(valid)],
+    ['POST', '/vote', JSON.stringify(valid)],
+    ['POST', '/notify', JSON.stringify({ text: 'hi' })],
+    ['GET', '/request/q1', undefined],
+    ['DELETE', '/request/q1', undefined],
+  ] as const
+  for (const [method, path, body] of routes) {
+    const res = await call(url, method, path, {}, body)
+    expect(res.status).toBe(503)
+    expect(await res.json()).toEqual({ error: 'bot unavailable' })
+  }
+  const status = await call(url, 'GET', '/status', {})
+  expect(status.status).toBe(200)
+  expect(await status.json()).toEqual({ paired: true, code: 'ABCD-EFGH', key: 'k1' })
+})
+
+test('the local person of a bot that does not pair sends to nobody in particular', async () => {
+  const request = vi.fn<RequestFn>(async () => ({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  }))
+  const url = await startRouted(() => toRoute(toBot(request, 100), { person: LOCAL_PERSON }))
+  expect((await post(url, JSON.stringify(valid))).status).toBe(200)
+  expect(request.mock.calls[0]?.[0]).not.toHaveProperty('recipient')
+  expect(request.mock.calls[0]?.[0].caller).toEqual({ key: 'k1', pairing: 'p1' })
+})
+
+test('GET /log answers the route log and checks its query', async () => {
+  const entry = {
+    id: 'q1',
+    askedAt: '2026-10-26T10:00:00.000Z',
+    text: 'Deploy?',
+    options: ['Approve', 'Decline'],
+    timeoutOption: 'Decline',
+    timeoutSeconds: 30,
+    status: 'answered',
+    answer: 'Approve',
+    key: 'k1',
+    pairing: 'p1',
+  }
+  const readLog = vi.fn<KeyRoute['readLog']>(() => ({ entries: [entry], skippedCount: 2 }))
+  const url = await startRouted(() => ({ ...toRoute(undefined), readLog }))
+  const res = await call(url, 'GET', '/log?since=2026-10-01&project=api&limit=5', {})
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({ entries: [entry], skippedCount: 2 })
+  expect(readLog).toHaveBeenCalledWith({
+    since: new Date(2026, 9, 1),
+    project: 'api',
+    limit: 5,
+  })
+  for (const query of ['?since=soon', '?limit=0', '?limit=x', '?project=a&project=b']) {
+    const bad = await call(url, 'GET', `/log${query}`, {})
+    expect(bad.status).toBe(400)
+  }
+  expect(readLog).toHaveBeenCalledTimes(1)
+  const post405 = await call(url, 'POST', '/log', {}, '{}')
+  expect(post405.status).toBe(405)
+  expect(post405.headers.get('allow')).toBe('GET')
 })
 
 test('markdown request reaches the provider as spans', async () => {
@@ -811,7 +907,7 @@ test('closing a long-poll leaves the question open', async () => {
   controller.abort()
   await expect(poll).rejects.toThrow()
   await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(service.get(id, undefined)?.kind).toBe('pending')
+  expect(service.get(id, 'k1')?.kind).toBe('pending')
   expect(messenger.finalized).toEqual([])
   service.tap(id, 0)
   const res = await fetch(`${url}/request/${id}`)
@@ -1167,7 +1263,7 @@ test('POST /vote answers 502 naming the voter it could not reach', async () => {
   const res = await postVote(url, { ...valid, voters: ['1'] })
   expect(res.status).toBe(502)
   expect(await res.json()).toEqual({ error: 'failed to send message', voter: '1' })
-  expect(error).toHaveBeenCalledWith('failed to send message to 1 via test')
+  expect(error).toHaveBeenCalledWith('failed to send message to 1 via b1 (test)')
   error.mockRestore()
 })
 

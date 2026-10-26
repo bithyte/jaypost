@@ -12,7 +12,9 @@ export {
   resolveAuditPath,
   selectAuditEntries,
 } from './audit/index.ts'
+export type { AuditEntry, AuditFilter, AuditReadResult } from './audit/index.ts'
 export {
+  AUTHORIZATION_PATTERN,
   generateToken,
   isAuthorized,
   NO_AUTH,
@@ -83,6 +85,7 @@ export {
 export type {
   BotFiles,
   BotRecord,
+  KeyDetails,
   KeyRecord,
   KeyTarget,
   NotFound,

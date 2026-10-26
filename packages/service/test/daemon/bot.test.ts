@@ -292,7 +292,6 @@ test('a terminal-like bot runs commands for the local person over all its questi
   })
   expect(runtime.handlers?.pair).toBeUndefined()
   expect(running.bot.pairingInstructions).toBeUndefined()
-  expect(running.bot.recipient()).toBeUndefined()
   const asked = running.bot.service.request(REQUEST)
   await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
   expect(runtime.sent[0]?.recipient).toBeUndefined()
@@ -365,13 +364,7 @@ test('describe and pairingInstructions show the provider without pairing state',
   })
   expect(running.bot.describe()).toEqual({ provider: 'fakepair', displayName: 'fake' })
   expect(running.bot.pairingInstructions?.('ABCD2345')).toBe('Say ABCD2345 to fake')
-  expect(running.bot.status()).toEqual({
-    paired: false,
-    provider: 'fakepair',
-    displayName: 'fake',
-    code: 'K7QM-4XPD',
-    instructions: 'Say K7QM4XPD to fake',
-  })
+  expect(running.codes.codeFor('p1')).toBe('K7QM4XPD')
 })
 
 test('state and audit go to the bot directory and log lines name the bot', async () => {

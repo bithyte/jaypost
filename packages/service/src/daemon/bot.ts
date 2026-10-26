@@ -2,7 +2,6 @@ import { join } from 'node:path'
 import {
   ApprovalService,
   findOwnerSetting,
-  formatCode,
   isCodeShaped,
   NotificationService,
   OWNER_COMMANDS,
@@ -21,7 +20,6 @@ import {
   StateStore,
 } from '@jaypost/store'
 import type { PairResult, RuntimeHandlers } from '@jaypost/core'
-import type { StatusInfo } from '@jaypost/protocol'
 import type { BotOptions, RunningBot } from './types.ts'
 
 /** Who questions to `person` are sent to: nobody in particular for the local person. */
@@ -92,9 +90,8 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     })().catch(() => undefined)
     return recovery
   }
-  const pendingCodes = people.pendingCodes()
   const codes = new PairingCodes()
-  for (const [pairingId, code] of pendingCodes) {
+  for (const [pairingId, code] of people.pendingCodes()) {
     codes.add(pairingId, code)
   }
   const describe = () => ({
@@ -102,28 +99,6 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     displayName,
     ...runtime.statusFields?.(),
   })
-  // Interim (until the hub answers /status): the first code from start that is still unspent.
-  const findPendingCode = (): string | undefined => {
-    for (const pairingId of pendingCodes.keys()) {
-      const code = codes.codeFor(pairingId)
-      if (code !== undefined) {
-        return code
-      }
-    }
-    return undefined
-  }
-  const status = (): StatusInfo => {
-    const code = people.list().length > 0 ? undefined : findPendingCode()
-    if (code === undefined || pairingInstructions === undefined) {
-      return { paired: true, ...describe() }
-    }
-    return {
-      paired: false,
-      ...describe(),
-      code: formatCode(code),
-      instructions: pairingInstructions(code),
-    }
-  }
   const pair = (senderId: string, text: string): PairResult => {
     // A paired person's chat isn't a guess, so it never counts toward their block.
     if (people.isPaired(senderId) && !isCodeShaped(text)) {
@@ -166,12 +141,8 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
   runtime.start(handlers)
   return {
     bot: {
+      botId: record.id,
       service,
-      status,
-      recipient: () => {
-        const [first] = people.list()
-        return first === undefined ? undefined : recipientFor(first)
-      },
       describe,
       ...(pairingInstructions === undefined ? {} : { pairingInstructions }),
       resolveVoters: (voters, person) => resolveVoters(provider, person, voters),

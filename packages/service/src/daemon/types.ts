@@ -1,5 +1,5 @@
 import type { PairingCodes, Provider, QuietHours, QuietPatch } from '@jaypost/core'
-import type { BotRecord } from '@jaypost/store'
+import type { BotRecord, PairingRecord, Registry, RegistryStore } from '@jaypost/store'
 import type { ApiBot } from '../server/index.ts'
 
 /** The registry's view of one bot's people, injected so the bot never touches storage. Calls never throw. */
@@ -42,4 +42,48 @@ export type RunningBot = {
    * for the next start), then stops the provider runtime; never rejects.
    */
   readonly stop: () => Promise<void>
+}
+
+/** Where a supervised bot is: starting, running, or failed and waiting for its next attempt. */
+export type BotState =
+  | { readonly kind: 'starting' }
+  | { readonly kind: 'running'; readonly running: RunningBot }
+  | { readonly kind: 'failed'; readonly reason: string }
+
+export type BotSupervisorOptions = {
+  /** Starts the bot; a throw's message becomes the failed state's reason. */
+  readonly start: () => Promise<RunningBot>
+  readonly log: (line: string) => void
+  /** Delay before the first retry; doubles after each failure. Default 5 s. */
+  readonly initialDelayMs?: number
+  /** Longest delay between retries. Default 5 min. */
+  readonly maxDelayMs?: number
+}
+
+export type HubOptions = {
+  readonly store: RegistryStore
+  /** What `store` holds now; the hub keeps it in memory and saves every change through `store`. */
+  readonly registry: Registry
+  readonly providers: readonly Provider[]
+  /** Bot directories live next to it. */
+  readonly configPath: string
+  readonly adminKey: string
+  /** Where the admin key file is, for rotating it. */
+  readonly adminKeyPath: string
+  /** Shown in /openapi.yaml. */
+  readonly version: string
+  readonly now?: () => Date
+  readonly generateCode?: () => string
+  readonly log?: (line: string) => void
+}
+
+/** A new API key. `key` is the plaintext, shown only here; `code` and `instructions` while pending. */
+export type CreatedKey = {
+  readonly kind: 'created'
+  readonly id: string
+  readonly key: string
+  readonly pairing: PairingRecord
+  /** Formatted for display, like `/status` shows it. */
+  readonly code?: string
+  readonly instructions?: string
 }

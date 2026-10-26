@@ -1,4 +1,5 @@
-export { runService } from './daemon/index.ts'
+export { runService, startService } from './daemon/index.ts'
+export type { RunningService, ServiceOptions } from './daemon/index.ts'
 export {
   DIRECT_MODE,
   formatMaskCommands,

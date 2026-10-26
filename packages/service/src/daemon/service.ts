@@ -1,144 +1,132 @@
-import { dirname } from 'node:path'
 import type { FastifyInstance } from 'fastify'
 import { findOwnerSetting, generateCode as generateDefaultCode } from '@jaypost/core'
-import { loadConfig, resolveConfigPath, updateConfigFile } from '@jaypost/store'
-import type { BotRecord, Config } from '@jaypost/store'
+import type { Provider } from '@jaypost/core'
+import {
+  applySeed,
+  ensureAdminKey,
+  loadSeed,
+  loadServiceConfig,
+  migrateLegacyBotFiles,
+  RegistryStore,
+  resolveAdminKeyPath,
+  resolveConfigPath,
+  resolveRegistryPath,
+} from '@jaypost/store'
+import type { Registry, SeedLoad, ServiceConfig } from '@jaypost/store'
 import { SERVICE_PROVIDERS } from '@jaypost/providers'
-import { createApiServer, createSingleBotRouter } from '../server/index.ts'
-import { startBot } from './bot.ts'
-import type { BotPeople } from './types.ts'
+import { createApiServer } from '../server/index.ts'
+import { Hub } from './hub.ts'
 
-/** The config's bot and the version its API reports. */
+/** What the service needs to start every stored bot, and the version its API reports. */
 export type ServiceOptions = {
-  readonly config: Config
-  readonly configPath: string
-  /** The provider can't continue; the caller decides how to exit. */
-  readonly fatal: (message: string) => void
-  readonly log?: (line: string) => void
-  readonly generateCode?: () => string
   /** Shown in /openapi.yaml. */
   readonly version: string
-}
-
-/** The interim single bot's id until the hub serves the registry (Task 7). */
-const CONFIG_BOT_ID = 'b1'
-
-/**
- * Interim (deleted with the hub): today's single owner as `BotPeople`. The owner comes from the
- * config's owner setting; without one there is a pending code `p1`. A claim saves the owner to
- * config.json and logs when that fails; quiet settings are read from and saved to config.json for
- * everyone.
- */
-export function createConfigPeople(
-  config: Config,
-  configPath: string,
-  generateCode: () => string,
-  log: (line: string) => void,
-): BotPeople {
-  const ownerSetting = findOwnerSetting(config.provider)
-  const savedOwner =
-    ownerSetting === undefined ? undefined : config.settings[ownerSetting.configKey]
-  let owner = savedOwner === undefined ? undefined : String(savedOwner)
-  const pendingCodes: ReadonlyMap<string, string> =
-    ownerSetting === undefined || Object.hasOwn(config.settings, ownerSetting.configKey)
-      ? new Map()
-      : new Map([['p1', generateCode()]])
-  const quiet = {
-    ...(config.quietHours === undefined ? {} : { quietHours: config.quietHours }),
-    ...(config.mutedUntil === undefined ? {} : { mutedUntil: config.mutedUntil }),
-  }
-  return {
-    isPaired: (person) => person === owner,
-    list: () => (owner === undefined ? [] : [owner]),
-    pendingCodes: () => pendingCodes,
-    claim: (_pairingId, person) => {
-      owner = person
-      try {
-        const parsedOwner = ownerSetting?.parse(person)
-        if (ownerSetting === undefined || parsedOwner === undefined) {
-          throw new Error('owner not parseable')
-        }
-        updateConfigFile(configPath, { [ownerSetting.configKey]: parsedOwner })
-      } catch {
-        log(
-          `paired with ${person} but couldn't save the owner to ${configPath}; it'll be lost on restart`,
-        )
-      }
-    },
-    quietHours: () => quiet,
-    saveQuiet: (_person, patch) => updateConfigFile(configPath, patch),
-  }
+  /** registry.json, the admin key file and the bot directories live next to it. */
+  readonly configPath: string
+  readonly providers: readonly Provider[]
+  /** Bot 1, pairing 1 and key 1 as the env and config.json describe them, from `loadSeed`. */
+  readonly seed: SeedLoad
+  readonly log?: (line: string) => void
+  readonly generateCode?: () => string
+  readonly now?: () => Date
 }
 
 export type RunningService = {
   readonly server: FastifyInstance
+  readonly hub: Hub
   /** Starts cleanup of the previous run's messages once; resolves when done; never rejects. */
   readonly recover: () => Promise<void>
   /**
    * Freezes the saved state first (so pending requests stay saved for the next start), then closes
-   * the server and the provider runtime; never rejects.
+   * the server and the provider runtimes; never rejects.
    */
   readonly stop: () => Promise<void>
 }
 
 /**
- * Starts the config's bot behind an API guarded by `config.auth`, with state and audit files next
- * to `configPath`. Throws an Error with the provider's reason when credentials are rejected.
- * Doesn't listen.
+ * The stored registry with the seed applied. On an empty registry the pre-upgrade state and audit
+ * files move into the seed bot's directory first. Saves only when something changed. Throws on a
+ * corrupt registry, a missing setting with no bots stored, or a failed move or save.
+ */
+function loadSeededRegistry(
+  store: RegistryStore,
+  options: ServiceOptions,
+  generateCode: () => string,
+): Registry {
+  const stored = store.load()
+  const { seed } = options
+  if (seed.kind === 'missing') {
+    if (stored.bots.length === 0) {
+      throw new Error(seed.message)
+    }
+    return stored
+  }
+  const pairs = findOwnerSetting(seed.provider) !== undefined
+  const now = options.now ?? (() => new Date())
+  const { registry } = applySeed(stored, seed.seed, pairs, generateCode, now())
+  // SeedResult.isNew only says the seed record is new; the move needs a registry with no bots.
+  if (stored.bots.length === 0 && registry !== stored && registry.seed !== undefined) {
+    migrateLegacyBotFiles(options.configPath, registry.seed.botId)
+  }
+  if (registry !== stored) {
+    store.save(registry)
+  }
+  return registry
+}
+
+/**
+ * Loads the registry next to `configPath`, applies the seed, makes sure there is an admin key, and
+ * starts every stored bot behind an API that routes each call by its key. A bot that can't start
+ * is retried in the background and shows as failed in /status. Throws on a corrupt registry, a
+ * missing setting with no bots stored, or an I/O error. Doesn't listen.
  */
 export async function startService(options: ServiceOptions): Promise<RunningService> {
-  const { config, configPath } = options
+  const { configPath } = options
   const log = options.log ?? console.error
-  const people = createConfigPeople(
-    config,
+  const generateCode = options.generateCode ?? generateDefaultCode
+  const store = new RegistryStore(resolveRegistryPath(configPath))
+  const registry = loadSeededRegistry(store, options, generateCode)
+  const adminKeyPath = resolveAdminKeyPath(configPath)
+  const adminKey = ensureAdminKey(adminKeyPath, log)
+  const hub = new Hub({
+    store,
+    registry,
+    providers: options.providers,
     configPath,
-    options.generateCode ?? generateDefaultCode,
+    adminKey,
+    adminKeyPath,
+    version: options.version,
+    generateCode,
     log,
-  )
-  const record: BotRecord = {
-    id: CONFIG_BOT_ID,
-    provider: config.provider.name,
-    settings: config.settings,
-    createdAt: new Date().toISOString(),
-  }
-  const prefix = `[${record.id}] `
-  const running = await startBot({
-    record,
-    provider: config.provider,
-    directory: dirname(configPath),
-    people,
-    fatal: options.fatal,
-    // Interim: the single-bot daemon's log lines have never named a bot.
-    log: (line) => log(line.startsWith(prefix) ? line.slice(prefix.length) : line),
+    ...(options.now === undefined ? {} : { now: options.now }),
   })
-  const instructions = running.bot.pairingInstructions
-  for (const code of people.pendingCodes().values()) {
-    log(`Not paired. ${instructions?.(code) ?? ''}`)
-  }
-  const server = createApiServer(
-    createSingleBotRouter({ ...running.bot, auth: config.auth, version: options.version }),
-  )
+  await hub.start()
+  const server = createApiServer(hub.router)
   return {
     server,
-    recover: running.recover,
-    // running.stop() freezes the state before the server starts closing.
+    hub,
+    recover: () => hub.recover(),
+    // hub.stop() freezes every bot's state before the server starts closing.
     stop: async () => {
-      await Promise.allSettled([running.stop(), server.close()])
+      await Promise.allSettled([hub.stop(), server.close()])
     },
   }
 }
 
 /**
- * Starts the provider and API, reporting `version` in /openapi.yaml. Exits the process with 1 on
- * bad config, rejected credentials, an HTTP server error, or a fatal provider error.
+ * Starts every stored bot and the API, reporting `version` in /openapi.yaml. Exits the process
+ * with 1 on bad config, a corrupt registry, a missing setting with no bots stored, or an HTTP
+ * server error. A bot that fails is retried; it never stops the process.
  */
 export async function runService(
   version: string,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  let config: Config
+  let serviceConfig: ServiceConfig
+  let seed: SeedLoad
   try {
-    config = loadConfig(env, SERVICE_PROVIDERS)
+    serviceConfig = loadServiceConfig(env)
+    seed = loadSeed(env, SERVICE_PROVIDERS)
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
@@ -148,25 +136,19 @@ export async function runService(
   try {
     running = await startService({
       version,
-      config,
       configPath: resolveConfigPath(env),
-      fatal: (message) => {
-        if (stopping) {
-          return
-        }
-        console.error(message)
-        process.exit(1)
-      },
+      providers: SERVICE_PROVIDERS,
+      seed,
     })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     process.exit(1)
   }
-  running.server.listen({ port: config.port, host: config.host }).then(
+  const { host, port } = serviceConfig
+  running.server.listen({ port, host }).then(
     () => {
-      console.log(
-        `listening on ${config.host}:${config.port} (${config.auth.kind === 'token' ? 'token required' : 'no token'})`,
-      )
+      const { bots, keys } = running.hub.registry
+      console.log(`listening on ${host}:${port} (${bots.length} bots, ${keys.length} keys)`)
       void running.recover()
     },
     (error: unknown) => {
