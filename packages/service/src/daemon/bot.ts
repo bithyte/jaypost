@@ -138,7 +138,14 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     return 'paired'
   }
   const handlers: RuntimeHandlers = {
-    answer: (id, optionIndex) => service.tap(id, optionIndex),
+    answer: (id, optionIndex, senderId) => {
+      // Callback data can be forged, so on a bot that pairs a tap only counts from its recipient.
+      const isOthers =
+        pairs &&
+        senderId !== undefined &&
+        !service.listPending(recipientFor(senderId)).some((open) => open.id === id)
+      return isOthers ? 'expired' : service.tap(id, optionIndex)
+    },
     reply: (id, text) => service.reply(id, text),
     dismiss: (id) => notifications?.dismiss(id) ?? false,
     isPaired: (id) => people.isPaired(id),

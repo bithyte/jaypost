@@ -48,7 +48,11 @@ export type ProviderSetup = {
 }
 
 export type RuntimeHandlers = {
-  readonly answer: (id: string, optionIndex: number) => 'accepted' | 'expired'
+  /**
+   * A tapped option for request `id`. `senderId` is who tapped, when the provider knows; the daemon
+   * refuses a tap on a question sent to someone else, since callback data can be forged.
+   */
+  readonly answer: (id: string, optionIndex: number, senderId?: string) => 'accepted' | 'expired'
   /**
    * A typed answer for request `id`; 'expired' when it is unknown, settled, or doesn't allow text.
    */

@@ -37,9 +37,9 @@ export class SendError extends Error {}
 /**
  * Sends each request to its recipient and waits for an answer (tap or typed reply), the timeout or
  * an abort. Background questions from `start` stay readable by id, by the key that asked, until
- * `RESULT_TTL_MS` after they settle. Also keeps the last `HISTORY_LIMIT` settled requests per recipient in memory.
- * Scoping is strict: a `key` matches `request.caller?.key` and a `recipient` matches
- * `request.recipient`, so `undefined` only matches questions without one.
+ * `RESULT_TTL_MS` after they settle. Also keeps the last `HISTORY_LIMIT` settled requests per
+ * recipient in memory. Scoping is strict: a `key` matches `request.caller?.key` and a `recipient`
+ * matches `request.recipient`, so `undefined` only matches questions without one.
  */
 export class ApprovalService {
   #messenger: Messenger

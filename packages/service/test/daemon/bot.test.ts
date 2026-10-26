@@ -310,6 +310,35 @@ test('a terminal-like bot runs commands for the local person over all its questi
   })
 })
 
+test("a forged tap from one person can't settle another person's question", async () => {
+  const { running, runtime } = await start({ people: createPeople({ persons: ['u1', 'u2'] }) })
+  const asked = running.bot.service.request({ ...REQUEST, recipient: 'u1' })
+  await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
+  const id = runtime.sent[0]?.id ?? ''
+  expect(runtime.handlers?.answer(id, 0, 'u2')).toBe('expired')
+  expect(runtime.handlers?.command('pending', '', 'u1')).toMatch(/^1 pending\n/)
+  // The fake runtime tracks nothing, so this is the untracked path for the question's own person.
+  expect(runtime.handlers?.answer(id, 0, 'u1')).toBe('accepted')
+  expect(await asked).toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  })
+})
+
+test('a bot that does not pair accepts taps from any sender', async () => {
+  const { running, runtime } = await start({
+    provider: createFakeProvider(),
+    people: createPeople({ persons: [LOCAL_PERSON] }),
+  })
+  const first = running.bot.service.request(REQUEST)
+  const second = running.bot.service.request(REQUEST)
+  await vi.waitFor(() => expect(runtime.sent).toHaveLength(2))
+  expect(runtime.handlers?.answer(runtime.sent[0]?.id ?? '', 0, undefined)).toBe('accepted')
+  expect(runtime.handlers?.answer(runtime.sent[1]?.id ?? '', 1, 'someone')).toBe('accepted')
+  expect(await first).toMatchObject({ outcome: { answer: 'Approve' } })
+  expect(await second).toMatchObject({ outcome: { answer: 'Decline' } })
+})
+
 test('rejectForKeys settles the open questions of the given keys only', async () => {
   const { running, runtime } = await start({ people: createPeople({ persons: ['u1'] }) })
   const ask = (key: string) =>

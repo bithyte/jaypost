@@ -263,7 +263,7 @@ test('handler: owner accepted answers silently', async () => {
   expect(on).toHaveBeenCalledWith('callback_query:data', expect.any(Function))
   const { answerCallbackQuery, p } = run(42, 'abc:0')
   await p
-  expect(handlers.answer).toHaveBeenCalledWith('abc', 0)
+  expect(handlers.answer).toHaveBeenCalledWith('abc', 0, '42')
   expect(answerCallbackQuery).toHaveBeenCalledWith()
 })
 
@@ -307,7 +307,7 @@ test("a voter's tap on their message answers it and the owner's is ignored", asy
   await run(42, 'id1:1', undefined, message).p
   expect(handlers.answer).not.toHaveBeenCalled()
   await run(222, 'id1:0', undefined, message).p
-  expect(handlers.answer).toHaveBeenCalledWith('id1', 0)
+  expect(handlers.answer).toHaveBeenCalledWith('id1', 0, '222')
   expect(handlers.answer).toHaveBeenCalledTimes(1)
 })
 
@@ -321,7 +321,7 @@ test('handler: an owner tap on an inaccessible message still answers', async () 
     date: 0,
   })
   await p
-  expect(handlers.answer).toHaveBeenCalledWith('abc', 0)
+  expect(handlers.answer).toHaveBeenCalledWith('abc', 0, '42')
   expect(answerCallbackQuery).toHaveBeenCalledWith()
 })
 

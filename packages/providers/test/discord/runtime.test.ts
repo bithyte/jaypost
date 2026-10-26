@@ -263,7 +263,7 @@ test('gateway messages and interactions reach the handlers', async () => {
   })
   await flush()
   expect(runtimeHandlers.reply).toHaveBeenCalledWith('r1', 'bob')
-  expect(runtimeHandlers.answer).toHaveBeenCalledWith('r1', 0)
+  expect(runtimeHandlers.answer).toHaveBeenCalledWith('r1', 0, '5')
   expect(fake.responses.map((entry) => entry.response)).toEqual([{ kind: 'acknowledge' }])
 })
 

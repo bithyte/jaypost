@@ -94,11 +94,12 @@ export class OwnerConversation {
     if (question === undefined && !isPaired) {
       return { kind: 'expired', text: EXPIRED_REPLY }
     }
-    // A paired tap on an untracked id still goes to the handler, which knows if it is settled.
+    // A paired tap on an untracked id still goes to the handler, which knows if it is settled and
+    // whose it is.
     if (question !== undefined && question.recipient !== tap.senderId) {
       return { kind: 'ignored' }
     }
-    return handlers.answer(choice.id, choice.optionIndex) === 'accepted'
+    return handlers.answer(choice.id, choice.optionIndex, tap.senderId) === 'accepted'
       ? { kind: 'answered' }
       : { kind: 'expired', text: EXPIRED_REPLY }
   }

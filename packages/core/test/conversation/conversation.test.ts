@@ -372,10 +372,10 @@ test('the pairing copy is pinned', () => {
   expect(WRONG_CODE_REPLY).toBe("That pairing code didn't match. Check it and try again.")
 })
 
-test("the owner's tap answers", () => {
+test("the owner's tap answers and names the sender, so the bot can check the recipient", () => {
   const handlers = handlersOf()
   expect(new OwnerConversation().tap(tapOf('abc:1'), handlers)).toEqual(ANSWERED)
-  expect(handlers.answer.mock.calls).toEqual([['abc', 1]])
+  expect(handlers.answer.mock.calls).toEqual([['abc', 1, OWNER]])
 })
 
 test('a tap on a settled request is expired', () => {
@@ -465,7 +465,7 @@ test('buttons sent before the upgrade still work', () => {
   const conversation = new OwnerConversation()
   expect(conversation.tap(tapOf(`${id}:3`), handlers)).toEqual(ANSWERED)
   expect(conversation.tap(tapOf(`dismiss/${id}`), handlers)).toEqual({ kind: 'dismissed' })
-  expect(handlers.answer.mock.calls).toEqual([[id, 3]])
+  expect(handlers.answer.mock.calls).toEqual([[id, 3, OWNER]])
   expect(handlers.dismiss.mock.calls).toEqual([[id]])
 })
 
@@ -474,7 +474,7 @@ test('tap reads what the payload helpers write', () => {
   const conversation = new OwnerConversation()
   conversation.tap(tapOf(formatChoicePayload('r1', 2)), handlers)
   conversation.tap(tapOf(formatDismissPayload('n1')), handlers)
-  expect(handlers.answer.mock.calls).toEqual([['r1', 2]])
+  expect(handlers.answer.mock.calls).toEqual([['r1', 2, OWNER]])
   expect(handlers.dismiss.mock.calls).toEqual([['n1']])
 })
 
@@ -533,7 +533,7 @@ test("a voter's tap on their own question answers", () => {
   const handlers = handlersOf()
   const tap = tapOf(formatChoicePayload('r1', 0), { senderId: '222' })
   expect(voterConversation().tap(tap, handlers)).toEqual(ANSWERED)
-  expect(handlers.answer).toHaveBeenCalledWith('r1', 0)
+  expect(handlers.answer).toHaveBeenCalledWith('r1', 0, '222')
 })
 
 test("the owner's tap on a voter's question is ignored", () => {

@@ -129,7 +129,7 @@ const ACKNOWLEDGE = { kind: 'acknowledge' } as const
 test('the owner tapping an option answers and acknowledges', async () => {
   const { fake, answer, context } = setup()
   await handleInteraction(tap(formatChoicePayload('r1', 2)), context)
-  expect(answer).toHaveBeenCalledWith('r1', 2)
+  expect(answer).toHaveBeenCalledWith('r1', 2, OWNER_ID)
   expect(fake.responses).toEqual([
     { interaction: { id: 'i1', token: 'itoken' }, response: ACKNOWLEDGE },
   ])
@@ -138,7 +138,7 @@ test('the owner tapping an option answers and acknowledges', async () => {
 test('a tap on a settled request gets an ephemeral Expired', async () => {
   const { fake, answer, context } = setup({ answer: () => 'expired' })
   await handleInteraction(tap(formatChoicePayload('r1', 0)), context)
-  expect(answer).toHaveBeenCalledWith('r1', 0)
+  expect(answer).toHaveBeenCalledWith('r1', 0, OWNER_ID)
   expect(fake.responses).toEqual([
     {
       interaction: { id: 'i1', token: 'itoken' },
@@ -174,7 +174,7 @@ test("a voter's tap on their message answers it and the owner's is ignored", asy
   await handleInteraction(tap(payload), context)
   expect(answer).not.toHaveBeenCalled()
   await handleInteraction(tap(payload, { userId: '222' }), context)
-  expect(answer).toHaveBeenCalledWith('r1', 0)
+  expect(answer).toHaveBeenCalledWith('r1', 0, '222')
   expect(answer).toHaveBeenCalledTimes(1)
   expect(fake.responses.map((entry) => entry.response)).toEqual([ACKNOWLEDGE, ACKNOWLEDGE])
 })
