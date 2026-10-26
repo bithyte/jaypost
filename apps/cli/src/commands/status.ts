@@ -1,9 +1,9 @@
 import type { ClientToken } from '@jaypost/store'
 import { describeUnauthorized } from '@jaypost/client'
 import { findExistingInstall } from '@jaypost/install'
+import type { StatusInfo } from '@jaypost/protocol'
 import { formatPairingText } from './pairing-text.ts'
 import type { StatusDeps } from './types.ts'
-import type { StatusInfo } from '@jaypost/protocol'
 
 function describeTokenSource(token: ClientToken, tokenFile: string): string {
   switch (token.kind) {

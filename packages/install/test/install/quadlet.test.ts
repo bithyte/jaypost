@@ -202,6 +202,21 @@ test("clearOwner removes the owner env var of the record's provider", async () =
   )
 })
 
+test('forgetSeedOwner removes only the owner env var and runs nothing in a container', async () => {
+  const { t, paths } = make()
+  const record = await t.install({
+    ...base,
+    provider: PAIRING_FAKE,
+    settings: { fakeKey: 'k', fakeOwner: 'o' },
+  })
+  calls = []
+  await t.forgetSeedOwner(record)
+  expect(readFileSync(join(paths.quadletDirectory, '.env'), 'utf8')).toBe(
+    'JAYPOST_PROVIDER=fakepair\nFAKE_KEY=k\nJAYPOST_PORT=8787\n',
+  )
+  expect(calls).toEqual([])
+})
+
 test('clearOwner uses podman exec', async () => {
   const { t } = make()
   await t.install(withOwner)

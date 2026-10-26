@@ -8,6 +8,8 @@ import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
+import { resolveClientToken } from '@jaypost/store'
+import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
 import { POLL_INTERVAL_MS, START_POLL_COUNT } from './constants.ts'
 import { createAbortableSleep } from './pairing-wait.ts'
@@ -19,11 +21,26 @@ type ResetOutcome =
   | { readonly kind: 'reset' }
   | { readonly kind: 'failed'; readonly message: string }
 
+/** The pairing /status named for the token, with its key when the service said. */
+type PairingLookup =
+  | { readonly kind: 'found'; readonly pairingId: string; readonly keyId: string | undefined }
+  | { readonly kind: 'failed'; readonly message: string }
+
+/**
+ * Key 1's token for reset-owner: the token file init wrote, else `JAYPOST_TOKEN`, so a shell set
+ * up for another key doesn't pick the pairing. Never throws.
+ */
+export function resolveResetOwnerToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
+  const fromFile = resolveClientToken({}, tokenFile)
+  return fromFile.kind === 'none' ? resolveClientToken(env, tokenFile) : fromFile
+}
+
 /**
  * Unlinks the paired owner without a restart: reads /status with key 1's token to learn its
- * pairing, resets that pairing through the admin route and waits for a new pairing. A stopped
- * service is restarted first. Returns 0 on success or if the user declines, 1 on failure, not
- * installed or a provider that doesn't pair, 130 on interrupt.
+ * pairing (and names it in the prompt), resets that pairing through the admin route, drops the
+ * owner from the install's seed inputs and waits for a new pairing. A stopped service is restarted
+ * after the prompt. Returns 0 on success or if the user declines, 1 on failure, not installed or a
+ * provider that doesn't pair, 130 on interrupt.
  */
 export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const print = deps.progress.note
@@ -54,10 +71,15 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const stepOptions = deps.signal ? { signal: deps.signal } : {}
   let outcome: ResetOutcome
   try {
-    if (!(await deps.confirm(`${warning} Continue?`, false))) {
+    const isRunning = await target.isRunning(record)
+    const known = isRunning ? await findPairing(deps, target, record, token) : undefined
+    if (known?.kind === 'failed') {
+      print(known.message)
+      return 1
+    }
+    if (!(await deps.confirm(formatConfirm(warning, known), false))) {
       return 0
     }
-    const isRunning = await target.isRunning(record)
     deps.progress.plan([
       ...(isRunning ? [] : ['Restarting the service']),
       'Clearing the owner',
@@ -73,7 +95,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     outcome = await runStep(
       deps.progress,
       'Clearing the owner',
-      () => resetSeedPairing(deps, target, record, token),
+      () => resetOwnerPairing(deps, target, record, token, known),
       {
         ...stepOptions,
         settle: (step, value) =>
@@ -125,29 +147,56 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   return 1
 }
 
-/**
- * Asks /status which pairing `token` belongs to and resets it with the install's admin key.
- * Throws only when interrupted.
- */
-async function resetSeedPairing(
+/** The provider's warning, naming the pairing and key when /status was read before the prompt. */
+function formatConfirm(
+  warning: string,
+  known: Extract<PairingLookup, { readonly kind: 'found' }> | undefined,
+): string {
+  if (known === undefined) {
+    return `${warning} Continue?`
+  }
+  const key = known.keyId === undefined ? '' : ` (key ${known.keyId})`
+  return `${warning} It resets pairing ${known.pairingId}${key}. Continue?`
+}
+
+/** Asks /status which pairing `token` belongs to. Throws only when interrupted. */
+async function findPairing(
   deps: ResetOwnerDeps,
   target: Target,
   record: InstallRecord,
   token: string | undefined,
-): Promise<ResetOutcome> {
+): Promise<PairingLookup> {
   const fetched = await fetchStartedStatus(deps, record.port, token)
   switch (fetched.kind) {
     case 'unreachable':
-      return { kind: 'failed', message: `Reset failed. ${target.logsHint(record)}` }
+      return { kind: 'failed', message: `The service didn't answer. ${target.logsHint(record)}` }
     case 'unauthorized':
       return { kind: 'failed', message: describeUnauthorized(token !== undefined) }
     case 'answered':
       break
   }
-  const pairingId = fetched.status.pairing
+  const { pairing, key } = fetched.status
   // A service from before pairings has no admin routes either.
-  if (pairingId === undefined) {
-    return { kind: 'failed', message: ADMIN_TOO_OLD_MESSAGE }
+  return pairing === undefined
+    ? { kind: 'failed', message: ADMIN_TOO_OLD_MESSAGE }
+    : { kind: 'found', pairingId: pairing, keyId: key }
+}
+
+/**
+ * Resets the pairing (`known`, or the one /status names now) with the install's admin key, then
+ * drops the owner from the install's seed inputs so a later re-seed can't pair them again. Throws
+ * when interrupted or when the seed inputs can't be written.
+ */
+async function resetOwnerPairing(
+  deps: ResetOwnerDeps,
+  target: Target,
+  record: InstallRecord,
+  token: string | undefined,
+  known: PairingLookup | undefined,
+): Promise<ResetOutcome> {
+  const found = known ?? (await findPairing(deps, target, record, token))
+  if (found.kind === 'failed') {
+    return found
   }
   let adminKey: string
   try {
@@ -156,8 +205,12 @@ async function resetSeedPairing(
     return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
   }
   const caller = new AdminCaller({ endpoint: toLocalEndpoint(record.port), adminKey })
-  const reset = await caller.resetPairing(pairingId)
-  return reset.kind === 'failed' ? { kind: 'failed', message: reset.message } : { kind: 'reset' }
+  const reset = await caller.resetPairing(found.pairingId)
+  if (reset.kind === 'failed') {
+    return { kind: 'failed', message: reset.message }
+  }
+  await target.forgetSeedOwner(record)
+  return { kind: 'reset' }
 }
 
 /**

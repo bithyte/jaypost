@@ -81,7 +81,16 @@ export type Target = {
     print?: (text: string) => void,
   ) => Promise<void>
   readonly restart: (record: InstallRecord) => Promise<void>
+  /**
+   * Drops the owner from everything the service reads it from: the install's inputs and, for
+   * containers, config.json and the registry in the data volume (through `jaypost owner clear`).
+   */
   readonly clearOwner: (record: InstallRecord) => Promise<void>
+  /**
+   * Drops the owner from the install's seed inputs only (config.json, or the container's `.env`),
+   * so a later re-seed can't pair them again. Touches neither the running service nor the registry.
+   */
+  readonly forgetSeedOwner: (record: InstallRecord) => Promise<void>
   readonly isRunning: (record: InstallRecord) => Promise<boolean>
   /**
    * Raw contents of the seed bot's audit.jsonl.1 then audit.jsonl (the ones next to the config

@@ -271,6 +271,21 @@ test('clearOwner removes env key and runs owner clear', async () => {
   expect(calls[0]![1]).toContain('clear')
 })
 
+test('forgetSeedOwner removes only the owner env var and runs nothing in a container', async () => {
+  const { t, paths } = make()
+  const record = await t.install({
+    ...base,
+    provider: PAIRING_FAKE,
+    settings: { fakeKey: 'k', fakeOwner: 'o' },
+  })
+  calls = []
+  await t.forgetSeedOwner(record)
+  expect(readFileSync(join(paths.composeDirectory, '.env'), 'utf8')).toBe(
+    'JAYPOST_PROVIDER=fakepair\nFAKE_KEY=k\nJAYPOST_PORT=8787\n',
+  )
+  expect(calls).toEqual([])
+})
+
 test('remove without purge keeps .env and volume', async () => {
   const { t, paths } = make()
   await t.install(base)

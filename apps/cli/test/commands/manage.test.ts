@@ -9,7 +9,6 @@ import {
   loadSeed,
   NO_CLIENT_TOKEN,
   RegistryStore,
-  resolveAdminKeyPath,
   resolveRegistryPath,
   writeTokenFile,
 } from '@jaypost/store'
@@ -24,6 +23,7 @@ import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
 import {
   defaultFetchStatus,
+  resolveResetOwnerToken,
   runResetOwner,
   runStatus,
   runUninstall,
@@ -36,7 +36,7 @@ import {
   UNAUTHORIZED_STATUS,
   UNREACHABLE_STATUS,
 } from '../../src/commands/constants.ts'
-import { resolveInstallPaths, writeInstall } from '@jaypost/install'
+import { createTargets, resolveInstallPaths, writeInstall } from '@jaypost/install'
 import type { InstallPaths, Target, TargetName } from '@jaypost/install'
 import { PROVIDERS, telegramProvider } from '@jaypost/providers'
 import { createRecordingProgress } from '../progress/recording.ts'
@@ -77,6 +77,9 @@ function fake(name: TargetName, running = true): Mutable<Target> {
     }),
     clearOwner: vi.fn(async () => {
       order.push('clearOwner')
+    }),
+    forgetSeedOwner: vi.fn(async () => {
+      order.push('forgetSeedOwner')
     }),
     isRunning: vi.fn(async () => running),
     readAuditLog: vi.fn(),
@@ -522,10 +525,31 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
   await service.started
   await service.server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = service.server.server.address() as AddressInfo
-  writeInstall(paths.installFile, { target: 'systemd', provider: 'fakepair', port, version: '1' })
-  const adminKey = readFileSync(resolveAdminKeyPath(configPath), 'utf8').trim()
-  const target = fake('systemd')
-  target.readAdminKey = vi.fn(async () => adminKey)
+  writeInstall(paths.installFile, {
+    target: 'systemd',
+    provider: 'fakepair',
+    port,
+    version: '1',
+    configFile: configPath,
+  })
+  // The real systemd target, so the admin key and config.json are the service's own files.
+  const systemctl: string[][] = []
+  const real = createTargets(
+    {
+      exec: async (command, args) => {
+        systemctl.push([command, ...args])
+        return { code: 0, stdout: '', stderr: '' }
+      },
+      paths,
+      env: { HOME: tmp },
+      user: 'me',
+      providers,
+      platform: 'linux',
+      uid: 501,
+    },
+    { kind: 'npm', selfPath: '/src/dist/cli.js', nodePath: '/usr/bin/node' },
+  )
+  const target = real.systemd
   const seen: StatusFetch[] = []
   const wait = vi.fn(async (options: WaitOptions) => {
     seen.push(await defaultFetchStatus(options.port, options.token))
@@ -550,8 +574,16 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
   expect(registry.pairings).toEqual([
     { id: 'p1', botId: 'b1', code: 'PAIR2222', createdAt: expect.any(String) },
   ])
-  expect(target.restart).not.toHaveBeenCalled()
-  expect(target.clearOwner).not.toHaveBeenCalled()
+  expect(systemctl).toEqual([['systemctl', '--user', 'is-active', '--quiet', 'jaypost']])
+  expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({
+    provider: 'fakepair',
+    fakeKey: 'seed-bot',
+    apiToken: TOKEN,
+  })
+  expect(d.confirm).toHaveBeenCalledWith(
+    'This unlinks your Fake account. It resets pairing p1 (key k1). Continue?',
+    false,
+  )
   expect(notes()).toEqual(['Paired. Try it: jaypost ping'])
 })
 
@@ -562,12 +594,12 @@ test('reset-owner not installed -> 1', async () => {
   expect(d.confirm).not.toHaveBeenCalled()
 })
 
-test('reset-owner declined: no reset', async () => {
+test('reset-owner declined: no reset and the owner stays', async () => {
   const { seen } = await seedResetStub()
   const d = resetDeps({ confirm: vi.fn(async () => false) })
   expect(await runResetOwner(d)).toBe(0)
-  expect(d.fetchStatus).not.toHaveBeenCalled()
   expect(seen).toEqual([])
+  expect(order).toEqual([])
   expect(d.wait).not.toHaveBeenCalled()
 })
 
@@ -575,14 +607,43 @@ test('reset-owner yes: resets the pairing with the admin key and waits, with no 
   const { port, seen } = await seedResetStub()
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(0)
-  expect(d.confirm).toHaveBeenCalledWith('This unlinks your Telegram account. Continue?', false)
+  expect(d.confirm).toHaveBeenCalledWith(
+    'This unlinks your Telegram account. It resets pairing p1 (key k1). Continue?',
+    false,
+  )
+  expect(d.fetchStatus).toHaveBeenCalledTimes(1)
   expect(d.fetchStatus).toHaveBeenCalledWith(port, undefined)
   expect(seen).toEqual([
     { url: 'POST /admin/pairings/p1/reset', authorization: `Bearer ${ADMIN_KEY}` },
   ])
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ port }))
-  expect(d.targets.systemd.restart).not.toHaveBeenCalled()
-  expect(d.targets.systemd.clearOwner).not.toHaveBeenCalled()
+  expect(order).toEqual(['forgetSeedOwner'])
+  expect(d.targets.systemd.forgetSeedOwner).toHaveBeenCalledWith({
+    target: 'systemd',
+    port,
+    version: '1.0.0',
+  })
+})
+
+test('reset-owner on a container drops the owner from its inputs without clearOwner', async () => {
+  const stub = await startStub(200, INVITE)
+  seed('compose', stub.port)
+  const d = resetDeps()
+  expect(await runResetOwner(d)).toBe(0)
+  expect(stub.seen.map((request) => request.url)).toEqual(['POST /admin/pairings/p1/reset'])
+  expect(d.targets.compose.forgetSeedOwner).toHaveBeenCalled()
+  expect(d.targets.compose.clearOwner).not.toHaveBeenCalled()
+})
+
+test('reset-owner names the pairing for a key other than k1', async () => {
+  await seedResetStub()
+  const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', pairing: 'p4' }))
+  const d = resetDeps({ fetchStatus, confirm: vi.fn(async () => false) })
+  expect(await runResetOwner(d)).toBe(0)
+  expect(d.confirm).toHaveBeenCalledWith(
+    'This unlinks your Telegram account. It resets pairing p4 (key k7). Continue?',
+    false,
+  )
 })
 
 test('reset-owner resets the pairing /status names for the token', async () => {
@@ -605,7 +666,8 @@ test('reset-owner starts a stopped service first and waits for /status', async (
     .mockResolvedValue(PAIRED_K1)
   const d = resetDeps({ targets: targets({ systemd: target }), fetchStatus })
   expect(await runResetOwner(d)).toBe(0)
-  expect(order).toEqual(['restart'])
+  expect(d.confirm).toHaveBeenCalledWith('This unlinks your Telegram account. Continue?', false)
+  expect(order).toEqual(['restart', 'forgetSeedOwner'])
   expect(fetchStatus).toHaveBeenCalledTimes(3)
   expect(d.sleep).toHaveBeenCalledTimes(2)
   expect(d.sleep).toHaveBeenCalledWith(POLL_INTERVAL_MS)
@@ -620,17 +682,30 @@ test('reset-owner starts a stopped service first and waits for /status', async (
   ])
 })
 
-test('reset-owner gives up when /status never answers', async () => {
+test('reset-owner gives up before the prompt when /status never answers', async () => {
   const { seen } = await seedResetStub()
   const d = resetDeps({ fetchStatus: vi.fn(async () => UNREACHABLE_STATUS) })
   expect(await runResetOwner(d)).toBe(1)
   expect(d.fetchStatus).toHaveBeenCalledTimes(DEFAULT_START_TIMEOUT_MS / POLL_INTERVAL_MS)
   expect(seen).toEqual([])
+  expect(d.confirm).not.toHaveBeenCalled()
   expect(d.wait).not.toHaveBeenCalled()
+  expect(recording.events).toEqual(["note:The service didn't answer. logs hint"])
+})
+
+test('reset-owner fails the step when a restarted service never answers', async () => {
+  const { seen } = await seedResetStub()
+  const d = resetDeps({
+    targets: targets({ systemd: fake('systemd', false) }),
+    fetchStatus: vi.fn(async () => UNREACHABLE_STATUS),
+  })
+  expect(await runResetOwner(d)).toBe(1)
+  expect(seen).toEqual([])
+  expect(order).toEqual(['restart'])
   expect(recording.events.slice(-3)).toEqual([
     'start:Clearing the owner',
     'fail:Clearing the owner',
-    'note:Reset failed. logs hint',
+    "note:The service didn't answer. logs hint",
   ])
 })
 
@@ -646,7 +721,10 @@ test('reset-owner confirm text comes from the provider', async () => {
     providers: [createPairingFakeProvider()],
   })
   expect(await runResetOwner(d)).toBe(0)
-  expect(d.confirm).toHaveBeenCalledWith('This unlinks your Fake account. Continue?', false)
+  expect(d.confirm).toHaveBeenCalledWith(
+    'This unlinks your Fake account. It resets pairing p1 (key k1). Continue?',
+    false,
+  )
 })
 
 test('reset-owner without an owner setting returns 1 before prompting', async () => {
@@ -726,6 +804,7 @@ test('reset-owner prints why the admin key is missing', async () => {
   expect(notes()).toEqual([
     'no admin key in "/x/admin-key" yet; start the service once so it writes one',
   ])
+  expect(order).toEqual([])
   expect(d.wait).not.toHaveBeenCalled()
 })
 
@@ -739,6 +818,7 @@ test('reset-owner reports a rejected admin key', async () => {
     `note:${ADMIN_KEY_REJECTED_MESSAGE}`,
   ])
   expect(notes().join('\n')).not.toContain(ADMIN_KEY)
+  expect(order).toEqual([])
   expect(d.wait).not.toHaveBeenCalled()
 })
 
@@ -747,6 +827,7 @@ test('reset-owner on a service without pairings says it is too old', async () =>
   const d = resetDeps({ fetchStatus: vi.fn(async () => answered({ paired: true, bot: 'b' })) })
   expect(await runResetOwner(d)).toBe(1)
   expect(seen).toEqual([])
+  expect(d.confirm).not.toHaveBeenCalled()
   expect(notes()).toEqual([ADMIN_TOO_OLD_MESSAGE])
 })
 
@@ -755,6 +836,7 @@ test('reset-owner explains a token /status rejects', async () => {
   const d = resetDeps({ fetchStatus: vi.fn(async () => UNAUTHORIZED_STATUS) })
   expect(await runResetOwner(d)).toBe(1)
   expect(seen).toEqual([])
+  expect(d.confirm).not.toHaveBeenCalled()
   expect(notes()).toEqual([TOKEN_REQUIRED_MESSAGE])
 })
 
@@ -813,7 +895,11 @@ test('reset-owner cancels the running step on interrupt', async () => {
     controller.abort()
     return UNREACHABLE_STATUS
   })
-  const d = resetDeps({ fetchStatus, signal: controller.signal })
+  const d = resetDeps({
+    targets: targets({ systemd: fake('systemd', false) }),
+    fetchStatus,
+    signal: controller.signal,
+  })
   expect(await runResetOwner(d)).toBe(130)
   expect(seen).toEqual([])
   expect(recording.events.slice(-3)).toEqual([
@@ -832,4 +918,44 @@ test('reset-owner prompt abort -> 130', async () => {
     }),
   })
   expect(await runResetOwner(d)).toBe(130)
+})
+
+test('reset-owner prompt interrupted while reading /status -> 130 before the prompt', async () => {
+  await seedResetStub()
+  const controller = new AbortController()
+  const fetchStatus = vi.fn(async () => {
+    controller.abort()
+    return UNREACHABLE_STATUS
+  })
+  const d = resetDeps({ fetchStatus, signal: controller.signal })
+  expect(await runResetOwner(d)).toBe(130)
+  expect(d.confirm).not.toHaveBeenCalled()
+  expect(recording.events).toEqual(['note:'])
+})
+
+test('reset-owner keeps the owner when the admin call fails after a stopped service', async () => {
+  await seedResetStub(404, '{"error":"unknown pairing p1"}')
+  const target = fake('systemd', false)
+  const d = resetDeps({ targets: targets({ systemd: target }) })
+  expect(await runResetOwner(d)).toBe(1)
+  expect(order).toEqual(['restart'])
+  expect(notes()).toEqual(['unknown pairing p1'])
+})
+
+test('reset-owner token prefers the token file over JAYPOST_TOKEN', () => {
+  const tokenFile = join(tmp, 'token')
+  const envToken = 'E'.repeat(43)
+  const env = { JAYPOST_TOKEN: envToken }
+  expect(resolveResetOwnerToken(env, tokenFile)).toEqual({
+    kind: 'token',
+    token: envToken,
+    source: 'env',
+  })
+  writeTokenFile(tokenFile, TOKEN)
+  expect(resolveResetOwnerToken(env, tokenFile)).toEqual({
+    kind: 'token',
+    token: TOKEN,
+    source: 'file',
+  })
+  expect(resolveResetOwnerToken({}, join(tmp, 'missing'))).toEqual(NO_CLIENT_TOKEN)
 })

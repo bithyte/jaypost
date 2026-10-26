@@ -179,8 +179,11 @@ export function createQuadletTarget(deps: TargetDeps): Target {
         throw new Error(`systemctl restart failed (exit ${result.code})`)
       }
     },
-    async clearOwner(record) {
+    async forgetSeedOwner(record) {
       removeEnvKey(envPath, requireRecordOwner(providers, record).envVar)
+    },
+    async clearOwner(record) {
+      await target.forgetSeedOwner(record)
       try {
         const result = await exec('podman', ['exec', SERVICE_NAME, SERVICE_NAME, 'owner', 'clear'])
         if (result.code === 0) {

@@ -55,6 +55,7 @@ import {
   runPairingList,
   runPairingRemove,
   runPing,
+  resolveResetOwnerToken,
   runResetOwner,
   runSendNotify,
   runSendRequest,
@@ -454,7 +455,7 @@ function runLogCommand(args: LogArgs): Promise<number> {
 }
 
 function runResetOwnerCommand(): Promise<number> {
-  const token = resolveClientToken(process.env, resolveTokenFile(process.env))
+  const token = resolveResetOwnerToken(process.env, resolveTokenFile(process.env))
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
   return runWithSignals(

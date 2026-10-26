@@ -187,6 +187,10 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
       }
     },
     async clearOwner(record) {
+      await target.forgetSeedOwner(record)
+    },
+    // The service never writes config.json, so this is the whole of clearing the owner.
+    async forgetSeedOwner(record) {
       updateConfigFile(resolveConfigFile(record), {
         [requireRecordOwner(providers, record).configKey]: null,
       })

@@ -122,8 +122,11 @@ export function createComposeTarget(deps: TargetDeps): Target {
         throw new Error(`docker compose up failed (exit ${result.code})`)
       }
     },
-    async clearOwner(record) {
+    async forgetSeedOwner(record) {
       removeEnvKey(envPath, requireRecordOwner(providers, record).envVar)
+    },
+    async clearOwner(record) {
+      await target.forgetSeedOwner(record)
       const result = await compose([
         'run',
         '--rm',

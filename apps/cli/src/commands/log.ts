@@ -13,7 +13,8 @@ import {
 } from '@jaypost/store'
 import type { AuditEntry, ClientToken } from '@jaypost/store'
 import { AdminCaller, Caller, findEnvEndpoint } from '@jaypost/client'
-import type { LogFilter, ServiceEndpoint } from '@jaypost/client'
+import type { Failure, LogFilter, ServiceEndpoint } from '@jaypost/client'
+import type { LogPage } from '@jaypost/protocol'
 import { findExistingInstall } from '@jaypost/install'
 import { resolveAdminEndpoint } from './admin-endpoint.ts'
 import type { LogArgs, LogDeps } from './types.ts'
@@ -191,7 +192,11 @@ async function readFromApi(args: LogArgs, filter: LogFilter, deps: LogDeps): Pro
   }
 }
 
-function readClientLog(endpoint: ServiceEndpoint, token: ClientToken, filter: LogFilter) {
+function readClientLog(
+  endpoint: ServiceEndpoint,
+  token: ClientToken,
+  filter: LogFilter,
+): Promise<{ readonly kind: 'log'; readonly page: LogPage } | Failure> {
   const caller = new Caller({ endpoint, readToken: () => token })
   // Nothing cancels the read but its timeout.
   return caller.readLog(filter, { signal: new AbortController().signal })

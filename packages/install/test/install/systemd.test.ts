@@ -282,6 +282,16 @@ test('readSecrets, clearOwner and purge use the recorded configFile, not the env
   expect(existsSync(paths.configFile)).toBe(false)
 })
 
+test('forgetSeedOwner removes the owner from the recorded configFile only', async () => {
+  const recorded = join(tmp, 'recorded.json')
+  writeFileSync(recorded, JSON.stringify({ botToken: 'rt', ownerId: 5, apiToken: 'x' }))
+  const { t } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
+  calls = []
+  await t.forgetSeedOwner({ target: 'systemd', port: 1, version: 'v', configFile: recorded })
+  expect(readConfigFile(recorded)).toEqual({ botToken: 'rt', apiToken: 'x' })
+  expect(calls).toEqual([])
+})
+
 test('readAuditLog reads both files next to the recorded configFile', async () => {
   const directory = join(tmp, 'recorded-dir')
   mkdirSync(directory)
