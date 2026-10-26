@@ -33,14 +33,26 @@ import type { AttachmentSource } from '@jaypost/client'
 import {
   createClackPrompts,
   defaultFetchStatus,
+  runAdminKeyRotate,
+  runAdminKeyShow,
+  runBotAdd,
+  runBotList,
+  runBotRemove,
   runFinishUpdate,
   runAudit,
   runDirectSendNotify,
   runDirectSendRequest,
   runInit,
+  runKeyCreate,
+  runKeyLabel,
+  runKeyList,
+  runKeyRevoke,
   runLog,
   runOwner,
   runPairApprover,
+  runPairingCreate,
+  runPairingList,
+  runPairingRemove,
   runPing,
   runResetOwner,
   runSendNotify,
@@ -56,6 +68,7 @@ import {
 import { createProgress, formatOnRail, resolveProgressMode } from './progress/index.ts'
 import type { Progress } from './progress/index.ts'
 import type {
+  AdminDeps,
   DirectSendDeps,
   InitArgs,
   LogArgs,
@@ -504,6 +517,178 @@ function runUpdateCommand(isFinish: boolean): Promise<number> {
   )
 }
 
+/** What the admin commands use; prompts abort with `signal`. */
+function createAdminDeps(signal?: AbortSignal): AdminDeps {
+  const paths = resolveInstallPaths()
+  return {
+    env: process.env,
+    paths,
+    targets: createRealTargets(paths),
+    providers: PROVIDERS,
+    prompt: createClackPrompts(signal),
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+    fetchStatus: defaultFetchStatus,
+    ...(signal === undefined ? {} : { signal }),
+  }
+}
+
+/** Runs an admin command that may prompt, so Ctrl-C ends the prompt with exit 130. */
+function runPromptingAdminCommand(run: (deps: AdminDeps) => Promise<number>): Promise<number> {
+  return runWithSignals(
+    (controller) => run(createAdminDeps(controller.signal)),
+    SETUP_SIGNALS,
+    SETUP_RERAISED,
+  )
+}
+
+/** The bot, key, pairing and admin-key commands, which call the admin routes. */
+function addAdminCommands(program: Command, setCode: (code: number) => void): void {
+  const jsonHelp = 'print the answer as JSON'
+  const bot = program.command('bot').description("add, list and remove the service's bots")
+  bot
+    .command('add')
+    .description('add a bot; asks for its settings')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .option('--label <text>', 'a name for the bot')
+    .option('--json', jsonHelp)
+    .action(
+      async (options: {
+        readonly provider?: string
+        readonly label?: string
+        readonly json?: boolean
+      }) => {
+        setCode(await runPromptingAdminCommand((deps) => runBotAdd(options, deps)))
+      },
+    )
+  bot
+    .command('list')
+    .description('show the bots with their state, pairings and keys')
+    .option('--json', jsonHelp)
+    .action(async (options: { readonly json?: boolean }) => {
+      setCode(await runBotList(options, createAdminDeps()))
+    })
+  bot
+    .command('remove')
+    .description('remove a bot with its pairings and keys')
+    .argument('<id>', 'bot id, such as b2')
+    .option('-y, --yes', "don't ask first")
+    .option('--json', jsonHelp)
+    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
+      setCode(await runPromptingAdminCommand((deps) => runBotRemove({ id, ...options }, deps)))
+    })
+  const key = program.command('key').description('create, list, label and revoke API keys')
+  key
+    .command('create')
+    .description('create an API key and print it once')
+    .option('--bot <id>', 'for a new pairing on this bot, with a pairing code')
+    .option('--pairing <id>', 'for this existing pairing')
+    .option('--same-as <key id>', 'for the pairing of this key')
+    .option('--label <text>', 'a free-form label')
+    .option('--external-id <id>', 'a free-form id from another system')
+    .option('--json', jsonHelp)
+    .action(
+      async (options: {
+        readonly bot?: string
+        readonly pairing?: string
+        readonly sameAs?: string
+        readonly label?: string
+        readonly externalId?: string
+        readonly json?: boolean
+      }) => {
+        setCode(await runKeyCreate(options, createAdminDeps()))
+      },
+    )
+  key
+    .command('list')
+    .description("show the keys (never the keys' values)")
+    .option('--bot <id>', "only this bot's keys")
+    .option('--pairing <id>', "only this pairing's keys")
+    .option('--json', jsonHelp)
+    .action(
+      async (options: {
+        readonly bot?: string
+        readonly pairing?: string
+        readonly json?: boolean
+      }) => {
+        setCode(await runKeyList(options, createAdminDeps()))
+      },
+    )
+  key
+    .command('label')
+    .description("set or clear a key's label and external id")
+    .argument('<id>', 'key id, such as k2')
+    .option('--label <text>', 'the new label; "" clears it')
+    .option('--external-id <id>', 'the new external id; "" clears it')
+    .option('--json', jsonHelp)
+    .action(
+      async (
+        id: string,
+        options: { readonly label?: string; readonly externalId?: string; readonly json?: boolean },
+      ) => {
+        setCode(await runKeyLabel({ id, ...options }, createAdminDeps()))
+      },
+    )
+  key
+    .command('revoke')
+    .description('revoke a key; its pairing stays')
+    .argument('<id>', 'key id, such as k2')
+    .option('--json', jsonHelp)
+    .action(async (id: string, options: { readonly json?: boolean }) => {
+      setCode(await runKeyRevoke({ id, ...options }, createAdminDeps()))
+    })
+  const pairing = program
+    .command('pairing')
+    .description('create, list and remove pairings between a bot and a person')
+  pairing
+    .command('create')
+    .description('create a pairing with no key (an approver) and print its code')
+    .requiredOption('--bot <id>', 'the bot to pair with')
+    .option('--json', jsonHelp)
+    .action(async (options: { readonly bot: string; readonly json?: boolean }) => {
+      setCode(await runPairingCreate(options, createAdminDeps()))
+    })
+  pairing
+    .command('list')
+    .description('show the pairings and the codes of pending ones')
+    .option('--bot <id>', "only this bot's pairings")
+    .option('--json', jsonHelp)
+    .action(async (options: { readonly bot?: string; readonly json?: boolean }) => {
+      setCode(await runPairingList(options, createAdminDeps()))
+    })
+  pairing
+    .command('remove')
+    .description('remove a pairing and revoke its keys')
+    .argument('<id>', 'pairing id, such as p2')
+    .option('-y, --yes', "don't ask first")
+    .option('--json', jsonHelp)
+    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
+      setCode(await runPromptingAdminCommand((deps) => runPairingRemove({ id, ...options }, deps)))
+    })
+  const adminKey = program.command('admin-key').description('rotate the admin key')
+  adminKey
+    .command('rotate')
+    .description('replace the admin key and print the new one')
+    .option('--json', jsonHelp)
+    .action(async (options: { readonly json?: boolean }) => {
+      setCode(await runAdminKeyRotate(options, createAdminDeps()))
+    })
+  // Runs inside containers to print the admin key from the data volume.
+  adminKey.command('show', { hidden: true }).action(() => {
+    setCode(
+      runAdminKeyShow(
+        process.env,
+        (text) => console.log(text),
+        (text) => console.error(text),
+      ),
+    )
+  })
+}
+
 /** Maps the old `send request`, `send notify` and `test` spellings so existing scripts keep working. */
 function toCurrentArgv(argv: readonly string[]): readonly string[] {
   const [first, second] = argv
@@ -911,6 +1096,9 @@ export async function main(argv: readonly string[]): Promise<number> {
         )
       },
     )
+  addAdminCommands(program, (adminCode) => {
+    code = adminCode
+  })
   // Runs inside containers to read or clear the owner in the data volume.
   program
     .command('owner', { hidden: true })

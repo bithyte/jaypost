@@ -1,5 +1,5 @@
 import type { ClientToken, Exec } from '@jaypost/store'
-import type { AttachmentSource, ServiceEndpoint } from '@jaypost/client'
+import type { AdminCaller, AttachmentSource, ServiceEndpoint } from '@jaypost/client'
 import type {
   MessageFormat,
   Provider,
@@ -7,7 +7,7 @@ import type {
   SettingValues,
   VoteRule,
 } from '@jaypost/core'
-import type { CliLocation, InstallPaths, Target, TargetName } from '@jaypost/install'
+import type { CliLocation, InstallPaths, InstallRecord, Target, TargetName } from '@jaypost/install'
 import type { Progress } from '../progress/index.ts'
 import type { StatusInfo } from '@jaypost/protocol'
 
@@ -323,3 +323,107 @@ export type OpenedRuntime =
       readonly runtime: ProviderRuntime
     }
   | { readonly kind: 'failed' }
+
+/** The admin key for a local service, or why there is none (already worded for the user). */
+export type AdminKeyLookup =
+  | { readonly kind: 'found'; readonly adminKey: string }
+  | { readonly kind: 'missing'; readonly message: string }
+
+/**
+ * Where the admin commands send their calls: `JAYPOST_URL` with `JAYPOST_ADMIN_KEY`, or the
+ * service on this machine (an install, or none with the config's port), or why neither works.
+ */
+export type AdminEndpoint =
+  | {
+      readonly kind: 'remote'
+      readonly endpoint: ServiceEndpoint
+      readonly adminKey: string
+    }
+  | {
+      readonly kind: 'local'
+      readonly endpoint: ServiceEndpoint
+      readonly port: number
+      readonly adminKey: AdminKeyLookup
+      /** Undefined when nothing is installed and the service runs some other way. */
+      readonly install: InstallRecord | undefined
+      /** The config file the service reads; undefined for a container install. */
+      readonly configPath: string | undefined
+    }
+  | { readonly kind: 'failed'; readonly message: string }
+
+/** The local variant of `AdminEndpoint`. */
+export type LocalAdminEndpoint = Extract<AdminEndpoint, { readonly kind: 'local' }>
+
+/** An endpoint the admin commands can call. */
+export type ReachableEndpoint = Exclude<AdminEndpoint, { readonly kind: 'failed' }>
+
+/**
+ * A caller with its endpoint; `noKey` is a local service whose admin key can't be read (the
+ * message says why); `failed` is no usable endpoint.
+ */
+export type OpenedAdmin =
+  | {
+      readonly kind: 'opened'
+      readonly caller: AdminCaller
+      readonly endpoint: ReachableEndpoint
+    }
+  | {
+      readonly kind: 'noKey'
+      readonly endpoint: LocalAdminEndpoint
+      readonly message: string
+    }
+  | { readonly kind: 'failed'; readonly message: string }
+
+/** Everything the admin commands touch outside themselves, injected for tests. */
+export type AdminDeps = {
+  readonly env: NodeJS.ProcessEnv
+  readonly paths: InstallPaths
+  readonly targets: Readonly<Record<TargetName, Target>>
+  /** Registered providers; `bot add` asks which one to use when there are several. */
+  readonly providers: readonly Provider[]
+  readonly prompt: Prompts
+  /** Stdout: tables, JSON and the one-time key lines. */
+  readonly print: (text: string) => void
+  /** Stderr: failures, prompts' notes and hints. */
+  readonly printError: (text: string) => void
+  /** Tells whether a local service without a readable admin key is up. */
+  readonly fetchStatus: FetchStatus
+  /** Defaults to the current time; stamps a bot `bot add` writes straight to the registry. */
+  readonly now?: () => Date
+  readonly signal?: AbortSignal
+}
+
+/** Every admin command takes `--json`. */
+export type AdminOutputArgs = { readonly json?: boolean }
+
+export type BotAddArgs = AdminOutputArgs & {
+  readonly provider?: string
+  readonly label?: string
+}
+
+/** `bot remove` and `pairing remove`; `yes` skips the confirmation. */
+export type AdminRemoveArgs = AdminOutputArgs & { readonly id: string; readonly yes?: boolean }
+
+/** Exactly one of `bot`, `pairing` and `sameAs` names the pairing the key points to. */
+export type KeyCreateArgs = AdminOutputArgs & {
+  readonly bot?: string
+  readonly pairing?: string
+  readonly sameAs?: string
+  readonly label?: string
+  readonly externalId?: string
+}
+
+export type KeyListArgs = AdminOutputArgs & { readonly bot?: string; readonly pairing?: string }
+
+/** An empty string clears the field; absent keeps it. */
+export type KeyLabelArgs = AdminOutputArgs & {
+  readonly id: string
+  readonly label?: string
+  readonly externalId?: string
+}
+
+export type AdminIdArgs = AdminOutputArgs & { readonly id: string }
+
+export type PairingCreateArgs = AdminOutputArgs & { readonly bot: string }
+
+export type PairingListArgs = AdminOutputArgs & { readonly bot?: string }
