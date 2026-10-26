@@ -427,7 +427,10 @@ export class Hub implements AdminApi {
     return { key: toAdminKey(result.key, pairing?.botId ?? '') }
   }
 
-  /** Removes the key, then rejects its open questions with their timeout option. Throws when the save fails. */
+  /**
+   * Removes the key, then rejects its open questions with their timeout option. Throws when the
+   * save fails.
+   */
   revokeKey(keyId: string): Readonly<Record<string, never>> | AdminFailure {
     const pairing = this.#findPairingOfKey(keyId)
     const result = revokeKey(this.#registry, keyId)
@@ -498,7 +501,7 @@ export class Hub implements AdminApi {
     }
   }
 
-  /** The pairing's person is gone: their bot forgets them and their keys' questions are rejected. */
+  /** The pairing's person is gone: the bot forgets them and their keys' questions are rejected. */
   #release(pairing: PairingRecord, keyIds: readonly string[]): void {
     const running = this.#findRunning(pairing.botId)
     if (pairing.person !== undefined) {
@@ -590,7 +593,9 @@ export class Hub implements AdminApi {
     }
   }
 
-  /** The pairing instruction for the install's own pending pairing, as the daemon always logged it. */
+  /**
+   * The pairing instruction for the install's own pending pairing, as the daemon always logged it.
+   */
   #logSeedCode(botId: string, running: RunningBot): void {
     const seed = this.#registry.seed
     if (seed?.botId !== botId) {
@@ -758,7 +763,10 @@ export class Hub implements AdminApi {
     return target.kind !== 'newPairing' || this.#isPairingBot(target.botId)
   }
 
-  /** Whether the bot's provider pairs; a bot whose provider is gone can't run, and a code costs nothing. */
+  /**
+   * Whether the bot's provider pairs; a bot whose provider is gone can't run, and a code costs
+   * nothing.
+   */
   #isPairingBot(botId: string): boolean {
     const record = this.#findBot(botId)
     const provider = record === undefined ? undefined : this.#providersByName.get(record.provider)

@@ -30,7 +30,9 @@ export type ApprovalRequest = {
   readonly timeoutSeconds: number
   /** The decoded file to send with the question; `undefined` when the caller sent none. */
   readonly attachment: Attachment | undefined
-  /** User id to send to; the daemon fills in the paired owner. Never set by `parseApprovalRequest`. */
+  /**
+   * User id to send to; the daemon fills in the paired owner. Never set by `parseApprovalRequest`.
+   */
   readonly recipient?: string
   /**
    * The API key that asked; only that key can read or cancel the question by id. Never set by

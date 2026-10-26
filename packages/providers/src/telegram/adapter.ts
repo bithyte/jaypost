@@ -139,11 +139,10 @@ function requireChatId(userId: string | undefined): number {
 
 /**
  * Sends requests as inline-keyboard messages to their recipient; the final edit removes the
- * buttons.
- * A request without options has no keyboard, and `allowText` appends a hint on how to reply.
- * A sent request is tracked by the conversation only after Telegram accepted it, and forgotten
- * again by `finalize`, even when the final edit fails. Notifications get a single Dismiss button
- * when `options.dismissible` is set. Sending throws when there is no recipient.
+ * buttons. A request without options has no keyboard, and `allowText` appends a hint on how to
+ * reply. A sent request is tracked by the conversation only after Telegram accepted it, and
+ * forgotten again by `finalize`, even when the final edit fails. Notifications get a single
+ * Dismiss button when `options.dismissible` is set. Sending throws when there is no recipient.
  */
 export function createTelegramMessenger(
   bot: Bot,
@@ -337,8 +336,7 @@ export function registerTapHandler(
  * Lets the conversation decide what a message means and sends its answer: refusals as a reply to
  * the owner's message, pairing results as a plain message. Pairing also shows the command menu to
  * the newly paired person. A failed reply is logged, never thrown. Register after
- * `registerCommandHandler`
- * so registered commands never become answers.
+ * `registerCommandHandler` so registered commands never become answers.
  */
 export function registerMessageHandler(
   bot: Bot,
@@ -396,8 +394,7 @@ export function registerMessageHandler(
 /**
  * Registers one handler per command. Replies with `command`'s text when it returns one; anyone but
  * a paired person in a private chat is ignored, and the update goes no further (so a stranger's
- * command
- * never reaches the message handler).
+ * command never reaches the message handler).
  */
 export function registerCommandHandler(
   bot: Bot,

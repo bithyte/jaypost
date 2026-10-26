@@ -82,8 +82,9 @@ function loadSeededRegistry(
 /**
  * Loads the registry next to `configPath`, applies the seed, makes sure there is an admin key, and
  * starts every stored bot behind an API that routes each call by its key, without waiting for the
- * bots. A bot that can't start is retried in the background and shows as failed in /status. Throws on a corrupt registry, a
- * missing setting with no bots stored, or an I/O error. Doesn't listen.
+ * bots. A bot that can't start is retried in the background and shows as failed in /status.
+ * Throws on a corrupt registry, a missing setting with no bots stored, or an I/O error. Doesn't
+ * listen.
  */
 export async function startService(options: ServiceOptions): Promise<RunningService> {
   const { configPath } = options
