@@ -210,7 +210,7 @@ function toAdminFailure(response: RawResponse): Failure {
     return { kind: 'failed', reason: 'unauthorized', message: ADMIN_KEY_REJECTED_MESSAGE }
   }
   // The server's own 404 for a route it doesn't have; an admin 404 names the unknown id.
-  if (status === 404 && (error === undefined || error === ROUTE_NOT_FOUND_ERROR)) {
+  if (status === 404 && (error === undefined || error.toLowerCase() === ROUTE_NOT_FOUND_ERROR)) {
     return { kind: 'failed', reason: 'tooOld', message: ADMIN_TOO_OLD_MESSAGE }
   }
   if (status === 404 && error !== undefined) {

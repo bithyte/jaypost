@@ -1,11 +1,5 @@
-import {
-  ADMIN_KEY_ENV_VAR,
-  findEnvValue,
-  parseToken,
-  readTokenFile,
-  resolveAdminKeyPath,
-  resolveConfigPath,
-} from '@jaypost/store'
+import { ADMIN_KEY_ENV_VAR, findEnvValue, resolveConfigPath } from '@jaypost/store'
+import { readAdminKeyFile } from '@jaypost/install'
 import { AdminCaller } from '@jaypost/client'
 import type { AdminResult } from '@jaypost/client'
 import { resolveAdminEndpoint } from './admin-endpoint.ts'
@@ -152,23 +146,11 @@ export function runAdminKeyShow(
   print: (text: string) => void,
   printError: (text: string) => void,
 ): number {
-  const path = resolveAdminKeyPath(resolveConfigPath(env))
-  let raw: string | undefined
+  let key: string
   try {
-    raw = readTokenFile(path)
+    key = readAdminKeyFile(resolveConfigPath(env))
   } catch (error) {
     printError(error instanceof Error ? error.message : String(error))
-    return 1
-  }
-  if (raw === undefined) {
-    printError(
-      `no admin key in ${JSON.stringify(path)} yet; start the service once so it writes one`,
-    )
-    return 1
-  }
-  const key = parseToken(raw)
-  if (key === undefined) {
-    printError(`admin key file ${JSON.stringify(path)} isn't a valid jaypost admin key`)
     return 1
   }
   print(key)

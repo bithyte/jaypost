@@ -42,3 +42,5 @@ export const SETUP_CI_APPROVERS_HINT = 'To add approvers, run: jaypost pair appr
 /** Printed above the comma list of ids `pair approver` ends with. */
 export const PAIRED_APPROVERS_HEADING =
   'Add these to your approvers list and the JAYPOST_APPROVERS secret (each also works as -u ID):'
+/** Printed with every new API key: the service keeps only its hash. */
+export const KEY_SHOWN_ONCE_NOTE = "This key isn't shown again; store it now."

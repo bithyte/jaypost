@@ -1,5 +1,6 @@
 import type { CreatedKey, KeysBody } from '@jaypost/protocol'
 import { formatTable, openAdminCaller, printResult, runAdminCommand } from './admin.ts'
+import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
 import { formatInvite } from './pairing.ts'
 import type { AdminDeps, AdminIdArgs, KeyCreateArgs, KeyLabelArgs, KeyListArgs } from './types.ts'
 
@@ -24,7 +25,7 @@ function formatKeys(body: KeysBody): string {
 function formatCreatedKey(created: CreatedKey): string {
   return [
     `Key ${created.id} (pairing ${created.pairing}): ${created.key}`,
-    "This key isn't shown again; store it now.",
+    KEY_SHOWN_ONCE_NOTE,
     ...(created.code === undefined
       ? []
       : [
@@ -67,7 +68,12 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       ...(args.label === undefined ? {} : { label: args.label }),
       ...(args.externalId === undefined ? {} : { externalId: args.externalId }),
     })
-    return printResult(result, args, deps, formatCreatedKey)
+    const code = printResult(result, args, deps, formatCreatedKey)
+    // The JSON on stdout holds the key; the note goes to stderr so stdout stays parseable.
+    if (result.kind === 'ok' && args.json) {
+      deps.printError(KEY_SHOWN_ONCE_NOTE)
+    }
+    return code
   })
 }
 

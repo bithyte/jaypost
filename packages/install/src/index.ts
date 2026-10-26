@@ -8,6 +8,7 @@ export {
   findPlistExecWords,
   findUnitExecWords,
   formatLaunchdPlist,
+  readAdminKeyFile,
   readInstall,
   removeInstall,
   resolveInstallPaths,

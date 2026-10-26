@@ -49,5 +49,8 @@ export const ADMIN_KEY_REJECTED_MESSAGE =
 /** Shown when the service has no admin routes. */
 export const ADMIN_TOO_OLD_MESSAGE =
   'jaypost service is too old for admin commands (run jaypost init to upgrade)'
-/** The `error` of the 404 the HTTP server sends for a route it doesn't have. */
-export const ROUTE_NOT_FOUND_ERROR = 'Not Found'
+/**
+ * The `error` of jaypost's 404 for a route it doesn't have; compared ignoring case, which also
+ * covers Fastify's default `Not Found`.
+ */
+export const ROUTE_NOT_FOUND_ERROR = 'not found'

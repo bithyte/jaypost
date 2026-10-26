@@ -192,7 +192,7 @@ test('key create for a paired pairing prints no code', async () => {
   ])
 })
 
-test('key create --json prints the created key as JSON', async () => {
+test('key create --json prints the created key as JSON and the note on stderr', async () => {
   const started = await start()
   expect(await runKeyCreate({ pairing: 'p1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({
@@ -200,6 +200,7 @@ test('key create --json prints the created key as JSON', async () => {
     key: expect.stringMatching(/^jpk_/),
     pairing: 'p1',
   })
+  expect(err).toEqual(["This key isn't shown again; store it now."])
 })
 
 test('key create needs exactly one of --bot, --pairing and --same-as', async () => {
@@ -548,7 +549,7 @@ test('admin-key rotate locally prints the new key, which the service saved', asy
   expect(await runBotList({}, createDeps(env))).toBe(0)
 })
 
-test('admin-key rotate remotely says to update JAYPOST_ADMIN_KEY', async () => {
+test('admin-key rotate --json prints the new key and the old one stops working', async () => {
   const started = await start()
   expect(await runAdminKeyRotate({ json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({ adminKey: expect.stringMatching(/^jpa_/) })

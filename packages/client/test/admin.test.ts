@@ -5,8 +5,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { loadSeed, resolveAdminKeyPath } from '@jaypost/store'
-import { startService } from '@jaypost/service'
+import { loadSeed, NO_AUTH, resolveAdminKeyPath } from '@jaypost/store'
+import { createApiServer, createSingleBotRouter, startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
 import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import {
@@ -323,23 +323,47 @@ test("a 400 is rejected with the server's error", async () => {
   })
 })
 
+/** A real API server without admin routes, as a jaypost from before them answers. */
+async function startWithoutAdminRoutes(): Promise<number> {
+  const unexpected = () => {
+    throw new Error('not called')
+  }
+  const app = createApiServer(
+    createSingleBotRouter({
+      version: '1.0.0',
+      recipient: () => undefined,
+      service: {
+        request: unexpected,
+        start: unexpected,
+        get: unexpected,
+        waitFor: unexpected,
+        cancel: unexpected,
+        send: unexpected,
+        close: unexpected,
+        update: unexpected,
+      },
+      status: () => ({ paired: true, bot: 'b' }),
+      maxTextLength: 3900,
+      providerName: 'test',
+      resolveVoters: () => ({ kind: 'noOwner' }),
+      describe: () => ({ provider: 'test', displayName: 'test' }),
+      rejectForKeys: () => undefined,
+      auth: NO_AUTH,
+      maxAttachmentBytes: 0,
+    }),
+  )
+  await app.listen({ port: 0, host: '127.0.0.1' })
+  stubs.push(app.server)
+  return (app.server.address() as AddressInfo).port
+}
+
 test('a service without admin routes is tooOld', async () => {
-  const port = await startStub((request, response) => {
-    response.statusCode = 404
-    response.setHeader('content-type', 'application/json')
-    response.end(
-      JSON.stringify({
-        message: `Route ${request.method}:${request.url} not found`,
-        error: 'Not Found',
-        statusCode: 404,
-      }),
-    )
-  })
-  expect(await createCaller(port, WRONG_ADMIN_KEY).listBots()).toEqual({
-    kind: 'failed',
-    reason: 'tooOld',
-    message: ADMIN_TOO_OLD_MESSAGE,
-  })
+  const port = await startWithoutAdminRoutes()
+  const caller = createCaller(port, WRONG_ADMIN_KEY)
+  const tooOld = { kind: 'failed', reason: 'tooOld', message: ADMIN_TOO_OLD_MESSAGE }
+  expect(await caller.listBots()).toEqual(tooOld)
+  expect(await caller.createKey({ bot: 'b1' })).toEqual(tooOld)
+  expect(await caller.revokeKey('k1')).toEqual(tooOld)
 })
 
 test('a 2xx body of the wrong shape is unreadable', async () => {

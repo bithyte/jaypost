@@ -1,3 +1,4 @@
+export { readAdminKeyFile } from './admin-key.ts'
 export { createComposeTarget } from './compose.ts'
 export { DARWIN_TARGET_ORDER, TARGET_ORDER } from './constants.ts'
 export { readEnvFile, removeEnvKey, writeEnvFile } from './envfile.ts'
