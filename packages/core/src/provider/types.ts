@@ -56,10 +56,21 @@ export type RuntimeHandlers = {
   readonly dismiss: (id: string) => boolean
   /** Present only while pairing. */
   readonly pair?: (senderId: string, text: string) => PairResult
-  /** Commands the owner can send; the provider shows them in its menu if it has one. */
+  /** True for anyone paired on this bot; only their messages, taps and commands count. */
+  readonly isPaired: (senderId: string) => boolean
+  /** Everyone paired on this bot, for per-chat command menus at start. */
+  readonly listPaired: () => readonly string[]
+  /** Commands a paired person can send; the provider shows them in its menu if it has one. */
   readonly commands: readonly OwnerCommand[]
-  /** Reply text for an owner command, or undefined to stay silent. Never throws. */
-  readonly command: (name: string, argument: string) => string | undefined
+  /**
+   * Reply text for a command, or undefined to stay silent. `senderId` is undefined only for
+   * providers without chat identities (terminal). Never throws.
+   */
+  readonly command: (
+    name: string,
+    argument: string,
+    senderId: string | undefined,
+  ) => string | undefined
   /** The provider can't continue; the daemon logs `message` and exits 1. */
   readonly fatal: (message: string) => void
 }

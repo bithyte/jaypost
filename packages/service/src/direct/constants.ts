@@ -13,4 +13,4 @@ export const APPROVER_SEPARATOR_PATTERN = /[\s,]+/
 export const DIRECT_NOTIFICATION_OPTIONS = {
   silent: false,
   dismissible: false,
-} as const satisfies SendNotificationOptions
+} as const satisfies Omit<SendNotificationOptions, 'recipient'>

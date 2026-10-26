@@ -32,12 +32,17 @@ function setup(
     readonly overrides?: Partial<DiscordClient>
     readonly ownerId?: string
     readonly pair?: (senderId: string, text: string) => PairResult
-    readonly command?: (name: string, argument: string) => string | undefined
+    readonly command?: (
+      name: string,
+      argument: string,
+      senderId: string | undefined,
+    ) => string | undefined
     readonly answer?: (id: string, optionIndex: number) => 'accepted' | 'expired'
   } = {},
 ) {
   const fake = createFakeDiscord(options.overrides)
-  const conversation = new OwnerConversation('ownerId' in options ? options.ownerId : OWNER_ID)
+  const conversation = new OwnerConversation()
+  const pairedId = 'ownerId' in options ? options.ownerId : OWNER_ID
   const answer = vi.fn(options.answer ?? (() => 'accepted' as const))
   const reply = vi.fn((_id: string, _text: string) => 'accepted' as const)
   const dismiss = vi.fn((_id: string) => true)
@@ -53,6 +58,8 @@ function setup(
       answer,
       reply,
       dismiss,
+      isPaired: (senderId) => senderId === pairedId,
+      listPaired: () => (pairedId === undefined ? [] : [pairedId]),
       commands: OWNER_COMMANDS,
       command,
       fatal,
@@ -142,7 +149,7 @@ test('a tap on a settled request gets an ephemeral Expired', async () => {
 
 test("someone else's tap is acknowledged and ignored", async () => {
   const { fake, answer, dismiss, context } = setup()
-  context.conversation.track('m1', 'r1', false)
+  context.conversation.track('m1', 'r1', false, OWNER_ID)
   await handleInteraction(tap(formatChoicePayload('r1', 0), { userId: '2' }), context)
   await handleInteraction(tap(formatDismissPayload('n1'), { userId: '2' }), context)
   expect(answer).not.toHaveBeenCalled()
@@ -237,7 +244,7 @@ test('a failed interaction response is logged, not thrown', async () => {
 test('an owner command replies with the escaped command text', async () => {
   const { fake, command, context } = setup({ command: () => '2 pending\n- a*b' })
   await handleInteraction(slashCommand('history', '5'), context)
-  expect(command).toHaveBeenCalledWith('history', '5')
+  expect(command).toHaveBeenCalledWith('history', '5', OWNER_ID)
   expect(fake.responses).toEqual([
     {
       interaction: { id: 'i2', token: 'ctoken' },
@@ -249,7 +256,7 @@ test('an owner command replies with the escaped command text', async () => {
 test('an owner command with no reply text gets an ephemeral unknown command', async () => {
   const { fake, command, context } = setup()
   await handleInteraction(slashCommand('nope', ''), context)
-  expect(command).toHaveBeenCalledWith('nope', '')
+  expect(command).toHaveBeenCalledWith('nope', '', OWNER_ID)
   expect(fake.responses.map((entry) => entry.response)).toEqual([
     { kind: 'message', content: 'Unknown command.', ephemeral: true },
   ])
@@ -285,7 +292,7 @@ test("the bot's own messages never reach pairing or replies", async () => {
     ownerId: undefined,
     pair: () => 'wrong',
   })
-  conversation.track('m1', 'r1', true)
+  conversation.track('m1', 'r1', true, OWNER_ID)
   await handleMessage(dm({ fromId: BOT_ID, fromBot: true, text: 'ABCDEFGH' }), context)
   await handleMessage(
     dm({ fromId: BOT_ID, fromBot: true, text: WRONG_CODE_REPLY, replyTo: undefined }),
@@ -298,7 +305,7 @@ test("the bot's own messages never reach pairing or replies", async () => {
 
 test("the bot's own messages never answer a question even if its id is the owner's", async () => {
   const { fake, reply, conversation, context } = setup({ ownerId: BOT_ID })
-  conversation.track('m1', 'r1', true)
+  conversation.track('m1', 'r1', true, OWNER_ID)
   await handleMessage(dm({ fromId: BOT_ID, fromBot: true, text: 'yes' }), context)
   expect(reply).not.toHaveBeenCalled()
   expect(fake.created).toEqual([])
@@ -309,14 +316,13 @@ test('server messages and interactions are ignored', async () => {
     pair: () => 'paired',
     command: () => 'secret',
   })
-  conversation.track('m1', 'r1', true)
+  conversation.track('m1', 'r1', true, OWNER_ID)
   await handleMessage(dm({ isDirect: false, text: 'ABCDEFGH' }), context)
   await handleMessage(
     dm({ isDirect: false, text: 'yes', replyTo: { messageId: 'm1', fromId: BOT_ID } }),
     context,
   )
   expect(pair).not.toHaveBeenCalled()
-  expect(conversation.ownerId).toBe(OWNER_ID)
   expect(reply).not.toHaveBeenCalled()
   expect(fake.created).toEqual([])
   await handleInteraction(tap(formatChoicePayload('r1', 0), { isDirect: false }), context)
@@ -335,7 +341,7 @@ test('server messages and interactions are ignored', async () => {
 
 test('a typed reply to an open question settles it silently', async () => {
   const { fake, reply, context, conversation } = setup()
-  conversation.track('m1', 'r1', true)
+  conversation.track('m1', 'r1', true, OWNER_ID)
   await handleMessage(dm({ text: ' yes ', replyTo: { messageId: 'm1', fromId: BOT_ID } }), context)
   expect(reply).toHaveBeenCalledWith('r1', 'yes')
   expect(fake.created).toEqual([])
@@ -343,7 +349,7 @@ test('a typed reply to an open question settles it silently', async () => {
 
 test('a reply to a buttons-only question gets the tap-a-button reply', async () => {
   const { fake, reply, context, conversation } = setup()
-  conversation.track('m1', 'r1', false)
+  conversation.track('m1', 'r1', false, OWNER_ID)
   const message = dm({ text: 'yes', replyTo: { messageId: 'm1', fromId: BOT_ID } })
   await handleMessage(message, context)
   expect(reply).not.toHaveBeenCalled()
@@ -369,7 +375,7 @@ test('a failed bot reply is logged, not thrown', async () => {
       },
     },
   })
-  conversation.track('m1', 'r1', false)
+  conversation.track('m1', 'r1', false, OWNER_ID)
   await expect(
     handleMessage(dm({ text: 'yes', replyTo: { messageId: 'm1', fromId: BOT_ID } }), context),
   ).resolves.toBeUndefined()
@@ -377,13 +383,12 @@ test('a failed bot reply is logged, not thrown', async () => {
 })
 
 test('a dm with the code pairs the sender', async () => {
-  const { fake, pair, conversation, context } = setup({
+  const { fake, pair, context } = setup({
     ownerId: undefined,
     pair: () => 'paired',
   })
   await handleMessage(dm({ fromId: '5', text: ' ABCD-EFGH ' }), context)
   expect(pair).toHaveBeenCalledWith('5', 'ABCD-EFGH')
-  expect(conversation.ownerId).toBe('5')
   expect(fake.created).toEqual([
     {
       channelId: 'dm9',
@@ -393,21 +398,19 @@ test('a dm with the code pairs the sender', async () => {
 })
 
 test('a dm with a wrong code gets the wrong-code reply', async () => {
-  const { fake, conversation, context } = setup({ ownerId: undefined, pair: () => 'wrong' })
+  const { fake, context } = setup({ ownerId: undefined, pair: () => 'wrong' })
   await handleMessage(dm({ fromId: '5', text: 'nope' }), context)
-  expect(conversation.ownerId).toBeUndefined()
   expect(fake.created.map((entry) => entry.message.content)).toEqual([WRONG_CODE_REPLY])
 })
 
 test('a dm is not a pairing attempt when pairing is off', async () => {
-  const { fake, conversation, context } = setup({ ownerId: undefined })
+  const { fake, context } = setup({ ownerId: undefined })
   await handleMessage(dm({ fromId: '5', text: 'ABCDEFGH' }), context)
-  expect(conversation.ownerId).toBeUndefined()
   expect(fake.created).toEqual([])
 })
 
 test('a failed pairing reply is logged, not thrown', async () => {
-  const { log, conversation, context } = setup({
+  const { log, context } = setup({
     ownerId: undefined,
     pair: () => 'paired',
     overrides: {
@@ -419,6 +422,5 @@ test('a failed pairing reply is logged, not thrown', async () => {
   await expect(handleMessage(dm({ fromId: '5', text: 'ABCDEFGH' }), context)).resolves.toBe(
     undefined,
   )
-  expect(conversation.ownerId).toBe('5')
   expect(log).toHaveBeenCalledWith('failed to reply: boom')
 })

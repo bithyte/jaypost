@@ -12,6 +12,8 @@ export type ApiBot = {
     'request' | 'start' | 'get' | 'waitFor' | 'cancel' | 'send' | 'close' | 'update'
   >
   readonly status: () => StatusInfo
+  /** Who requests and notifications go to when the caller names no one; removed with Task 7. */
+  readonly recipient: () => string | undefined
   /** Voter ids for /vote as the provider reads them; without `voters`, the owner. */
   readonly resolveVoters: (voters: readonly string[] | undefined) => VoterIds
   readonly maxTextLength: number

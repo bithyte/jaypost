@@ -8,6 +8,7 @@ import {
   START_COMMAND_PATTERN,
   WRONG_CODE_REPLY,
 } from './constants.ts'
+import type { RuntimeHandlers } from '../provider/index.ts'
 import { parseChoicePayload, parseDismissPayload } from './payload.ts'
 import type {
   ConversationHandlers,
@@ -20,29 +21,25 @@ import type {
 
 type ReplyRoute = 'ignored' | 'accepted' | 'buttonsOnly' | 'notOpen' | 'ambiguous' | 'notText'
 
-/** The owner, their open questions, and what each message or tap means. Never throws. */
+/**
+ * The open questions of a bot and what each message or tap means. Who is paired is the daemon's
+ * to know: every decision asks `handlers.isPaired`. Never throws.
+ */
 export class OwnerConversation {
-  #ownerId: string | undefined
   #questions = new Map<string, OpenQuestion>()
 
-  constructor(ownerId: string | undefined) {
-    this.#ownerId = ownerId
-  }
-
-  /** The paired owner, or undefined until pairing succeeds. */
-  get ownerId(): string | undefined {
-    return this.#ownerId
-  }
-
-  /** True only for the paired owner in a direct chat. */
-  isOwner(senderId: string | undefined, isDirect: boolean): boolean {
-    return isDirect && senderId !== undefined && senderId === this.#ownerId
+  /** True only for a paired sender in a direct chat. */
+  isPaired(
+    senderId: string | undefined,
+    isDirect: boolean,
+    handlers: Pick<RuntimeHandlers, 'isPaired'>,
+  ): boolean {
+    return isDirect && senderId !== undefined && handlers.isPaired(senderId)
   }
 
   /**
    * Opens a question under the adapter's message `key`. Call after the platform accepted the send;
-   * `forget` in finalize, even if the edit fails. A `recipient` means the question went to that
-   * user instead of the owner, and only their taps count.
+   * `forget` in finalize, even if the edit fails. Only the `recipient` can answer it.
    */
   track(key: string, id: string, allowText: boolean, recipient?: string): void {
     this.#questions.set(key, { id, allowText, recipient })
@@ -58,8 +55,9 @@ export class OwnerConversation {
     if (message.fromBot || !message.isDirect) {
       return { kind: 'ignored' }
     }
-    if (this.isOwner(message.senderId, true)) {
-      const route = this.#routeReply(message, handlers.reply)
+    const { senderId } = message
+    if (senderId !== undefined && this.isPaired(senderId, true, handlers)) {
+      const route = this.#routeReply(message, senderId, handlers.reply)
       if (route === 'accepted') {
         return { kind: 'answered' }
       }
@@ -71,18 +69,18 @@ export class OwnerConversation {
   }
 
   /**
-   * Decides what a button tap means. A choice on a voter's question counts only from that voter;
-   * other choices and dismissals only from the owner. A choice on a request nobody has open is
-   * expired for anyone in a direct chat.
+   * Decides what a button tap means. A choice on a tracked question counts only from the person it
+   * was sent to; dismissals only from a paired sender. A choice on a request nobody has open goes
+   * to the handler for a paired sender and is expired for anyone else in a direct chat.
    */
   tap(tap: ConversationTap, handlers: ConversationHandlers): TapOutcome {
     if (!tap.isDirect || tap.senderId === undefined) {
       return { kind: 'ignored' }
     }
-    const isOwner = this.isOwner(tap.senderId, true)
+    const isPaired = this.isPaired(tap.senderId, true, handlers)
     const dismissId = parseDismissPayload(tap.payload)
     if (dismissId !== undefined) {
-      if (!isOwner) {
+      if (!isPaired) {
         return { kind: 'ignored' }
       }
       handlers.dismiss(dismissId)
@@ -90,14 +88,14 @@ export class OwnerConversation {
     }
     const choice = parseChoicePayload(tap.payload)
     if (choice === undefined) {
-      return isOwner ? { kind: 'expired', text: EXPIRED_REPLY } : { kind: 'ignored' }
+      return isPaired ? { kind: 'expired', text: EXPIRED_REPLY } : { kind: 'ignored' }
     }
     const question = [...this.#questions.values()].find((open) => open.id === choice.id)
-    if (question === undefined && !isOwner) {
+    if (question === undefined && !isPaired) {
       return { kind: 'expired', text: EXPIRED_REPLY }
     }
-    // The owner's tap on an untracked id still goes to the handler, which knows if it is settled.
-    if (question !== undefined && (question.recipient ?? this.#ownerId) !== tap.senderId) {
+    // A paired tap on an untracked id still goes to the handler, which knows if it is settled.
+    if (question !== undefined && question.recipient !== tap.senderId) {
       return { kind: 'ignored' }
     }
     return handlers.answer(choice.id, choice.optionIndex) === 'accepted'
@@ -105,10 +103,16 @@ export class OwnerConversation {
       : { kind: 'expired', text: EXPIRED_REPLY }
   }
 
-  #routeReply(message: ConversationMessage, reply: ConversationHandlers['reply']): ReplyRoute {
+  #routeReply(
+    message: ConversationMessage,
+    senderId: string,
+    reply: ConversationHandlers['reply'],
+  ): ReplyRoute {
     const { replyTo, text } = message
     if (replyTo !== undefined) {
-      const question = this.#questions.get(replyTo.key)
+      const found = this.#questions.get(replyTo.key)
+      // Someone else's question is, for this sender, a message that isn't waiting for an answer.
+      const question = found?.recipient === senderId ? found : undefined
       if (question !== undefined) {
         if (text === undefined) {
           return question.allowText ? 'notText' : 'ignored'
@@ -125,7 +129,9 @@ export class OwnerConversation {
     if (text === undefined || text.startsWith('/')) {
       return 'ignored'
     }
-    const textQuestions = [...this.#questions.values()].filter((question) => question.allowText)
+    const textQuestions = [...this.#questions.values()].filter(
+      (question) => question.allowText && question.recipient === senderId,
+    )
     const [only, second] = textQuestions
     if (only === undefined) {
       return 'ignored'
@@ -143,8 +149,7 @@ export class OwnerConversation {
     }
     const result = handlers.pair(senderId, text.trim().replace(START_COMMAND_PATTERN, ''))
     if (result === 'paired') {
-      this.#ownerId = senderId
-      return { kind: 'paired', ownerId: senderId, text: PAIRED_REPLY }
+      return { kind: 'paired', senderId, text: PAIRED_REPLY }
     }
     if (result === 'wrong') {
       return { kind: 'wrongCode', text: WRONG_CODE_REPLY }

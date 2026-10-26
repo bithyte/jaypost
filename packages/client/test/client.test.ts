@@ -355,6 +355,7 @@ async function startRealServer(): Promise<{
   const app = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient: () => undefined,
       service,
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 3900,

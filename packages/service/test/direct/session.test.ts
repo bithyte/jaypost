@@ -144,7 +144,7 @@ test('the owner gets no commands', async () => {
   const runtime = requireRuntime(provider.runtimes)
   await waitForSent(runtime)
   expect(runtime.handlers?.commands).toEqual([])
-  expect(runtime.handlers?.command('pending', '')).toBeUndefined()
+  expect(runtime.handlers?.command('pending', '', undefined)).toBeUndefined()
   expect(runtime.handlers?.dismiss('x')).toBe(false)
   expect(runtime.handlers?.pair).toBeUndefined()
   controller.abort()

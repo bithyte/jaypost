@@ -20,6 +20,8 @@ export type NotifyParseResult =
 export type SendNotificationOptions = {
   readonly silent: boolean
   readonly dismissible: boolean
+  /** Who gets it; undefined only for providers without chat identities (terminal). */
+  readonly recipient: string | undefined
 }
 
 /**
@@ -28,7 +30,7 @@ export type SendNotificationOptions = {
  */
 export type Notifier = {
   /**
-   * Send `message` to the owner; with `options.dismissible` it carries a dismiss control for `id`,
+   * Send `message` to `options.recipient`; with `options.dismissible` it carries a dismiss control for `id`,
    * if the messenger can delete.
    */
   readonly sendNotification: (

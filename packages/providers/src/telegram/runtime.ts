@@ -21,7 +21,7 @@ function describeError(error: unknown): string {
 
 /**
  * Telegram behind the provider contract. `checkCredentials` must succeed before the bot username
- * is used. Pairing sets the in-memory owner; saving it is the daemon's job.
+ * is used. Who is paired is the daemon's to know; the runtime asks `handlers.isPaired`.
  */
 export function createTelegramRuntime(
   settings: SettingValues,
@@ -29,9 +29,7 @@ export function createTelegramRuntime(
   createBot: (token: string) => Bot = (token) => new Bot(token),
 ): ProviderRuntime {
   const bot = createBot(String(settings.botToken))
-  const conversation = new OwnerConversation(
-    typeof settings.ownerId === 'number' ? String(settings.ownerId) : undefined,
-  )
+  const conversation = new OwnerConversation()
   const messenger = createTelegramMessenger(bot, conversation, log)
   let stopped = false
   return {
@@ -59,10 +57,10 @@ export function createTelegramRuntime(
         log(`bot error: ${describeError(error.error)}`)
       })
       registerTapHandler(bot, conversation, handlers, log)
-      registerCommandHandler(bot, conversation, handlers.commands, handlers.command)
+      registerCommandHandler(bot, conversation, handlers.commands, handlers)
       registerMessageHandler(bot, conversation, handlers, log)
-      if (conversation.ownerId !== undefined) {
-        setCommandMenu(bot, Number(conversation.ownerId), handlers.commands, log)
+      for (const pairedId of handlers.listPaired()) {
+        setCommandMenu(bot, Number(pairedId), handlers.commands, log)
       }
       bot
         .start({ onStart: (botUser) => log(`bot @${botUser.username} polling`) })

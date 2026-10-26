@@ -112,6 +112,7 @@ async function startApi(
   const server = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient: () => undefined,
       service,
       status: () => ({
         paired: true,

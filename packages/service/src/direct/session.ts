@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { ApprovalService, askWithRetries, runVote, SendError } from '@jaypost/core'
+import {
+  ApprovalService,
+  askWithRetries,
+  findOwnerSetting,
+  runVote,
+  SendError,
+} from '@jaypost/core'
 import type { ProviderRuntime } from '@jaypost/core'
 import { DIRECT_NOTIFICATION_OPTIONS } from './constants.ts'
 import type { DirectConfig, DirectSession } from './types.ts'
@@ -27,6 +33,9 @@ export async function openDirectSession(
     await stopRuntime(runtime)
     throw new Error(check.reason)
   }
+  const ownerSetting = findOwnerSetting(provider)
+  const savedOwner = ownerSetting === undefined ? undefined : settings[ownerSetting.configKey]
+  const owner = savedOwner === undefined ? undefined : String(savedOwner)
   // No store and no audit: timeout and cancel finalize exactly as the service does.
   const service = new ApprovalService(
     runtime,
@@ -46,6 +55,8 @@ export async function openDirectSession(
       answer: (id, optionIndex) => service.tap(id, optionIndex),
       reply: (id, text) => service.reply(id, text),
       dismiss: () => false,
+      isPaired: (senderId) => senderId === owner,
+      listPaired: () => (owner === undefined ? [] : [owner]),
       commands: [],
       command: () => undefined,
       fatal: (message) => {
@@ -70,7 +81,9 @@ export async function openDirectSession(
       start()
       return askWithRetries(
         service,
-        request,
+        request.recipient === undefined && owner !== undefined
+          ? { ...request, recipient: owner }
+          : request,
         retryCount,
         AbortSignal.any([signal, fatalController.signal]),
         onProgress,
@@ -96,7 +109,7 @@ export async function openDirectSession(
         await runtime.sendNotification(
           randomUUID(),
           request.message,
-          DIRECT_NOTIFICATION_OPTIONS,
+          { ...DIRECT_NOTIFICATION_OPTIONS, recipient: owner },
           request.attachment,
         )
       } catch (cause) {

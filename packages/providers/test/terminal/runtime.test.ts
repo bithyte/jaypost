@@ -9,8 +9,13 @@ function handlers(answerResult: 'accepted' | 'expired') {
     answer: vi.fn((_id: string, _optionIndex: number) => answerResult),
     reply: vi.fn((_id: string, _text: string) => 'accepted' as const),
     dismiss: vi.fn(() => true),
+    isPaired: () => false,
+    listPaired: () => [],
     commands: OWNER_COMMANDS,
-    command: vi.fn((_name: string, _argument: string): string | undefined => undefined),
+    command: vi.fn(
+      (_name: string, _argument: string, _senderId: string | undefined): string | undefined =>
+        undefined,
+    ),
     fatal: vi.fn<(message: string) => void>(),
   } satisfies RuntimeHandlers
 }
@@ -220,7 +225,7 @@ test('a notification prints its text', async () => {
   await runtime.sendNotification?.(
     'n1',
     plain('Deployed'),
-    { silent: false, dismissible: true },
+    { silent: false, dismissible: true, recipient: undefined },
     undefined,
   )
   expect(output()).toBe('\nnotification: Deployed\n')
@@ -233,8 +238,8 @@ test('a slash command runs and prints its reply', async () => {
   await type('/pending')
   await type('/cancel  abc ')
   expect(handlers.command.mock.calls).toEqual([
-    ['pending', ''],
-    ['cancel', 'abc'],
+    ['pending', '', undefined],
+    ['cancel', 'abc', undefined],
   ])
   expect(output()).toBe('nothing pending\nnothing pending\n')
 })

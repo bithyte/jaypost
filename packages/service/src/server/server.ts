@@ -58,6 +58,14 @@ type Parsed<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly error: string }
 
+/** Sends the question to the bot's owner unless it already names a recipient. */
+function addRecipient(bot: ApiBot, request: ApprovalRequest): ApprovalRequest {
+  const recipient = bot.recipient()
+  return request.recipient !== undefined || recipient === undefined
+    ? request
+    : { ...request, recipient }
+}
+
 /** A /request body: the question and its re-asks, if any. */
 function parseAsk(
   bot: ApiBot,
@@ -76,7 +84,10 @@ function parseAsk(
   if (!retry.ok) {
     return retry
   }
-  return { ok: true, value: { request: parsed.value, retryCount: retry.retryCount } }
+  return {
+    ok: true,
+    value: { request: addRecipient(bot, parsed.value), retryCount: retry.retryCount },
+  }
 }
 
 /** A /request/async body; `retry` is refused, since nothing would re-ask a background question. */
@@ -90,7 +101,7 @@ function parseBackgroundAsk(bot: ApiBot, json: unknown): Parsed<ApprovalRequest>
   if (parsed.ok && hasKey(json, 'retry')) {
     return { ok: false, error: "retry isn't supported on /request/async" }
   }
-  return parsed
+  return parsed.ok ? { ok: true, value: addRecipient(bot, parsed.value) } : parsed
 }
 
 /** A /vote body with its voters resolved by the bot's provider. */
@@ -355,7 +366,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
     if (!parsed.ok) {
       return reply.code(400).send({ error: parsed.error })
     }
-    await notifications.notify(parsed.value)
+    await notifications.notify(parsed.value, bot.recipient())
     return { ok: true }
   })
   return app

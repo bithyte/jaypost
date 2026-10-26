@@ -22,7 +22,7 @@ export type MessageOutcome =
   | { readonly kind: 'ignored' }
   | { readonly kind: 'answered' }
   | { readonly kind: 'refused'; readonly text: string }
-  | { readonly kind: 'paired'; readonly ownerId: string; readonly text: string }
+  | { readonly kind: 'paired'; readonly senderId: string; readonly text: string }
   | { readonly kind: 'wrongCode'; readonly text: string }
 
 /** What the adapter does next after a tap. */
@@ -33,11 +33,14 @@ export type TapOutcome =
   | { readonly kind: 'dismissed' }
 
 /** The runtime callbacks the conversation drives. */
-export type ConversationHandlers = Pick<RuntimeHandlers, 'answer' | 'reply' | 'dismiss' | 'pair'>
+export type ConversationHandlers = Pick<
+  RuntimeHandlers,
+  'answer' | 'reply' | 'dismiss' | 'pair' | 'isPaired'
+>
 
 /**
  * A tracked bot question awaiting an answer; allowText lets a plain reply answer it. `recipient`
- * is the voter it was sent to, or undefined when it went to the owner.
+ * is the person it was sent to; only they can answer it.
  */
 export type OpenQuestion = {
   readonly id: string

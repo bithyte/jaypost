@@ -8,33 +8,33 @@ import {
 } from '@jaypost/core'
 import { createDiscordMessenger, toButtonRows } from '../../src/discord/index.ts'
 import type { MessageEnding } from '@jaypost/core'
-import { pairOwner, receiveReplyTo } from '@jaypost/testing'
+import { receiveReplyTo } from '@jaypost/testing'
 import { createFakeDiscord } from './fake.ts'
 import type { FakeDiscord } from './fake.ts'
 
 const ENDING = {} as MessageEnding
 
-function setup(fake: FakeDiscord = createFakeDiscord(), conversation = new OwnerConversation('1')) {
+function setup(fake: FakeDiscord = createFakeDiscord(), conversation = new OwnerConversation()) {
   const log = vi.fn<(line: string) => void>()
   const messenger = createDiscordMessenger(fake.client, conversation, log)
   return { fake, conversation, log, messenger }
 }
 
 function expectOpenText(conversation: OwnerConversation, key: string): void {
-  const { outcome, reply } = receiveReplyTo(conversation, key)
+  const { outcome, reply } = receiveReplyTo(conversation, key, '1')
   expect(outcome).toEqual({ kind: 'answered' })
   expect(reply).toHaveBeenCalledWith('r1', 'x')
 }
 
 function expectButtonsOnly(conversation: OwnerConversation, key: string): void {
-  expect(receiveReplyTo(conversation, key).outcome).toEqual({
+  expect(receiveReplyTo(conversation, key, '1').outcome).toEqual({
     kind: 'refused',
     text: BUTTONS_ONLY_REPLY,
   })
 }
 
 function expectNotOpen(conversation: OwnerConversation, key: string): void {
-  expect(receiveReplyTo(conversation, key).outcome).toEqual({
+  expect(receiveReplyTo(conversation, key, '1').outcome).toEqual({
     kind: 'refused',
     text: NOT_OPEN_REPLY,
   })
@@ -50,7 +50,7 @@ test('sendRequest sends one dm with rows of buttons and records the open questio
     ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
     false,
     undefined,
-    undefined,
+    '1',
   )
   expect(reference).toEqual({ channelId: 'dm1', messageId: 'm1', hasButtons: true })
   expect(fake.created).toHaveLength(1)
@@ -79,21 +79,14 @@ test('sendRequest sends one dm with rows of buttons and records the open questio
 
 test('allowText appends the hint, escaped like the rest', async () => {
   const { fake, conversation, messenger } = setup()
-  await messenger.sendRequest('r1', plain('a_b'), ['x'], true, undefined, undefined)
+  await messenger.sendRequest('r1', plain('a_b'), ['x'], true, undefined, '1')
   expect(fake.created[0]?.message.content).toBe(`a\\_b\n\n${TEXT_HINT_WITH_BUTTONS}`)
   expectOpenText(conversation, 'm1')
 })
 
 test('a text-only question has no buttons', async () => {
   const { fake, messenger } = setup()
-  const reference = await messenger.sendRequest(
-    'r1',
-    plain('Name?'),
-    [],
-    true,
-    undefined,
-    undefined,
-  )
+  const reference = await messenger.sendRequest('r1', plain('Name?'), [], true, undefined, '1')
   expect(reference).toEqual({ channelId: 'dm1', messageId: 'm1', hasButtons: false })
   expect(fake.created[0]?.message.rows).toEqual([])
   expect(fake.created[0]?.message.content).toBe(`Name?\n\n${TEXT_HINT_WITHOUT_BUTTONS}`)
@@ -102,35 +95,39 @@ test('a text-only question has no buttons', async () => {
 test('the attachment rides on the same message', async () => {
   const { fake, messenger } = setup()
   const attachment = { name: 'diff.txt', content: new TextEncoder().encode('hello') }
-  await messenger.sendRequest('r1', plain('Run it?'), ['a'], false, attachment, undefined)
+  await messenger.sendRequest('r1', plain('Run it?'), ['a'], false, attachment, '1')
   expect(fake.created).toHaveLength(1)
   expect(fake.created[0]?.message.file).toBe(attachment)
 })
 
 test('the dm channel is opened once per owner', async () => {
   const { fake, messenger } = setup()
-  await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, undefined)
-  await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, undefined)
+  await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, '1')
+  await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, '1')
   expect(fake.openedFor).toEqual(['1'])
   expect(fake.created.map((call) => call.channelId)).toEqual(['dm1', 'dm1'])
 })
 
-test('a new owner gets a new dm channel', async () => {
-  const { fake, conversation, messenger } = setup()
-  await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, undefined)
-  pairOwner(conversation, '2')
-  await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, undefined)
+test('each recipient gets their own dm channel', async () => {
+  const { fake, messenger } = setup()
+  await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, '1')
+  await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, '2')
   expect(fake.openedFor).toEqual(['1', '2'])
 })
 
-test('sending before pairing throws', async () => {
-  const { fake, messenger } = setup(createFakeDiscord(), new OwnerConversation(undefined))
+test('sending without a recipient throws', async () => {
+  const { fake, messenger } = setup()
   await expect(
     messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, undefined),
-  ).rejects.toThrow('bot is not paired yet')
+  ).rejects.toThrow('message has no recipient')
   await expect(
-    messenger.sendNotification('n1', plain('x'), { silent: false, dismissible: true }, undefined),
-  ).rejects.toThrow('bot is not paired yet')
+    messenger.sendNotification(
+      'n1',
+      plain('x'),
+      { silent: false, dismissible: true, recipient: undefined },
+      undefined,
+    ),
+  ).rejects.toThrow('message has no recipient')
   expect(fake.created).toEqual([])
 })
 
@@ -142,7 +139,7 @@ test('a failed send rejects and leaves no open question', async () => {
   })
   const { conversation, messenger } = setup(fake)
   await expect(
-    messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, undefined),
+    messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, '1'),
   ).rejects.toThrow('Cannot send messages to this user')
   expectNotOpen(conversation, 'm1')
 })
@@ -155,7 +152,7 @@ test('finalize edits the text, removes the buttons and forgets the question', as
     ['a'],
     false,
     undefined,
-    undefined,
+    '1',
   )
   await messenger.finalize(reference, plain('Run it?\n\nApproved'), ENDING)
   expect(fake.edited).toEqual([
@@ -166,14 +163,7 @@ test('finalize edits the text, removes the buttons and forgets the question', as
 
 test('finalize of a text-only question leaves components alone', async () => {
   const { fake, messenger } = setup()
-  const reference = await messenger.sendRequest(
-    'r1',
-    plain('Name?'),
-    [],
-    true,
-    undefined,
-    undefined,
-  )
+  const reference = await messenger.sendRequest('r1', plain('Name?'), [], true, undefined, '1')
   await messenger.finalize(reference, plain('done'), ENDING)
   expect(fake.edited[0]?.removeButtons).toBe(false)
 })
@@ -186,7 +176,7 @@ test('update keeps the buttons', async () => {
     ['a', 'b'],
     false,
     undefined,
-    undefined,
+    '1',
   )
   await messenger.update(reference, plain('Run it?\n\nVotes: 1 a, 2 …'), {
     id: 'r1',
@@ -210,14 +200,7 @@ test('finalize forgets the question even when the edit fails', async () => {
     },
   })
   const { conversation, messenger } = setup(fake)
-  const reference = await messenger.sendRequest(
-    'r1',
-    plain('x'),
-    ['a'],
-    false,
-    undefined,
-    undefined,
-  )
+  const reference = await messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, '1')
   expectButtonsOnly(conversation, 'm1')
   await expect(messenger.finalize(reference, plain('y'), ENDING)).rejects.toThrow('Unknown Message')
   expectNotOpen(conversation, 'm1')
@@ -225,14 +208,7 @@ test('finalize forgets the question even when the edit fails', async () => {
 
 test('the longest final text fits in 2000 characters', async () => {
   const { fake, log, messenger } = setup()
-  const reference = await messenger.sendRequest(
-    'r1',
-    plain('x'),
-    ['a'],
-    false,
-    undefined,
-    undefined,
-  )
+  const reference = await messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, '1')
   const text = `${'*'.repeat(1800)}\n\n💬 ${'a'.repeat(179)}…, 12:34`
   expect(text.length).toBe(1992)
   await messenger.finalize(reference, plain(text), ENDING)
@@ -244,14 +220,7 @@ test('the longest final text fits in 2000 characters', async () => {
 
 test('a formatted message that only fits unformatted logs it', async () => {
   const { fake, log, messenger } = setup()
-  const reference = await messenger.sendRequest(
-    'r1',
-    plain('x'),
-    ['a'],
-    false,
-    undefined,
-    undefined,
-  )
+  const reference = await messenger.sendRequest('r1', plain('x'), ['a'], false, undefined, '1')
   const text = 'a'.repeat(1998)
   await messenger.finalize(
     reference,
@@ -267,7 +236,7 @@ test('sendNotification has one Dismiss button and honours silent', async () => {
   const reference = await messenger.sendNotification(
     'n1',
     plain('done'),
-    { silent: true, dismissible: true },
+    { silent: true, dismissible: true, recipient: '1' },
     undefined,
   )
   expect(fake.created[0]?.message).toEqual({
@@ -285,7 +254,7 @@ test('sendNotification without dismissible sends no buttons', async () => {
   const reference = await messenger.sendNotification(
     'n1',
     plain('done'),
-    { silent: false, dismissible: false },
+    { silent: false, dismissible: false, recipient: '1' },
     undefined,
   )
   expect(fake.created[0]?.message).toEqual({
@@ -302,7 +271,7 @@ test('deleteMessage deletes by the saved reference', async () => {
   const reference = await messenger.sendNotification(
     'n1',
     plain('done'),
-    { silent: false, dismissible: true },
+    { silent: false, dismissible: true, recipient: '1' },
     undefined,
   )
   await messenger.deleteMessage(reference)
@@ -326,7 +295,7 @@ test('sendRequest opens a dm per recipient and reuses it', async () => {
   const { fake, messenger } = setup()
   await messenger.sendRequest('r1', plain('one'), ['a'], false, undefined, '222')
   await messenger.sendRequest('r2', plain('two'), ['a'], false, undefined, '222')
-  await messenger.sendRequest('r3', plain('three'), ['a'], false, undefined, undefined)
+  await messenger.sendRequest('r3', plain('three'), ['a'], false, undefined, '1')
   expect(fake.openedFor).toEqual(['222', '1'])
   expect(fake.created.map((call) => call.channelId)).toEqual(['dm1', 'dm1', 'dm2'])
 })

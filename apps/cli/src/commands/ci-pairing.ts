@@ -98,6 +98,8 @@ export function createPairingWaiter(runtime: ProviderRuntime, deps: SetupCiDeps)
       answer: () => 'expired',
       reply: () => 'expired',
       dismiss: () => false,
+      isPaired: () => false,
+      listPaired: () => [],
       pair: (senderId, text) => {
         if (current === undefined) {
           return 'notPairing'

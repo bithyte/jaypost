@@ -93,6 +93,10 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
   const ownerSetting = findOwnerSetting(provider)
   // Gains the owner once someone pairs, so /vote can default to them.
   let settings: SettingValues = config.settings
+  // Interim single owner: the one paired person, from the config or from pairing.
+  const savedOwner =
+    ownerSetting === undefined ? undefined : config.settings[ownerSetting.configKey]
+  let owner = savedOwner === undefined ? undefined : String(savedOwner)
   let pairing: Pairing | undefined
   let instructions: string | undefined
   if (ownerSetting !== undefined && !Object.hasOwn(config.settings, ownerSetting.configKey)) {
@@ -122,14 +126,17 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
   }
   const pair = (senderId: string, text: string): PairResult => {
     const result = pairing?.attempt(senderId, text) ?? 'notPairing'
+    if (result === 'paired') {
+      owner = senderId
+    }
     if (result === 'paired' && ownerSetting !== undefined) {
       try {
-        const owner = ownerSetting.parse(senderId)
-        if (owner === undefined) {
+        const parsedOwner = ownerSetting.parse(senderId)
+        if (parsedOwner === undefined) {
           throw new Error('owner not parseable')
         }
-        settings = { ...settings, [ownerSetting.configKey]: owner }
-        updateConfigFile(configPath, { [ownerSetting.configKey]: owner })
+        settings = { ...settings, [ownerSetting.configKey]: parsedOwner }
+        updateConfigFile(configPath, { [ownerSetting.configKey]: parsedOwner })
       } catch {
         log(
           `paired with ${senderId} but couldn't save the owner to ${configPath}; it'll be lost on restart`,
@@ -142,6 +149,8 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     answer: (id, optionIndex) => service.tap(id, optionIndex),
     reply: (id, text) => service.reply(id, text),
     dismiss: (id) => notifications?.dismiss(id) ?? false,
+    isPaired: (id) => id === owner,
+    listPaired: () => (owner === undefined ? [] : [owner]),
     commands: [...OWNER_COMMANDS, ...QUIET_COMMANDS],
     command: (name, argument) =>
       runOwnerCommand(service, name, argument, {
@@ -156,6 +165,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     bot: {
       service,
       status,
+      recipient: () => owner,
       resolveVoters: (voters) => resolveVoters(provider, settings, voters),
       maxTextLength: provider.maxTextLength,
       providerName: provider.name,

@@ -15,7 +15,7 @@ type KnownIdentity = Extract<DiscordIdentity, { readonly kind: 'ok' }>
 
 /**
  * Discord behind the provider contract. `checkCredentials` must succeed before `start` or
- * `pairingInstructions`. Pairing sets the in-memory owner; saving it is the daemon's job. The token
+ * `pairingInstructions`. Who is paired is the daemon's to know; the runtime asks `handlers.isPaired`. The token
  * never appears in a reason, a log line or a fatal message.
  */
 export function createDiscordRuntime(
@@ -24,9 +24,7 @@ export function createDiscordRuntime(
   createClient: (token: string) => DiscordClient = createDiscordClient,
 ): ProviderRuntime {
   const client = createClient(String(settings.botToken))
-  const conversation = new OwnerConversation(
-    typeof settings.ownerId === 'string' ? settings.ownerId : undefined,
-  )
+  const conversation = new OwnerConversation()
   const messenger = createDiscordMessenger(client, conversation, log)
   let identity: KnownIdentity | undefined
   let stopped = false

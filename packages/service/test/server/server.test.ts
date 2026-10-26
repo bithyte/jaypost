@@ -75,11 +75,13 @@ async function start(
   notify?: NotifyFn,
   auth: ApiAuth = NO_AUTH,
   maxAttachmentBytes: number = MAX_ATTACHMENT_BYTES,
+  recipient: () => string | undefined = () => undefined,
 ): Promise<string> {
   const stub = createStub(vi.fn(request))
   server = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient,
       service: stub,
       status: status,
       maxTextLength: 3900,
@@ -198,6 +200,7 @@ test('server uses the provider text limit', async () => {
   server = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient: () => undefined,
       service: createStub(vi.fn<RequestFn>()),
       status: () => ({ paired: true, bot: 'b' }),
       maxTextLength: 10,
@@ -388,7 +391,7 @@ test('project is folded into the notification text', async () => {
   const url = await start(vi.fn<RequestFn>(), undefined, notify)
   const res = await postNotify(url, JSON.stringify({ text: 'hi', project: 'api' }))
   expect(res.status).toBe(200)
-  expect(notify).toHaveBeenCalledWith({ message: { text: '[api]\n\nhi', spans: [] } })
+  expect(notify).toHaveBeenCalledWith({ message: { text: '[api]\n\nhi', spans: [] } }, undefined)
 })
 
 test('POST /notify returns ok once sent', async () => {
@@ -397,7 +400,7 @@ test('POST /notify returns ok once sent', async () => {
   const res = await postNotify(url, JSON.stringify({ text: 'hi' }))
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual({ ok: true })
-  expect(notify).toHaveBeenCalledWith({ message: { text: 'hi', spans: [] } })
+  expect(notify).toHaveBeenCalledWith({ message: { text: 'hi', spans: [] } }, undefined)
 })
 
 test('POST /notify 400 on bad JSON and bad text, notify not called', async () => {
@@ -559,6 +562,7 @@ test('a router with several bots sends each call to the bot its token picks', as
   }))
   const toBot = (request: RequestFn, maxTextLength: number): ApiBot => ({
     service: createStub(request),
+    recipient: () => undefined,
     status: () => ({ paired: true }),
     maxTextLength,
     providerName: 'test',
@@ -609,9 +613,34 @@ test('markdown request reaches the provider as spans', async () => {
     spans: [{ kind: 'code', offset: 4, length: 2 }],
   })
   expect((await postNotify(url, JSON.stringify(body))).status).toBe(200)
-  expect(notify).toHaveBeenCalledWith({
-    message: { text: 'Run ls?', spans: [{ kind: 'code', offset: 4, length: 2 }] },
-  })
+  expect(notify).toHaveBeenCalledWith(
+    { message: { text: 'Run ls?', spans: [{ kind: 'code', offset: 4, length: 2 }] } },
+    undefined,
+  )
+})
+
+test('POST /notify sends to the bot owner', async () => {
+  const notify = vi.fn<NotifyFn>(async () => {})
+  const url = await start(
+    vi.fn<RequestFn>(),
+    undefined,
+    notify,
+    NO_AUTH,
+    MAX_ATTACHMENT_BYTES,
+    () => '42',
+  )
+  expect((await postNotify(url, JSON.stringify({ text: 'hi' }))).status).toBe(200)
+  expect(notify).toHaveBeenCalledWith({ message: { text: 'hi', spans: [] } }, '42')
+})
+
+test('POST /request asks the bot owner', async () => {
+  const request = vi.fn<RequestFn>(async () => ({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  }))
+  const url = await start(request, undefined, undefined, NO_AUTH, MAX_ATTACHMENT_BYTES, () => '42')
+  expect((await post(url, JSON.stringify(valid))).status).toBe(200)
+  expect(request.mock.calls[0]?.[0].recipient).toBe('42')
 })
 
 test('an unknown format is a 400 on both endpoints', async () => {
@@ -689,6 +718,7 @@ async function startReal(
   server = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient: () => undefined,
       service,
       status: options.status ?? (() => ({ paired: true, bot: 'b' })),
       maxTextLength: options.maxTextLength ?? 3900,
@@ -852,6 +882,7 @@ test('only async create checks pairing', async () => {
   const other = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
+      recipient: () => undefined,
       service,
       status: unpaired,
       maxTextLength: 3900,

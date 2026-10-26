@@ -175,7 +175,7 @@ test('pairing handlers answer nothing else', async () => {
   expect(handlers?.reply('id', 'text')).toBe('expired')
   expect(handlers?.dismiss('id')).toBe(false)
   expect(handlers?.commands).toEqual([])
-  expect(handlers?.command('help', '')).toBeUndefined()
+  expect(handlers?.command('help', '', undefined)).toBeUndefined()
   handlers?.pair?.('owner-1', CODE)
   expect(await running).toBe(0)
 })

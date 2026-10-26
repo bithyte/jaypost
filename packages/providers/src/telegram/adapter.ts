@@ -130,23 +130,19 @@ function describeError(error: unknown): string {
 }
 
 // The conversation keeps ids as strings; grammY wants the numeric chat id.
-function requireOwnerChatId(conversation: OwnerConversation): number {
-  return requireChatId(conversation.ownerId)
-}
-
 function requireChatId(userId: string | undefined): number {
   if (userId === undefined) {
-    throw new Error('bot is not paired yet')
+    throw new Error('message has no recipient')
   }
   return Number(userId)
 }
 
 /**
- * Sends requests as inline-keyboard messages to the owner; the final edit removes the buttons.
+ * Sends requests as inline-keyboard messages to their recipient; the final edit removes the buttons.
  * A request without options has no keyboard, and `allowText` appends a hint on how to reply.
  * A sent request is tracked by the conversation only after Telegram accepted it, and forgotten
  * again by `finalize`, even when the final edit fails. Notifications get a single Dismiss button
- * when `options.dismissible` is set. Sending throws when nobody is paired.
+ * when `options.dismissible` is set. Sending throws when there is no recipient.
  */
 export function createTelegramMessenger(
   bot: Bot,
@@ -154,9 +150,9 @@ export function createTelegramMessenger(
   log: (line: string) => void = console.error,
 ): Required<Messenger> & Required<Notifier> {
   // The document is always silent; the message that follows decides whether the phone pings.
-  async function sendDocument(ownerId: number, attachment: Attachment): Promise<number> {
+  async function sendDocument(chatId: number, attachment: Attachment): Promise<number> {
     const sent = await bot.api.sendDocument(
-      ownerId,
+      chatId,
       new InputFile(attachment.content, attachment.name),
       { disable_notification: true },
     )
@@ -164,7 +160,7 @@ export function createTelegramMessenger(
   }
   // Runs `send`; when it throws after the document went out, removes the document and rethrows.
   async function sendAfterDocument<Result>(
-    ownerId: number,
+    chatId: number,
     documentMessageId: number | undefined,
     send: () => Promise<Result>,
   ): Promise<Result> {
@@ -173,7 +169,7 @@ export function createTelegramMessenger(
     } catch (error) {
       if (documentMessageId !== undefined) {
         try {
-          await bot.api.deleteMessage(ownerId, documentMessageId)
+          await bot.api.deleteMessage(chatId, documentMessageId)
         } catch (cleanupError) {
           log(`failed to delete attachment: ${describeError(cleanupError)}`)
         }
@@ -190,14 +186,14 @@ export function createTelegramMessenger(
       attachment,
       recipient,
     ): Promise<MessageReference> {
-      const ownerId = requireChatId(recipient ?? conversation.ownerId)
+      const chatId = requireChatId(recipient)
       const hasButtons = options.length > 0
       const shown = withTextHint(message, hasButtons, allowText)
       const documentMessageId =
-        attachment === undefined ? undefined : await sendDocument(ownerId, attachment)
-      const sent = await sendAfterDocument(ownerId, documentMessageId, () =>
+        attachment === undefined ? undefined : await sendDocument(chatId, attachment)
+      const sent = await sendAfterDocument(chatId, documentMessageId, () =>
         sendFormatted(shown, log, (extra) =>
-          bot.api.sendMessage(ownerId, shown.text, {
+          bot.api.sendMessage(chatId, shown.text, {
             ...extra,
             ...(hasButtons && { reply_markup: toInlineKeyboard(id, options) }),
             ...(documentMessageId !== undefined && {
@@ -239,12 +235,12 @@ export function createTelegramMessenger(
       )
     },
     async sendNotification(id, message, options, attachment): Promise<MessageReference> {
-      const ownerId = requireOwnerChatId(conversation)
+      const chatId = requireChatId(options.recipient)
       const documentMessageId =
-        attachment === undefined ? undefined : await sendDocument(ownerId, attachment)
-      const sent = await sendAfterDocument(ownerId, documentMessageId, () =>
+        attachment === undefined ? undefined : await sendDocument(chatId, attachment)
+      const sent = await sendAfterDocument(chatId, documentMessageId, () =>
         sendFormatted(message, log, (extra) =>
-          bot.api.sendMessage(ownerId, message.text, {
+          bot.api.sendMessage(chatId, message.text, {
             ...extra,
             disable_notification: options.silent,
             ...(options.dismissible && {
@@ -339,7 +335,7 @@ export function registerTapHandler(
 /**
  * Lets the conversation decide what a message means and sends its answer: refusals as a reply to
  * the owner's message, pairing results as a plain message. Pairing also shows the command menu to
- * the new owner. A failed reply is logged, never thrown. Register after `registerCommandHandler`
+ * the newly paired person. A failed reply is logged, never thrown. Register after `registerCommandHandler`
  * so registered commands never become answers.
  */
 export function registerMessageHandler(
@@ -385,7 +381,7 @@ export function registerMessageHandler(
         )
         return
       case 'paired':
-        setCommandMenu(bot, Number(outcome.ownerId), handlers.commands, log)
+        setCommandMenu(bot, Number(outcome.senderId), handlers.commands, log)
         await sendReply(() => context.reply(outcome.text))
         return
       case 'wrongCode':
@@ -397,22 +393,25 @@ export function registerMessageHandler(
 
 /**
  * Registers one handler per command. Replies with `command`'s text when it returns one; anyone but
- * the owner in a private chat is ignored, and the update goes no further (so a stranger's command
+ * a paired person in a private chat is ignored, and the update goes no further (so a stranger's command
  * never reaches the message handler).
  */
 export function registerCommandHandler(
   bot: Bot,
   conversation: OwnerConversation,
   commands: readonly OwnerCommand[],
-  command: (name: string, argument: string) => string | undefined,
+  handlers: Pick<RuntimeHandlers, 'isPaired' | 'command'>,
 ): void {
   for (const { name } of commands) {
     bot.command(name, async (context) => {
       const senderId = context.from === undefined ? undefined : String(context.from.id)
-      if (!conversation.isOwner(senderId, context.chat.type === 'private')) {
+      if (
+        senderId === undefined ||
+        !conversation.isPaired(senderId, context.chat.type === 'private', handlers)
+      ) {
         return
       }
-      const reply = command(name, context.match)
+      const reply = handlers.command(name, context.match, senderId)
       if (reply !== undefined) {
         await context.reply(reply)
       }

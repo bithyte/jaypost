@@ -21,6 +21,8 @@ function handlers(overrides: Pick<RuntimeHandlers, 'pair'> = {}) {
     answer: vi.fn(() => 'accepted' as const),
     reply: vi.fn(() => 'accepted' as const),
     dismiss: vi.fn(() => true),
+    isPaired: (senderId: string) => senderId === '5',
+    listPaired: () => ['5'],
     commands: OWNER_COMMANDS,
     command: vi.fn(() => undefined),
     fatal: vi.fn<(message: string) => void>(),
@@ -189,7 +191,7 @@ test('nothing is fatal after stop', async () => {
 
 test('stop closes the real gateway and a later close or 401 is not fatal', async () => {
   await withRejectingDiscord(async (createClient, gateway) => {
-    const runtime = createDiscordRuntime({ botToken: TOKEN, ownerId: '5' }, vi.fn(), createClient)
+    const runtime = createDiscordRuntime({ botToken: TOKEN }, vi.fn(), createClient)
     const runtimeHandlers = handlers()
     await runtime.checkCredentials()
     runtime.start(runtimeHandlers)
@@ -198,7 +200,7 @@ test('stop closes the real gateway and a later close or 401 is not fatal', async
     expect(gateway.destroyCount).toBe(1)
     gateway.emit('closed', 4004)
     await expect(
-      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
+      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, '5'),
     ).rejects.toThrow()
     expect(runtimeHandlers.fatal).not.toHaveBeenCalled()
   })
@@ -206,13 +208,13 @@ test('stop closes the real gateway and a later close or 401 is not fatal', async
 
 test('a rest 401 before stop is fatal without the token', async () => {
   await withRejectingDiscord(async (createClient) => {
-    const runtime = createDiscordRuntime({ botToken: TOKEN, ownerId: '5' }, vi.fn(), createClient)
+    const runtime = createDiscordRuntime({ botToken: TOKEN }, vi.fn(), createClient)
     const runtimeHandlers = handlers()
     await runtime.checkCredentials()
     runtime.start(runtimeHandlers)
     await flush()
     await expect(
-      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
+      runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, '5'),
     ).rejects.toThrow()
     expect(runtimeHandlers.fatal).toHaveBeenCalledWith(REJECTED_TOKEN_FATAL)
     expect(JSON.stringify(runtimeHandlers.fatal.mock.calls)).not.toContain(TOKEN)
@@ -234,18 +236,11 @@ test('stop swallows a destroy failure', async () => {
 })
 
 test('gateway messages and interactions reach the handlers', async () => {
-  const { fake, runtime } = setup(createFakeDiscord(), { ownerId: '5' })
+  const { fake, runtime } = setup()
   const runtimeHandlers = handlers()
   await runtime.checkCredentials()
   runtime.start(runtimeHandlers)
-  const reference = await runtime.sendRequest(
-    'r1',
-    plain('Name?'),
-    ['a'],
-    true,
-    undefined,
-    undefined,
-  )
+  const reference = await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined, '5')
   expect(reference).toEqual({ channelId: 'dm1', messageId: 'm1', hasButtons: true })
   fake.events()?.message({
     id: 'u1',
@@ -273,14 +268,14 @@ test('gateway messages and interactions reach the handlers', async () => {
 })
 
 test('a throwing event handler is logged without its message', async () => {
-  const { fake, log, runtime } = setup(createFakeDiscord(), { ownerId: '5' })
+  const { fake, log, runtime } = setup()
   const runtimeHandlers = handlers()
   runtimeHandlers.reply.mockImplementation(() => {
     throw new Error(`boom ${TOKEN}`)
   })
   await runtime.checkCredentials()
   runtime.start(runtimeHandlers)
-  await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined, undefined)
+  await runtime.sendRequest('r1', plain('Name?'), ['a'], true, undefined, '5')
   fake.events()?.message({
     id: 'u1',
     channelId: 'dm1',
@@ -294,14 +289,14 @@ test('a throwing event handler is logged without its message', async () => {
   expect(log.mock.calls).toEqual([['discord event handler failed: Error']])
 })
 
-test('pairing makes later requests go to the new owner', async () => {
+test('a request goes to the recipient it names', async () => {
   const { fake, runtime } = setup()
   const pair = vi.fn(() => 'paired' as const)
   await runtime.checkCredentials()
   runtime.start(handlers({ pair }))
   await expect(
     runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined),
-  ).rejects.toThrow('bot is not paired yet')
+  ).rejects.toThrow('message has no recipient')
   fake.events()?.message({
     id: 'u1',
     channelId: 'dm7',
@@ -314,13 +309,6 @@ test('pairing makes later requests go to the new owner', async () => {
   await flush()
   expect(pair).toHaveBeenCalledWith('5', 'ABCDEFGH')
   expect(fake.created.map((entry) => entry.message.content)).toEqual([PAIRED_REPLY])
-  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined)
-  expect(fake.openedFor).toEqual(['5'])
-})
-
-test('a saved owner id receives requests without pairing', async () => {
-  const { fake, runtime } = setup(createFakeDiscord(), { ownerId: '5' })
-  await runtime.checkCredentials()
-  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, undefined)
+  await runtime.sendRequest('r1', plain('Run it?'), ['yes'], false, undefined, '5')
   expect(fake.openedFor).toEqual(['5'])
 })

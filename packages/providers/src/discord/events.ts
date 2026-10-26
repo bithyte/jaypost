@@ -97,7 +97,7 @@ async function handleCommand(
   interaction: CommandInteraction,
   context: EventContext,
 ): Promise<void> {
-  if (!context.conversation.isOwner(interaction.userId, interaction.isDirect)) {
+  if (!context.conversation.isPaired(interaction.userId, interaction.isDirect, context.handlers)) {
     await respond(
       interaction,
       { kind: 'message', content: NOT_OWNER_COMMAND_REPLY, ephemeral: true },
@@ -105,7 +105,7 @@ async function handleCommand(
     )
     return
   }
-  const text = context.handlers.command(interaction.name, interaction.argument)
+  const text = context.handlers.command(interaction.name, interaction.argument, interaction.userId)
   await respond(
     interaction,
     text === undefined

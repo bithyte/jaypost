@@ -45,11 +45,13 @@ function fakeBot(init: () => Promise<void> = async () => {}) {
   }
 }
 
-function handlers(fatal = vi.fn()) {
+function handlers(fatal = vi.fn(), pairedIds: readonly string[] = []) {
   return {
     answer: () => 'accepted' as const,
     reply: () => 'accepted' as const,
     dismiss: () => true,
+    isPaired: (senderId: string) => pairedIds.includes(senderId),
+    listPaired: () => pairedIds,
     commands: OWNER_COMMANDS,
     command: () => undefined,
     fatal,
@@ -164,46 +166,34 @@ test('stop never rejects', async () => {
   await expect(runtime.stop()).resolves.toBeUndefined()
 })
 
-test('pairing sets the owner so requests go to them', async () => {
-  const { bot, on } = fakeBot()
+test('requests go to the recipient they name', async () => {
+  const { bot } = fakeBot()
   const sendMessage = vi.fn(async () => ({ message_id: 5, chat: { id: 9 } }))
   ;(bot as unknown as { api: object }).api = { sendMessage, setMyCommands: vi.fn(async () => true) }
   const runtime = createTelegramRuntime({ botToken: TOKEN }, vi.fn(), () => bot)
-  runtime.start({ ...handlers(), pair: () => 'paired' })
+  runtime.start(handlers())
   await expect(
     runtime.sendRequest('id1', { text: 'Q', spans: [] }, ['Yes'], false, undefined, undefined),
-  ).rejects.toThrow()
-  const pairingHandler = on.mock.calls.find((call) => call[0] === 'message')?.[1] as (
-    context: unknown,
-  ) => Promise<void>
-  await pairingHandler({
-    from: { id: 9, is_bot: false },
-    chat: { id: 9, type: 'private' },
-    message: { message_id: 60, text: 'K7QM4XPD' },
-    reply: vi.fn(async () => {}),
-  })
+  ).rejects.toThrow('message has no recipient')
   expect(
-    await runtime.sendRequest(
-      'id1',
-      { text: 'Q', spans: [] },
-      ['Yes'],
-      false,
-      undefined,
-      undefined,
-    ),
+    await runtime.sendRequest('id1', { text: 'Q', spans: [] }, ['Yes'], false, undefined, '9'),
   ).toEqual({
     chatId: 9,
     messageId: 5,
     hasButtons: true,
   })
+  expect(sendMessage).toHaveBeenCalledTimes(1)
 })
 
-test('setMyCommands uses the owner chat scope when an owner is known', () => {
+test('setMyCommands sets the chat scope of everyone already paired', () => {
   const { bot, setMyCommands } = fakeBot()
-  const runtime = createTelegramRuntime({ botToken: TOKEN, ownerId: 9 }, vi.fn(), () => bot)
-  runtime.start(handlers())
-  expect(setMyCommands).toHaveBeenCalledTimes(1)
-  expect(setMyCommands.mock.calls[0]?.[1]).toEqual({ scope: { type: 'chat', chat_id: 9 } })
+  const runtime = createTelegramRuntime({ botToken: TOKEN }, vi.fn(), () => bot)
+  runtime.start(handlers(vi.fn(), ['9', '12']))
+  expect(setMyCommands).toHaveBeenCalledTimes(2)
+  expect(setMyCommands.mock.calls.map((call) => call[1])).toEqual([
+    { scope: { type: 'chat', chat_id: 9 } },
+    { scope: { type: 'chat', chat_id: 12 } },
+  ])
 })
 
 test('setMyCommands is not called while unpaired', () => {
@@ -306,8 +296,8 @@ test('a stranger start message reaches pair and gets no reply', async () => {
   const calls: { method: string; payload: unknown }[] = []
   const bot = createDispatchBot(calls)
   const pair = vi.fn(() => 'notPairing' as const)
-  const runtime = createTelegramRuntime({ botToken: TOKEN, ownerId: 9 }, vi.fn(), () => bot)
-  runtime.start({ ...handlers(), pair })
+  const runtime = createTelegramRuntime({ botToken: TOKEN }, vi.fn(), () => bot)
+  runtime.start({ ...handlers(vi.fn(), ['9']), pair })
   await bot.handleUpdate(commandUpdate(8, '/start K7QM4XPD'))
   expect(pair).toHaveBeenCalledWith('8', ' K7QM4XPD')
   expect(calls.filter((call) => call.method === 'sendMessage')).toEqual([])
@@ -318,16 +308,9 @@ test('/pending sent as a reply to an open text question runs the command', async
   const bot = createDispatchBot(calls)
   const command = vi.fn(() => 'Nothing pending.')
   const reply = vi.fn(() => 'accepted' as const)
-  const runtime = createTelegramRuntime({ botToken: TOKEN, ownerId: 9 }, vi.fn(), () => bot)
-  runtime.start({ ...handlers(), command, reply })
-  await runtime.sendRequest(
-    'q1',
-    { text: 'Which branch?', spans: [] },
-    [],
-    true,
-    undefined,
-    undefined,
-  )
+  const runtime = createTelegramRuntime({ botToken: TOKEN }, vi.fn(), () => bot)
+  runtime.start({ ...handlers(vi.fn(), ['9']), command, reply })
+  await runtime.sendRequest('q1', { text: 'Which branch?', spans: [] }, [], true, undefined, '9')
   await bot.handleUpdate(
     commandUpdate(9, '/pending', {
       reply_to_message: {
@@ -338,6 +321,6 @@ test('/pending sent as a reply to an open text question runs the command', async
       },
     }),
   )
-  expect(command).toHaveBeenCalledWith('pending', '')
+  expect(command).toHaveBeenCalledWith('pending', '', '9')
   expect(reply).not.toHaveBeenCalled()
 })

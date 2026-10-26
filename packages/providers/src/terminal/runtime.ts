@@ -86,7 +86,7 @@ export function createTerminalRuntime(io: TerminalIo): ProviderRuntime {
       print(`unknown command; try ${names}\n`)
       return
     }
-    const reply = handlers.command(name, rest.join(' ').trim())
+    const reply = handlers.command(name, rest.join(' ').trim(), undefined)
     if (reply !== undefined) {
       print(`${reply}\n`)
     }

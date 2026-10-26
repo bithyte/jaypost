@@ -30,12 +30,12 @@ export function toButtonRows(id: string, options: readonly string[]): readonly B
 }
 
 /**
- * Sends requests as direct messages with button rows to the owner, or to `recipient` when given;
+ * Sends requests as direct messages with button rows to their recipient;
  * the final edit removes the buttons. A request without options has no buttons, and `allowText`
  * appends a hint on how to reply. A sent request is tracked by the conversation only after Discord
  * accepted it, and removed again by `finalize`, even when the final edit fails. Notifications get
  * a single Dismiss button when `options.dismissible` is set.
- * Sending throws when nobody is paired. A DM channel is opened once per user id.
+ * Sending throws when there is no recipient. A DM channel is opened once per user id.
  */
 export function createDiscordMessenger(
   client: DiscordClient,
@@ -43,11 +43,11 @@ export function createDiscordMessenger(
   log: (line: string) => void,
 ): Required<Messenger> & Required<Notifier> {
   const channelIdsByUser = new Map<string, string>()
-  async function resolveChannel(recipient?: string): Promise<string> {
-    const userId = recipient ?? conversation.ownerId
-    if (userId === undefined) {
-      throw new Error('bot is not paired yet')
+  async function resolveChannel(recipient: string | undefined): Promise<string> {
+    if (recipient === undefined) {
+      throw new Error('message has no recipient')
     }
+    const userId = recipient
     const known = channelIdsByUser.get(userId)
     if (known !== undefined) {
       return known
@@ -107,7 +107,7 @@ export function createDiscordMessenger(
       await client.editMessage(channelId, messageId, render(message), false)
     },
     async sendNotification(id, message, options, attachment): Promise<MessageReference> {
-      const channelId = await resolveChannel()
+      const channelId = await resolveChannel(options.recipient)
       const sent = await client.createMessage(channelId, {
         content: render(message),
         rows: options.dismissible

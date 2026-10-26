@@ -21,7 +21,6 @@ export const NOT_TEXT_REPLY = 'Only text replies count as an answer.'
 /** Bot answer to a correct pairing code. */
 export const PAIRED_REPLY = 'Paired. Approval requests will appear here.'
 /** Bot answer to a wrong pairing code. */
-export const WRONG_CODE_REPLY =
-  "This bot isn't paired. Check the service logs for the pairing code."
+export const WRONG_CODE_REPLY = "That pairing code didn't match. Check it and try again."
 /** Answer to a tap on a request that is no longer valid. */
 export const EXPIRED_REPLY = 'Expired'
