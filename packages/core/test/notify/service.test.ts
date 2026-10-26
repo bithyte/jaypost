@@ -7,6 +7,7 @@ import type {
   NotificationRecord,
   Notifier,
   NotificationServiceOptions,
+  NotifyRequest,
   QuietSource,
   SendNotificationOptions,
 } from '../../src/notify/index.ts'
@@ -81,6 +82,8 @@ function setup(m: Notifier = new FakeNotifier(), options: NotificationServiceOpt
 }
 
 const HOUR_MS = 3_600_000
+
+const NOTIFY_REQUEST: NotifyRequest = { message: { text: 'hi', spans: [] }, attachment: undefined }
 
 function quietUntil(offsetMs: number): QuietSource {
   return { quietUntil: vi.fn(() => new Date(NOW + offsetMs)) }
@@ -384,4 +387,20 @@ test('a notification without an attachment passes undefined', async () => {
   const { svc } = setup(m)
   await svc.notify({ message: { text: 'hi', spans: [] }, attachment: undefined }, undefined)
   expect(m.attachments).toEqual([undefined])
+})
+
+test('notify asks quiet hours for its recipient', async () => {
+  const later = new Date(NOW + HOUR_MS)
+  const quietUntil = vi.fn((recipient: string | undefined) =>
+    recipient === 'B' ? later : undefined,
+  )
+  const sendNotification = vi.fn<Notifier['sendNotification']>(async () => REFERENCE)
+  const { svc } = setup({ sendNotification }, { now: () => NOW, quiet: { quietUntil } })
+  await svc.notify(NOTIFY_REQUEST, 'A')
+  await svc.notify(NOTIFY_REQUEST, 'B')
+  expect(quietUntil.mock.calls).toEqual([['A'], ['B']])
+  expect(sendNotification.mock.calls.map((call) => call[2])).toEqual([
+    { silent: false, dismissible: true, recipient: 'A' },
+    { silent: true, dismissible: true, recipient: 'B' },
+  ])
 })

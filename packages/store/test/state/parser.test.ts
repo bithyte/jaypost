@@ -81,3 +81,24 @@ test('a bad span invalidates the file', () => {
     reason: 'invalid or missing fields',
   })
 })
+
+test('a record with a caller round-trips', () => {
+  const requests = [{ ...VALID.requests[0], caller: { key: 'k1', pairing: 'p1' } }]
+  expect(parseState({ ...VALID, requests }, 'telegram')).toEqual({
+    ok: true,
+    state: { requests, notifications: VALID.notifications },
+  })
+})
+
+test('a record without a caller still loads without one', () => {
+  const result = parseState(VALID, 'telegram')
+  expect(result.ok && Object.hasOwn(result.state.requests[0] ?? {}, 'caller')).toBe(false)
+})
+
+test('a caller without a pairing invalidates the file', () => {
+  const requests = [{ ...VALID.requests[0], caller: { key: 'k1' } }]
+  expect(parseState({ ...VALID, requests }, 'telegram')).toEqual({
+    ok: false,
+    reason: 'invalid or missing fields',
+  })
+})

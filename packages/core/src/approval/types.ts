@@ -7,6 +7,12 @@ export type Attachment = {
   readonly content: Uint8Array
 }
 
+/** Who asked: the API key and its pairing. Opaque to core; used for scoping and the audit log. */
+export type RequestCaller = {
+  readonly key: string
+  readonly pairing: string
+}
+
 /**
  * As produced by `parseApprovalRequest`: timeout is clamped; without `allowText`, `timeoutOption`
  * is in `options`.
@@ -26,6 +32,11 @@ export type ApprovalRequest = {
   readonly attachment: Attachment | undefined
   /** User id to send to; the daemon fills in the paired owner. Never set by `parseApprovalRequest`. */
   readonly recipient?: string
+  /**
+   * The API key that asked; only that key can read or cancel the question by id. Never set by
+   * `parseApprovalRequest`.
+   */
+  readonly caller?: RequestCaller
   /**
    * On timeout the message is finalized as `reasked` instead of `timedOut`; the result is still
    * `timedOut: true`. Never set by `parseApprovalRequest`.
@@ -156,6 +167,8 @@ export type RequestRecord = {
   readonly reference: unknown
   readonly text: string
   readonly spans?: readonly Span[]
+  /** Omitted for a request without a caller (and in files written before callers existed). */
+  readonly caller?: RequestCaller
 }
 
 /** Where in-flight requests are saved so a restart can expire them; calls must not throw. */
@@ -175,8 +188,16 @@ export type ApprovalServiceOptions = {
 /** Records what happened to each request; implementations must not throw. */
 export type AuditSink = {
   readonly asked: (id: string, request: SentRequest, at: Date) => void
-  /** `ending` is a `Settlement`, or `expired` from startup recovery. */
-  readonly settled: (id: string, ending: MessageEnding, at: Date) => void
+  /**
+   * `ending` is a `Settlement`, or `expired` from startup recovery; `caller` is the request's,
+   * undefined when it had none.
+   */
+  readonly settled: (
+    id: string,
+    ending: MessageEnding,
+    at: Date,
+    caller: RequestCaller | undefined,
+  ) => void
 }
 
 /** A pending request with its timeout timer and the resolver that settles it. */
@@ -203,13 +224,19 @@ export type OpenedRequest = {
 export type BackgroundEntry = {
   readonly state: RequestState
   readonly settled: Promise<RequestState>
+  /** Only this caller's key reads it; undefined for a question asked without one. */
+  readonly caller: RequestCaller | undefined
 }
 
-/** A settled request as kept in the service's in-memory history; `text` is the rendered text. */
+/**
+ * A settled request as kept in the service's in-memory history; `text` is the rendered text and
+ * `recipient` who it was sent to.
+ */
 export type HistoryEntry = {
   readonly text: string
   readonly settlement: Settlement
   readonly settledAt: Date
+  readonly recipient: string | undefined
 }
 
 /** An open request as listed to the owner, oldest first. */

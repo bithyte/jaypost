@@ -162,6 +162,61 @@ test('selectAuditEntries filters by since (inclusive) and exact project, then ke
   ).toEqual(['4'])
 })
 
+test('the entry takes key and pairing from the asked line', () => {
+  const raw =
+    asked('a', '2026-10-18T10:00:00.000Z', { key: 'k1', pairing: 'p1' }) +
+    asked('b', '2026-10-18T11:00:00.000Z') +
+    settled('a', '2026-10-18T10:00:05.000Z', 'answered', 'Approve')
+  const { entries, skippedCount } = parseAuditLog(raw, NOW)
+  expect(skippedCount).toBe(0)
+  expect(entries[0]).toEqual({
+    id: 'a',
+    askedAt: '2026-10-18T10:00:00.000Z',
+    text: 'question a',
+    options: ['Approve', 'Decline'],
+    timeoutOption: 'Decline',
+    timeoutSeconds: 300,
+    status: 'answered',
+    answer: 'Approve',
+    settledAt: '2026-10-18T10:00:05.000Z',
+    key: 'k1',
+    pairing: 'p1',
+  })
+  expect(Object.hasOwn(entries[1] ?? {}, 'key')).toBe(false)
+  expect(Object.hasOwn(entries[1] ?? {}, 'pairing')).toBe(false)
+})
+
+test('an asked line with a non-string key is skipped', () => {
+  const raw = asked('a', '2026-10-18T10:00:00.000Z', { key: 7 })
+  expect(parseAuditLog(raw, NOW)).toEqual({ entries: [], skippedCount: 1 })
+})
+
+test('selectAuditEntries filters by key and pairing, and unkeyedAs claims old lines', () => {
+  const askedAt = '2026-10-18T10:00:00.000Z'
+  const entries: AuditEntry[] = [
+    { ...entry('a', askedAt), key: 'k1', pairing: 'p1' },
+    { ...entry('b', askedAt), key: 'k2', pairing: 'p2' },
+    entry('c', askedAt),
+  ]
+  const ids = (filter: Parameters<typeof selectAuditEntries>[1]) =>
+    selectAuditEntries(entries, filter).map((item) => item.id)
+  expect(ids({ key: 'k1' })).toEqual(['a'])
+  expect(ids({ key: 'k1', unkeyedAs: 'k1' })).toEqual(['a', 'c'])
+  expect(ids({ key: 'k2', unkeyedAs: 'k1' })).toEqual(['b'])
+  expect(ids({ pairing: 'p2' })).toEqual(['b'])
+  expect(ids({ unkeyedAs: 'k1' })).toEqual(['a', 'b', 'c'])
+})
+
+test('selectAuditEntries filters by bot', () => {
+  const askedAt = '2026-10-18T10:00:00.000Z'
+  const entries: AuditEntry[] = [
+    { ...entry('a', askedAt), bot: 'b1' },
+    { ...entry('b', askedAt), bot: 'b2' },
+    entry('c', askedAt),
+  ]
+  expect(selectAuditEntries(entries, { bot: 'b2' }).map((item) => item.id)).toEqual(['b'])
+})
+
 test('parseSince accepts 30m, 12h and 7d', () => {
   expect(parseSince('30m', NOW)).toEqual(new Date(NOW.getTime() - 30 * 60_000))
   expect(parseSince('12h', NOW)).toEqual(new Date(NOW.getTime() - 12 * 3_600_000))

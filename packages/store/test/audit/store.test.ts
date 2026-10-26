@@ -52,6 +52,7 @@ test('writes the asked and settled lines exactly', () => {
     '5f0c',
     { kind: 'answered', answer: 'Approve' },
     new Date('2026-10-18T21:41:52.004Z'),
+    undefined,
   )
   expect(readFileSync(path, 'utf8')).toBe(
     '{"v":1,"event":"asked","id":"5f0c","at":"2026-10-18T21:41:07.312Z","project":"deploy","text":"Force-push main?","options":["Approve","Decline"],"timeoutOption":"Decline","timeoutSeconds":300}\n' +
@@ -59,11 +60,31 @@ test('writes the asked and settled lines exactly', () => {
   )
 })
 
+test('asked and settled lines carry key and pairing when the request has a caller', () => {
+  const audit = new AuditLog(path, { log })
+  const caller = { key: 'k1', pairing: 'p1' }
+  audit.asked('5f0c', { ...REQUEST, caller }, AT)
+  audit.settled('5f0c', { kind: 'answered', answer: 'Approve' }, AT, caller)
+  audit.asked('6a1d', REQUEST, AT)
+  audit.settled('6a1d', { kind: 'cancelled' }, AT, undefined)
+  const [keyedAsked, keyedSettled, plainAsked, plainSettled] = lines(path).map(
+    (line) => JSON.parse(line) as Record<string, unknown>,
+  )
+  expect(keyedAsked).toMatchObject({ event: 'asked', id: '5f0c', key: 'k1', pairing: 'p1' })
+  expect(keyedSettled).toMatchObject({ event: 'settled', id: '5f0c', key: 'k1', pairing: 'p1' })
+  for (const record of [plainAsked, plainSettled]) {
+    expect(record).toMatchObject({ id: '6a1d' })
+    expect(Object.hasOwn(record ?? {}, 'key')).toBe(false)
+    expect(Object.hasOwn(record ?? {}, 'pairing')).toBe(false)
+    expect(Object.hasOwn(record ?? {}, 'caller')).toBe(false)
+  }
+})
+
 test('omits project for a request without one and answer for cancelled', () => {
   const audit = new AuditLog(path, { log })
   const { project: _project, ...bare } = REQUEST
   audit.asked('a', bare, AT)
-  audit.settled('a', { kind: 'cancelled' }, AT)
+  audit.settled('a', { kind: 'cancelled' }, AT, undefined)
   const [asked, settled] = lines(path).map((line) => JSON.parse(line))
   expect(asked).not.toHaveProperty('project')
   expect(settled).toEqual({
@@ -86,7 +107,7 @@ test('rotates to .1 when the next line would pass maxBytes, replacing an older .
   writeFileSync(`${path}.1`, 'stale\n')
   const audit = new AuditLog(path, { log, maxBytes: 300 })
   for (const id of ['a', 'b', 'c', 'd']) {
-    audit.settled(id, { kind: 'cancelled' }, AT)
+    audit.settled(id, { kind: 'cancelled' }, AT, undefined)
   }
   const rotated = readFileSync(`${path}.1`, 'utf8')
   expect(rotated).not.toContain('stale')
@@ -99,7 +120,7 @@ test('rotates to .1 when the next line would pass maxBytes, replacing an older .
 
 test('takes the starting size from the existing file', () => {
   writeFileSync(path, 'x'.repeat(249) + '\n')
-  new AuditLog(path, { log, maxBytes: 300 }).settled('a', { kind: 'cancelled' }, AT)
+  new AuditLog(path, { log, maxBytes: 300 }).settled('a', { kind: 'cancelled' }, AT, undefined)
   expect(readFileSync(`${path}.1`, 'utf8')).toBe('x'.repeat(249) + '\n')
   expect(lines(path)).toHaveLength(1)
 })
@@ -114,9 +135,9 @@ test('a file deleted by hand is recreated and its line kept, even when a rotatio
   const audit = new AuditLog(path, { log, maxBytes: 250 })
   audit.asked('a', REQUEST, AT)
   removeAuditFiles(path)
-  audit.settled('b', { kind: 'cancelled' }, AT)
-  audit.settled('c', { kind: 'cancelled' }, AT)
-  audit.settled('d', { kind: 'cancelled' }, AT)
+  audit.settled('b', { kind: 'cancelled' }, AT, undefined)
+  audit.settled('c', { kind: 'cancelled' }, AT, undefined)
+  audit.settled('d', { kind: 'cancelled' }, AT, undefined)
   expect(log).not.toHaveBeenCalled()
   const ids = [...(existsSync(`${path}.1`) ? lines(`${path}.1`) : []), ...lines(path)].map(
     (line) => JSON.parse(line).id,

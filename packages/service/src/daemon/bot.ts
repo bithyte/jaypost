@@ -153,7 +153,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     listPaired: () => (owner === undefined ? [] : [owner]),
     commands: [...OWNER_COMMANDS, ...QUIET_COMMANDS],
     command: (name, argument) =>
-      runOwnerCommand(service, name, argument, {
+      runOwnerCommand(service, name, argument, owner, {
         now: () => new Date(),
         maxTextLength: provider.maxTextLength,
       }) ?? quiet.handleCommand(name, argument),

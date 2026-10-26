@@ -35,9 +35,11 @@ import type {
 export class SendError extends Error {}
 
 /**
- * Sends each request to the owner and waits for an answer (tap or typed reply), the timeout or an
- * abort. Background questions from `start` stay readable by id until `RESULT_TTL_MS` after they
- * settle. Also keeps the last `HISTORY_LIMIT` settled requests in memory.
+ * Sends each request to its recipient and waits for an answer (tap or typed reply), the timeout or
+ * an abort. Background questions from `start` stay readable by id, by the key that asked, until
+ * `RESULT_TTL_MS` after they settle. Also keeps the last `HISTORY_LIMIT` settled requests in memory.
+ * Scoping is strict: a `key` matches `request.caller?.key` and a `recipient` matches
+ * `request.recipient`, so `undefined` only matches questions without one.
  */
 export class ApprovalService {
   #messenger: Messenger
@@ -150,31 +152,40 @@ export class ApprovalService {
     const settled = opened.settlement.then((settlement) => {
       const state = ApprovalService.#toRequestState(settlement)
       // Recorded before the final edit, so a read right after a settle never sees an unknown id.
-      this.#background.set(opened.id, { state, settled })
+      this.#background.set(opened.id, { state, settled, caller: opened.request.caller })
       this.#finishBackground(opened, settlement).catch((error) =>
         this.#logError('failed to finish background request', error),
       )
       return state
     })
-    this.#background.set(opened.id, { state: { kind: 'pending', expiresAt }, settled })
+    this.#background.set(opened.id, {
+      state: { kind: 'pending', expiresAt },
+      settled,
+      caller: opened.request.caller,
+    })
     return { id: opened.id, expiresAt }
   }
 
-  /** A background question's state; undefined for unknown, blocking or expired ids. */
-  get(id: string): RequestState | undefined {
-    return this.#background.get(id)?.state
+  /**
+   * A background question's state; undefined for unknown, blocking or expired ids, and for ids
+   * asked with another key.
+   */
+  get(id: string, key: string | undefined): RequestState | undefined {
+    return this.#findBackground(id, key)?.state
   }
 
   /**
    * Resolves with the current state once the question settles, `waitMs` passes or `signal` aborts,
-   * whichever comes first. Aborting never cancels the question. Undefined for unknown ids.
+   * whichever comes first. Aborting never cancels the question. Undefined for unknown ids and ids
+   * asked with another key.
    */
   async waitFor(
     id: string,
+    key: string | undefined,
     waitMs: number,
     signal?: AbortSignal,
   ): Promise<RequestState | undefined> {
-    const entry = this.#background.get(id)
+    const entry = this.#findBackground(id, key)
     if (entry === undefined || entry.state.kind !== 'pending' || signal?.aborted) {
       return entry?.state
     }
@@ -186,15 +197,16 @@ export class ApprovalService {
     await promise
     clearTimeout(timer)
     signal?.removeEventListener('abort', stopWaiting)
-    return this.get(id)
+    return this.get(id, key)
   }
 
   /**
    * Cancels a pending background question and resolves with `cancelled` once that's recorded, not
-   * waiting for the final edit. A settled one keeps its state; undefined for unknown ids.
+   * waiting for the final edit. A settled one keeps its state; undefined for unknown ids and ids
+   * asked with another key.
    */
-  async cancel(id: string): Promise<RequestState | undefined> {
-    const entry = this.#background.get(id)
+  async cancel(id: string, key: string | undefined): Promise<RequestState | undefined> {
+    const entry = this.#findBackground(id, key)
     if (entry === undefined) {
       return undefined
     }
@@ -215,25 +227,39 @@ export class ApprovalService {
     return this.#pending.reply(id, text) ? 'accepted' : 'expired'
   }
 
-  /** Open requests, oldest first. */
-  listPending(): readonly PendingSummary[] {
-    return this.#pending.list()
+  /** Open requests sent to `recipient`, oldest first. */
+  listPending(recipient: string | undefined): readonly PendingSummary[] {
+    return this.#pending.list().filter((summary) => summary.request.recipient === recipient)
   }
 
   /**
-   * Settles every open request as rejected with its timeout option; callers get `timedOut: false`.
-   * Returns what it rejected, oldest first.
+   * Settles every open request sent to `recipient` as rejected with its timeout option; callers get
+   * `timedOut: false`. Returns what it rejected, oldest first.
    */
-  rejectAll(): readonly PendingSummary[] {
-    return this.#pending.rejectAll()
+  rejectAll(recipient: string | undefined): readonly PendingSummary[] {
+    return this.#pending.rejectAll((request) => request.recipient === recipient)
   }
 
-  /** The last `count` settled requests, newest first; empty for `count <= 0`. Never throws. */
-  history(count: number): readonly HistoryEntry[] {
+  /**
+   * Settles every open question asked with `key` (votes included) as rejected with its timeout
+   * option. Returns what it rejected, oldest first.
+   */
+  rejectForKey(key: string): readonly PendingSummary[] {
+    return this.#pending.rejectAll((request) => request.caller?.key === key)
+  }
+
+  /**
+   * The last `count` settled requests sent to `recipient`, newest first; empty for `count <= 0`.
+   * Never throws.
+   */
+  history(count: number, recipient: string | undefined): readonly HistoryEntry[] {
     if (!(count > 0)) {
       return []
     }
-    return this.#history.slice(-count).toReversed()
+    return this.#history
+      .filter((entry) => entry.recipient === recipient)
+      .slice(-count)
+      .toReversed()
   }
 
   /**
@@ -244,7 +270,7 @@ export class ApprovalService {
     for (const record of records) {
       const message = { text: record.text, spans: record.spans ?? [] }
       const endedAt = this.#now()
-      this.#audit?.settled(record.id, EXPIRED_ENDING, endedAt)
+      this.#audit?.settled(record.id, EXPIRED_ENDING, endedAt, record.caller)
       await this.#finalize(
         record.reference,
         formatFinalText(message, EXPIRED_ENDING, endedAt),
@@ -277,6 +303,7 @@ export class ApprovalService {
         reference,
         text: sent.message.text,
         ...(sent.message.spans.length > 0 && { spans: sent.message.spans }),
+        ...(sent.caller === undefined ? {} : { caller: sent.caller }),
       })
     }
     const openedAt = this.#now()
@@ -320,8 +347,13 @@ export class ApprovalService {
     settlement: Settlement,
   ): Promise<FormattedText> {
     const settledAt = this.#now()
-    this.#audit?.settled(id, settlement, settledAt)
-    this.#history.push({ text: request.message.text, settlement, settledAt })
+    this.#audit?.settled(id, settlement, settledAt, request.caller)
+    this.#history.push({
+      text: request.message.text,
+      settlement,
+      settledAt,
+      recipient: request.recipient,
+    })
     if (this.#history.length > HISTORY_LIMIT) {
       this.#history.shift()
     }
@@ -342,6 +374,11 @@ export class ApprovalService {
     } finally {
       setTimeout(() => this.#background.delete(opened.id), RESULT_TTL_MS).unref()
     }
+  }
+
+  #findBackground(id: string, key: string | undefined): BackgroundEntry | undefined {
+    const entry = this.#background.get(id)
+    return entry?.caller?.key === key ? entry : undefined
   }
 
   async #finalize(

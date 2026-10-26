@@ -32,6 +32,7 @@ export type {
   MessageReference,
   Messenger,
   OwnerCommand,
+  RequestCaller,
   RequestRecord,
   RequestResult,
   RequestState,

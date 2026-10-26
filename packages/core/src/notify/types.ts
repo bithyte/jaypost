@@ -58,8 +58,8 @@ export type NotificationStore = {
 
 /** Where quiet periods come from; `QuietService` satisfies it structurally. */
 export type QuietSource = {
-  /** When the current quiet period ends, or undefined when not quiet. */
-  readonly quietUntil: () => Date | undefined
+  /** When `recipient`'s current quiet period ends, or undefined when they're not quiet. */
+  readonly quietUntil: (recipient: string | undefined) => Date | undefined
 }
 
 /**

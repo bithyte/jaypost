@@ -50,7 +50,7 @@ export class NotificationService {
    */
   async notify(request: NotifyRequest, recipient: string | undefined): Promise<void> {
     const id = this.#newId()
-    const quietEnd = this.#quiet?.quietUntil()
+    const quietEnd = this.#quiet?.quietUntil(recipient)
     let reference
     try {
       reference = await this.#notifier.sendNotification(

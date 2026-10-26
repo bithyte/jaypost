@@ -72,11 +72,11 @@ export class PendingRequests {
   }
 
   /**
-   * Settles every open request as rejected with its timeout option, and returns what it rejected,
-   * oldest first.
+   * Settles every open request that `matches` (all of them without it) as rejected with its timeout
+   * option, and returns what it rejected, oldest first.
    */
-  rejectAll(): readonly PendingSummary[] {
-    const rejected = this.list()
+  rejectAll(matches: (request: SentRequest) => boolean = () => true): readonly PendingSummary[] {
+    const rejected = this.list().filter((summary) => matches(summary.request))
     for (const { id, request } of rejected) {
       this.#settle(id, { kind: 'rejected', answer: request.timeoutOption })
     }

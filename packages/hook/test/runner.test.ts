@@ -973,7 +973,7 @@ test('without --timeout a stop waits an hour', async () => {
   const pending = runHook({}, deps)
   await waitFor(() => messenger.sent.length === 1)
   const id = messenger.sent[0]?.id ?? ''
-  const state = service.get(id)
+  const state = service.get(id, undefined)
   expect(state?.kind).toBe('pending')
   const expiresInMs = state?.kind === 'pending' ? state.expiresAt.getTime() - Date.now() : 0
   expect(expiresInMs).toBeGreaterThan(3590_000)

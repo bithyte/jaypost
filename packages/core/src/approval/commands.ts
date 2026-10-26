@@ -18,26 +18,32 @@ function parseHistoryCount(argument: string): number | undefined {
 }
 
 /**
- * Reply text for an owner command, or undefined for a name it doesn't know; never throws.
- * `/cancel` rejects every open request as a side effect.
+ * Reply text for an owner command, or undefined for a name it doesn't know; never throws. Each
+ * command only covers questions sent to `recipient`. `/cancel` rejects every open one as a side
+ * effect.
  */
 export function runOwnerCommand(
   service: ApprovalService,
   name: string,
   argument: string,
+  recipient: string | undefined,
   options: OwnerCommandOptions,
 ): string | undefined {
   switch (name) {
     case 'pending':
-      return formatPendingReply(service.listPending(), options.now(), options.maxTextLength)
+      return formatPendingReply(
+        service.listPending(recipient),
+        options.now(),
+        options.maxTextLength,
+      )
     case 'cancel':
-      return formatRejectedReply(service.rejectAll(), options.maxTextLength)
+      return formatRejectedReply(service.rejectAll(recipient), options.maxTextLength)
     case 'history': {
       const count = parseHistoryCount(argument)
       if (count === undefined) {
         return HISTORY_USAGE
       }
-      return formatHistoryReply(service.history(count), options.maxTextLength)
+      return formatHistoryReply(service.history(count, recipient), options.maxTextLength)
     }
     default:
       return undefined

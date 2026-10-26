@@ -26,6 +26,7 @@ export const stateFileSchema = z.object({
       reference: referenceSchema,
       text: z.string(),
       spans: z.array(spanSchema).optional(),
+      caller: z.object({ key: z.string(), pairing: z.string() }).optional(),
     }),
   ),
   notifications: z.array(

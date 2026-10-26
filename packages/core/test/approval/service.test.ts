@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import type { FormattedText } from '../../src/format/index.ts'
-import { ApprovalService, RESULT_TTL_MS, SendError } from '../../src/approval/index.ts'
+import { ApprovalService, RESULT_TTL_MS, runVote, SendError } from '../../src/approval/index.ts'
 import type {
   ApprovalRequest,
   Attachment,
@@ -8,8 +8,10 @@ import type {
   MessageEnding,
   MessageReference,
   Messenger,
+  RequestCaller,
   RequestRecord,
   RequestState,
+  SentRequest,
 } from '../../src/approval/index.ts'
 
 const at = new Date(2026, 0, 1, 9, 5)
@@ -316,7 +318,7 @@ test('rejectAll resolves completed with timedOut false and finalizes with the re
   const { m, svc } = setup()
   const r = svc.request(req)
   await flush()
-  expect(svc.rejectAll().map((summary) => summary.id)).toEqual(['id1'])
+  expect(svc.rejectAll(undefined).map((summary) => summary.id)).toEqual(['id1'])
   await expect(r).resolves.toEqual({
     kind: 'completed',
     outcome: { answer: 'Decline', timedOut: false },
@@ -328,7 +330,7 @@ test('listPending shows open requests with openedAt', async () => {
   const { svc } = setup()
   void svc.request(req)
   await flush()
-  expect(svc.listPending()).toEqual([{ id: 'id1', request: req, openedAt: at }])
+  expect(svc.listPending(undefined)).toEqual([{ id: 'id1', request: req, openedAt: at }])
 })
 
 test('history records every kind newest first', async () => {
@@ -349,20 +351,20 @@ test('history records every kind newest first', async () => {
   await timedOut
   const rejected = svc.request(req)
   await flush()
-  svc.rejectAll()
+  svc.rejectAll(undefined)
   await rejected
   const controller = new AbortController()
   const cancelled = svc.request(req, controller.signal)
   await flush()
   controller.abort()
   await cancelled
-  expect(svc.history(10).map((entry) => entry.settlement.kind)).toEqual([
+  expect(svc.history(10, undefined).map((entry) => entry.settlement.kind)).toEqual([
     'cancelled',
     'rejected',
     'timedOut',
     'answered',
   ])
-  expect(svc.history(10)[0]).toEqual({
+  expect(svc.history(10, undefined)[0]).toEqual({
     text: 'Deploy?',
     settlement: { kind: 'cancelled' },
     settledAt: at,
@@ -383,12 +385,12 @@ test('history keeps the last 20 and honours count', async () => {
     svc.tap(`id${index + 1}`, 0)
     await result
   }
-  const entries = svc.history(50)
+  const entries = svc.history(50, undefined)
   expect(entries).toHaveLength(20)
   expect(entries[0]?.text).toBe('q20')
   expect(entries.at(-1)?.text).toBe('q1')
-  expect(svc.history(2).map((entry) => entry.text)).toEqual(['q20', 'q19'])
-  expect(svc.history(0)).toEqual([])
+  expect(svc.history(2, undefined).map((entry) => entry.text)).toEqual(['q20', 'q19'])
+  expect(svc.history(0, undefined)).toEqual([])
 })
 
 test('history entry and final text share one clock read', async () => {
@@ -403,7 +405,7 @@ test('history entry and final text share one clock read', async () => {
   await flush()
   svc.tap('id1', 0)
   await result
-  const [entry] = svc.history(1)
+  const [entry] = svc.history(1, undefined)
   expect(entry?.settledAt).toEqual(new Date(2026, 0, 1, 9, 2))
   expect(m.finalized[0]?.text).toBe('Deploy?\n\n✅ Approve, 09:02')
   expect(calls).toBe(2)
@@ -419,7 +421,7 @@ test('history is recorded even when there is no finalize', async () => {
   await flush()
   svc.tap('id1', 1)
   await result
-  expect(svc.history(1)).toEqual([
+  expect(svc.history(1, undefined)).toEqual([
     { text: 'Deploy?', settlement: { kind: 'answered', answer: 'Decline' }, settledAt: at },
   ])
 })
@@ -588,7 +590,7 @@ test('reply to a buttons-only request is expired and leaves it open', async () =
   void svc.request(req)
   await flush()
   expect(svc.reply('id1', 'x')).toBe('expired')
-  expect(svc.listPending()).toHaveLength(1)
+  expect(svc.listPending(undefined)).toHaveLength(1)
   expect(svc.tap('id1', 0)).toBe('accepted')
 })
 
@@ -611,7 +613,7 @@ test('first answer wins between reply, tap, timeout and rejectAll', async () => 
   const fourth = setup()
   void fourth.svc.request(textReq)
   await flush()
-  fourth.svc.rejectAll()
+  fourth.svc.rejectAll(undefined)
   expect(fourth.svc.reply('id1', 'x')).toBe('expired')
   expect(fourth.svc.reply('unknown', 'x')).toBe('expired')
 })
@@ -655,7 +657,7 @@ test('audit records settled for timeout, abort and rejectAll', async () => {
   await cancelled
   const rejected = svc.request(req)
   await flush()
-  svc.rejectAll()
+  svc.rejectAll(undefined)
   await rejected
   expect(events.filter((event) => event[0] === 'settled').map((event) => event[2])).toEqual([
     { kind: 'timedOut', answer: 'Decline' },
@@ -722,7 +724,7 @@ test('start sends and returns the id and expiry without waiting', async () => {
   const { m, svc } = setup()
   await expect(svc.start(req)).resolves.toEqual({ id: 'id1', expiresAt })
   expect(m.sent).toHaveLength(1)
-  expect(svc.get('id1')).toEqual(PENDING_STATE)
+  expect(svc.get('id1', undefined)).toEqual(PENDING_STATE)
 })
 
 test('a tap settles a started request as done', async () => {
@@ -730,7 +732,7 @@ test('a tap settles a started request as done', async () => {
   await svc.start(req)
   expect(svc.tap('id1', 0)).toBe('accepted')
   await flush()
-  expect(svc.get('id1')).toEqual(APPROVED_STATE)
+  expect(svc.get('id1', undefined)).toEqual(APPROVED_STATE)
   expect(m.finalized).toEqual([
     {
       ref: m.ref,
@@ -744,7 +746,7 @@ test('a started request times out as done with timedOut', async () => {
   const { m, svc } = setup()
   await svc.start(req)
   await vi.advanceTimersByTimeAsync(30_000)
-  expect(svc.get('id1')).toEqual({
+  expect(svc.get('id1', undefined)).toEqual({
     kind: 'done',
     outcome: { answer: 'Decline', timedOut: true },
   })
@@ -754,7 +756,7 @@ test('a started request times out as done with timedOut', async () => {
 test('waitFor resolves when the request settles', async () => {
   const { svc } = setup()
   await svc.start(req)
-  const waiting = svc.waitFor('id1', 60_000)
+  const waiting = svc.waitFor('id1', undefined, 60_000)
   svc.tap('id1', 0)
   expect(await waiting).toEqual(APPROVED_STATE)
 })
@@ -762,7 +764,7 @@ test('waitFor resolves when the request settles', async () => {
 test('waitFor resolves pending after waitMs', async () => {
   const { svc } = setup()
   await svc.start(req)
-  const waiting = svc.waitFor('id1', 5_000)
+  const waiting = svc.waitFor('id1', undefined, 5_000)
   await vi.advanceTimersByTimeAsync(5_000)
   expect(await waiting).toEqual(PENDING_STATE)
   // only the question's own timeout is left
@@ -774,7 +776,7 @@ test('waitFor on a settled request resolves its state at once', async () => {
   await svc.start(req)
   svc.tap('id1', 0)
   await flush()
-  expect(await svc.waitFor('id1', 60_000)).toEqual(APPROVED_STATE)
+  expect(await svc.waitFor('id1', undefined, 60_000)).toEqual(APPROVED_STATE)
 })
 
 test('an aborted waitFor leaves the request pending', async () => {
@@ -782,21 +784,21 @@ test('an aborted waitFor leaves the request pending', async () => {
   await svc.start(req)
   const controller = new AbortController()
   const remove = vi.spyOn(controller.signal, 'removeEventListener')
-  const waiting = svc.waitFor('id1', 60_000, controller.signal)
+  const waiting = svc.waitFor('id1', undefined, 60_000, controller.signal)
   controller.abort()
   expect(await waiting).toEqual(PENDING_STATE)
-  expect(svc.get('id1')).toEqual(PENDING_STATE)
+  expect(svc.get('id1', undefined)).toEqual(PENDING_STATE)
   expect(m.finalized).toEqual([])
   expect(remove).toHaveBeenCalledWith('abort', expect.any(Function))
   expect(vi.getTimerCount()).toBe(1)
-  expect(await svc.waitFor('id1', 60_000, AbortSignal.abort())).toEqual(PENDING_STATE)
+  expect(await svc.waitFor('id1', undefined, 60_000, AbortSignal.abort())).toEqual(PENDING_STATE)
 })
 
 test('cancel settles a pending request and get sees it at once', async () => {
   const { m, svc } = setup()
   await svc.start(req)
-  await expect(svc.cancel('id1')).resolves.toEqual({ kind: 'cancelled' })
-  expect(svc.get('id1')).toEqual({ kind: 'cancelled' })
+  await expect(svc.cancel('id1', undefined)).resolves.toEqual({ kind: 'cancelled' })
+  expect(svc.get('id1', undefined)).toEqual({ kind: 'cancelled' })
   await flush()
   expect(m.finalized).toEqual([
     {
@@ -817,13 +819,13 @@ test('cancel resolves and get stays known while the final edit is in flight', as
     })
   }
   await svc.start(req)
-  await expect(svc.cancel('id1')).resolves.toEqual({ kind: 'cancelled' })
+  await expect(svc.cancel('id1', undefined)).resolves.toEqual({ kind: 'cancelled' })
   expect(m.finalized).toHaveLength(1)
-  expect(svc.get('id1')).toEqual({ kind: 'cancelled' })
-  expect(svc.history(1)).toHaveLength(1)
+  expect(svc.get('id1', undefined)).toEqual({ kind: 'cancelled' })
+  expect(svc.history(1, undefined)).toHaveLength(1)
   finishEdit()
   await flush()
-  expect(svc.get('id1')).toEqual({ kind: 'cancelled' })
+  expect(svc.get('id1', undefined)).toEqual({ kind: 'cancelled' })
 })
 
 test('cancel on a settled request changes nothing', async () => {
@@ -831,28 +833,28 @@ test('cancel on a settled request changes nothing', async () => {
   await svc.start(req)
   svc.tap('id1', 0)
   await flush()
-  await expect(svc.cancel('id1')).resolves.toEqual(APPROVED_STATE)
-  expect(svc.get('id1')).toEqual(APPROVED_STATE)
+  await expect(svc.cancel('id1', undefined)).resolves.toEqual(APPROVED_STATE)
+  expect(svc.get('id1', undefined)).toEqual(APPROVED_STATE)
   expect(m.finalized).toHaveLength(1)
 })
 
 test('cancel and get on an unknown id return undefined', async () => {
   const { svc } = setup()
-  expect(svc.get('nope')).toBeUndefined()
-  await expect(svc.cancel('nope')).resolves.toBeUndefined()
-  await expect(svc.waitFor('nope', 1_000)).resolves.toBeUndefined()
+  expect(svc.get('nope', undefined)).toBeUndefined()
+  await expect(svc.cancel('nope', undefined)).resolves.toBeUndefined()
+  await expect(svc.waitFor('nope', undefined, 1_000)).resolves.toBeUndefined()
 })
 
 test('blocking requests are not readable by id', async () => {
   const { svc } = setup()
   const result = svc.request(req)
   await flush()
-  expect(svc.get('id1')).toBeUndefined()
-  await expect(svc.cancel('id1')).resolves.toBeUndefined()
-  await expect(svc.waitFor('id1', 1_000)).resolves.toBeUndefined()
+  expect(svc.get('id1', undefined)).toBeUndefined()
+  await expect(svc.cancel('id1', undefined)).resolves.toBeUndefined()
+  await expect(svc.waitFor('id1', undefined, 1_000)).resolves.toBeUndefined()
   expect(svc.tap('id1', 0)).toBe('accepted')
   await result
-  expect(svc.get('id1')).toBeUndefined()
+  expect(svc.get('id1', undefined)).toBeUndefined()
 })
 
 test('settled results are forgotten after 24 h', async () => {
@@ -861,24 +863,24 @@ test('settled results are forgotten after 24 h', async () => {
   svc.tap('id1', 0)
   await flush()
   await vi.advanceTimersByTimeAsync(RESULT_TTL_MS - 1)
-  expect(svc.get('id1')).toEqual(APPROVED_STATE)
+  expect(svc.get('id1', undefined)).toEqual(APPROVED_STATE)
   await vi.advanceTimersByTimeAsync(1)
-  expect(svc.get('id1')).toBeUndefined()
-  await expect(svc.cancel('id1')).resolves.toBeUndefined()
+  expect(svc.get('id1', undefined)).toBeUndefined()
+  await expect(svc.cancel('id1', undefined)).resolves.toBeUndefined()
 })
 
 test('rejectAll settles a started request with the timeout option', async () => {
   const { m, svc } = setup()
   await svc.start(req)
-  expect(svc.listPending()).toEqual([{ id: 'id1', request: req, openedAt: at }])
-  expect(svc.rejectAll().map((summary) => summary.id)).toEqual(['id1'])
+  expect(svc.listPending(undefined)).toEqual([{ id: 'id1', request: req, openedAt: at }])
+  expect(svc.rejectAll(undefined).map((summary) => summary.id)).toEqual(['id1'])
   await flush()
-  expect(svc.get('id1')).toEqual({
+  expect(svc.get('id1', undefined)).toEqual({
     kind: 'done',
     outcome: { answer: 'Decline', timedOut: false },
   })
-  expect(svc.listPending()).toEqual([])
-  expect(svc.history(1)).toEqual([
+  expect(svc.listPending(undefined)).toEqual([])
+  expect(svc.history(1, undefined)).toEqual([
     { text: 'Deploy?', settlement: { kind: 'rejected', answer: 'Decline' }, settledAt: at },
   ])
   expect(m.finalized[0]?.text).toBe('Deploy?\n\n⛔ Rejected, Decline, 09:05')
@@ -900,8 +902,8 @@ test('start send failure throws SendError and leaves nothing pending', async () 
   const { m, svc, store } = setupWithStore()
   m.sendError = new Error('network down')
   await expect(svc.start(req)).rejects.toBeInstanceOf(SendError)
-  expect(svc.get('id1')).toBeUndefined()
-  expect(svc.listPending()).toEqual([])
+  expect(svc.get('id1', undefined)).toBeUndefined()
+  expect(svc.listPending(undefined)).toEqual([])
   expect(store.added).toEqual([])
   expect(vi.getTimerCount()).toBe(0)
 })
@@ -924,7 +926,7 @@ test('a pending request does not hold its attachment after the send', async () =
   const { svc } = setup()
   const pending = svc.request({ ...req, attachment: ATTACHMENT })
   await flush()
-  const [summary] = svc.listPending()
+  const [summary] = svc.listPending(undefined)
   expect(summary !== undefined && Object.hasOwn(summary.request, 'attachment')).toBe(false)
   svc.tap('id1', 0)
   await pending
@@ -933,7 +935,7 @@ test('a pending request does not hold its attachment after the send', async () =
 test('a background question does not hold its attachment after the send', async () => {
   const { svc } = setup()
   await svc.start({ ...req, attachment: ATTACHMENT })
-  const [summary] = svc.listPending()
+  const [summary] = svc.listPending(undefined)
   expect(summary !== undefined && Object.hasOwn(summary.request, 'attachment')).toBe(false)
   svc.tap('id1', 0)
   await flush()
@@ -1002,4 +1004,165 @@ test('a re-asked request finalizes as reasked but reports a timeout', async () =
   })
   expect(m.finalized[0]?.settlement).toEqual({ kind: 'reasked' })
   expect(m.finalized[0]?.text).toBe('Deploy?\n\n🔁 Re-asked, 09:05')
+})
+
+const CALLER_1: RequestCaller = { key: 'k1', pairing: 'p1' }
+const CALLER_2: RequestCaller = { key: 'k2', pairing: 'p2' }
+
+function setupCounting(
+  options: { audit?: AuditSink; store?: ReturnType<typeof createStore> } = {},
+) {
+  const m = new FakeMessenger()
+  let counter = 0
+  const svc = new ApprovalService(
+    m,
+    () => at,
+    () => `id${(counter += 1)}`,
+    options,
+  )
+  return { m, svc }
+}
+
+test("get, waitFor and cancel don't see another key's background question", async () => {
+  const { svc } = setup()
+  const { id } = await svc.start({ ...req, caller: CALLER_1 })
+  expect(svc.get(id, 'k2')).toBeUndefined()
+  expect(svc.get(id, undefined)).toBeUndefined()
+  await expect(svc.waitFor(id, 'k2', 1_000)).resolves.toBeUndefined()
+  expect(await svc.cancel(id, 'k2')).toBeUndefined()
+  expect(svc.get(id, 'k1')).toEqual({ kind: 'pending', expiresAt: expect.any(Date) })
+  expect(svc.listPending(undefined).map((summary) => summary.id)).toEqual([id])
+  await expect(svc.cancel(id, 'k1')).resolves.toEqual({ kind: 'cancelled' })
+})
+
+test("a key can't see a background question asked without a key", async () => {
+  const { svc } = setup()
+  const { id } = await svc.start(req)
+  expect(svc.get(id, 'k1')).toBeUndefined()
+  expect(svc.get(id, undefined)).toEqual(PENDING_STATE)
+})
+
+test('pending, cancel and history only cover the given recipient', async () => {
+  const { svc } = setupCounting()
+  const toA = svc.request({ ...req, recipient: 'A' })
+  const toB = svc.request({ ...req, recipient: 'B' })
+  await flush()
+  expect(svc.listPending('A').map((summary) => summary.id)).toEqual(['id1'])
+  expect(svc.listPending('B').map((summary) => summary.id)).toEqual(['id2'])
+  expect(svc.listPending(undefined)).toEqual([])
+  expect(svc.rejectAll('A').map((summary) => summary.id)).toEqual(['id1'])
+  await expect(toA).resolves.toEqual({
+    kind: 'completed',
+    outcome: { answer: 'Decline', timedOut: false },
+  })
+  expect(svc.listPending('B').map((summary) => summary.id)).toEqual(['id2'])
+  expect(svc.history(10, 'A')).toEqual([
+    {
+      text: 'Deploy?',
+      settlement: { kind: 'rejected', answer: 'Decline' },
+      settledAt: at,
+      recipient: 'A',
+    },
+  ])
+  expect(svc.history(10, 'B')).toEqual([])
+  expect(svc.history(10, undefined)).toEqual([])
+  svc.tap('id2', 0)
+  await toB
+  expect(svc.history(10, 'B').map((entry) => entry.settlement)).toEqual([
+    { kind: 'answered', answer: 'Approve' },
+  ])
+})
+
+test('history keeps the last count entries of the given recipient', async () => {
+  const { svc } = setupCounting()
+  for (const [index, recipient] of ['A', 'B', 'A', 'B', 'A'].entries()) {
+    const result = svc.request({ ...req, message: { text: `q${index}`, spans: [] }, recipient })
+    await flush()
+    svc.tap(`id${index + 1}`, 0)
+    await result
+  }
+  expect(svc.history(2, 'A').map((entry) => entry.text)).toEqual(['q4', 'q2'])
+  expect(svc.history(5, 'B').map((entry) => entry.text)).toEqual(['q3', 'q1'])
+})
+
+test('rejectForKey settles every question asked with that key, votes included', async () => {
+  const askedRequests: SentRequest[] = []
+  const settledEndings: [string, MessageEnding][] = []
+  const audit: AuditSink = {
+    asked: (_id, request) => {
+      askedRequests.push(request)
+    },
+    settled: (id, ending) => {
+      settledEndings.push([id, ending])
+    },
+  }
+  const { svc } = setupCounting({ audit })
+  const vote = runVote(
+    svc,
+    { request: { ...req, caller: CALLER_1 }, voters: ['V1', 'V2'], rule: 'all', retryCount: 0 },
+    new AbortController().signal,
+  )
+  await flush()
+  const other = svc.request({ ...req, caller: CALLER_2 })
+  await flush()
+  expect(askedRequests.map((request) => [request.recipient, request.caller])).toEqual([
+    ['V1', CALLER_1],
+    ['V2', CALLER_1],
+    [undefined, CALLER_2],
+  ])
+  expect(svc.rejectForKey('k1').map((summary) => summary.id)).toEqual(['id1', 'id2'])
+  await expect(vote).resolves.toMatchObject({ kind: 'decided', approved: false })
+  expect(settledEndings).toEqual([
+    ['id1', { kind: 'rejected', answer: 'Decline' }],
+    ['id2', { kind: 'rejected', answer: 'Decline' }],
+  ])
+  expect(svc.listPending(undefined).map((summary) => summary.id)).toEqual(['id3'])
+  expect(svc.rejectForKey('k3')).toEqual([])
+  svc.tap('id3', 0)
+  await other
+})
+
+test('the audit sink gets the caller on asked and settled', async () => {
+  const events: unknown[][] = []
+  const audit: AuditSink = {
+    asked: (id, request) => {
+      events.push(['asked', id, request.caller])
+    },
+    settled: (id, ending, _at, caller) => {
+      events.push(['settled', id, ending.kind, caller])
+    },
+  }
+  const { svc } = setupCounting({ audit })
+  const keyed = svc.request({ ...req, caller: CALLER_1 })
+  await flush()
+  svc.tap('id1', 0)
+  await keyed
+  const unkeyed = svc.request(req)
+  await flush()
+  svc.tap('id2', 0)
+  await unkeyed
+  await svc.expireOrphans([
+    { id: 'old1', reference: {}, text: 'a', caller: CALLER_2 },
+    { id: 'old2', reference: {}, text: 'b' },
+  ])
+  expect(events).toEqual([
+    ['asked', 'id1', CALLER_1],
+    ['settled', 'id1', 'answered', CALLER_1],
+    ['asked', 'id2', undefined],
+    ['settled', 'id2', 'answered', undefined],
+    ['settled', 'old1', 'expired', CALLER_2],
+    ['settled', 'old2', 'expired', undefined],
+  ])
+})
+
+test('the request record keeps the caller only when there is one', async () => {
+  const store = createStore()
+  const { svc } = setupCounting({ store })
+  void svc.request({ ...req, caller: CALLER_1 })
+  void svc.request(req)
+  await flush()
+  expect(store.added).toEqual([
+    { id: 'id1', reference: { chatId: 1, messageId: 2 }, text: 'Deploy?', caller: CALLER_1 },
+    { id: 'id2', reference: { chatId: 1, messageId: 2 }, text: 'Deploy?' },
+  ])
 })

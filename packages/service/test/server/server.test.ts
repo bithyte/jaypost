@@ -803,7 +803,7 @@ test('closing a long-poll leaves the question open', async () => {
   controller.abort()
   await expect(poll).rejects.toThrow()
   await new Promise((resolve) => setTimeout(resolve, 50))
-  expect(service.get(id)?.kind).toBe('pending')
+  expect(service.get(id, undefined)?.kind).toBe('pending')
   expect(messenger.finalized).toEqual([])
   service.tap(id, 0)
   const res = await fetch(`${url}/request/${id}`)

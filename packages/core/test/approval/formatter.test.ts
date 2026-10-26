@@ -164,16 +164,19 @@ test('history reply matches the spec shape', () => {
       text: '[deploy]\n\nDeploy to prod?',
       settlement: { kind: 'answered', answer: 'Approve' },
       settledAt: new Date(2026, 9, 18, 14, 5),
+      recipient: undefined,
     },
     {
       text: 'Force-push main?',
       settlement: { kind: 'rejected', answer: 'No' },
       settledAt: new Date(2026, 9, 18, 14, 1),
+      recipient: undefined,
     },
     {
       text: '[ci]\n\nRetry flaky job?',
       settlement: { kind: 'timedOut', answer: 'Skip' },
       settledAt: new Date(2026, 9, 18, 13, 50),
+      recipient: undefined,
     },
   ]
   expect(formatHistoryReply(entries, 3900)).toBe(
@@ -253,7 +256,14 @@ test('typed reply suffix survives the options cut', () => {
 test('history shows typed answers with the reply marker', () =>
   expect(
     formatHistoryReply(
-      [{ text: 'Which?', settlement: { kind: 'replied', answer: 'x' }, settledAt: at }],
+      [
+        {
+          text: 'Which?',
+          settlement: { kind: 'replied', answer: 'x' },
+          settledAt: at,
+          recipient: undefined,
+        },
+      ],
       3900,
     ),
   ).toBe('Last 1\n\nWhich?\n💬 x, 09:05'))

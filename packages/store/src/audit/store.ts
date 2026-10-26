@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { AuditSink, MessageEnding, SentRequest } from '@jaypost/core'
+import type { AuditSink, MessageEnding, RequestCaller, SentRequest } from '@jaypost/core'
 import { SECRET_FILE_MODE } from '../config/index.ts'
 import { isMissingFileError } from '../system/index.ts'
 import {
@@ -46,12 +46,18 @@ export class AuditLog implements AuditSink {
         options: request.options,
         timeoutOption: request.timeoutOption,
         timeoutSeconds: request.timeoutSeconds,
+        ...AuditLog.#callerFields(request.caller),
       }
       return `${JSON.stringify(record)}\n`
     })
   }
 
-  public settled(id: string, ending: MessageEnding, at: Date): void {
+  public settled(
+    id: string,
+    ending: MessageEnding,
+    at: Date,
+    caller: RequestCaller | undefined,
+  ): void {
     this.#append(() => {
       const record: SettledRecord = {
         v: AUDIT_FORMAT_VERSION,
@@ -60,6 +66,7 @@ export class AuditLog implements AuditSink {
         at: at.toISOString(),
         outcome: ending.kind,
         ...('answer' in ending ? { answer: ending.answer } : {}),
+        ...AuditLog.#callerFields(caller),
       }
       return `${JSON.stringify(record)}\n`
     })
@@ -104,6 +111,13 @@ export class AuditLog implements AuditSink {
         throw error
       }
     }
+  }
+
+  static #callerFields(caller: RequestCaller | undefined): {
+    readonly key?: string
+    readonly pairing?: string
+  } {
+    return caller === undefined ? {} : { key: caller.key, pairing: caller.pairing }
   }
 }
 

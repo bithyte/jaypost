@@ -321,10 +321,10 @@ export function createApiServer(router: BotRouter): FastifyInstance {
       }
       let state: RequestState | undefined
       if (wait.seconds === 0) {
-        state = service.get(id)
+        state = service.get(id, undefined)
       } else {
         // Only stops this wait; the question stays open when the poller goes away.
-        state = await service.waitFor(id, wait.seconds * 1000, abortOnClose(reply))
+        state = await service.waitFor(id, undefined, wait.seconds * 1000, abortOnClose(reply))
       }
       if (state === undefined) {
         return reply.code(404).send({ error: UNKNOWN_REQUEST_ERROR })
@@ -335,7 +335,7 @@ export function createApiServer(router: BotRouter): FastifyInstance {
   app.delete<{ Params: { id: string } }>('/request/:id', guard, async (request, reply) => {
     const { service } = requireBot(request)
     const { id } = request.params
-    const state = await service.cancel(id)
+    const state = await service.cancel(id, undefined)
     if (state === undefined) {
       return reply.code(404).send({ error: UNKNOWN_REQUEST_ERROR })
     }
