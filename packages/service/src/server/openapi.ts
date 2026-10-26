@@ -584,6 +584,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
             '400': errorResponse('`wait` is not a non-negative number.'),
             '401': { $ref: '#/components/responses/Unauthorized' },
             '404': { $ref: '#/components/responses/UnknownRequest' },
+            '503': { $ref: '#/components/responses/BotUnavailable' },
           },
         },
         delete: {
@@ -601,6 +602,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
             },
             '401': { $ref: '#/components/responses/Unauthorized' },
             '404': { $ref: '#/components/responses/UnknownRequest' },
+            '503': { $ref: '#/components/responses/BotUnavailable' },
           },
         },
       },
@@ -918,6 +920,9 @@ export function createOpenApiDocument(options: OpenApiOptions) {
         SendFailed: errorResponse("The message couldn't be sent."),
         NotPaired: errorResponse(
           "The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).",
+        ),
+        BotUnavailable: errorResponse(
+          "The key's bot isn't running (`bot unavailable`); it is starting or failed.",
         ),
         AdminBadRequest: errorResponse(
           'Body is not valid JSON or fails validation; `error` names the field, never its value.',

@@ -1,3 +1,4 @@
+import { request as httpRequest } from 'node:http'
 import net from 'node:net'
 import type { AddressInfo } from 'node:net'
 import type { FastifyInstance } from 'fastify'
@@ -655,6 +656,94 @@ test('a key whose bot is not running gets 503 on every question route', async ()
   const status = await call(url, 'GET', '/status', {})
   expect(status.status).toBe(200)
   expect(await status.json()).toEqual({ paired: true, code: 'ABCD-EFGH', key: 'k1' })
+})
+
+/** POSTs `body` in two halves and calls `between` once the server routed the call. */
+async function postInHalves(
+  url: string,
+  path: string,
+  body: string,
+  isRouted: () => boolean,
+  between: () => void,
+): Promise<{ readonly status: number; readonly body: unknown }> {
+  const { port } = new URL(url)
+  const half = Math.floor(body.length / 2)
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(
+      {
+        host: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body),
+        },
+      },
+      (response) => {
+        let text = ''
+        response.setEncoding('utf8')
+        response.on('data', (chunk: string) => {
+          text += chunk
+        })
+        response.on('end', () =>
+          resolve({ status: response.statusCode ?? 0, body: JSON.parse(text) }),
+        )
+      },
+    )
+    request.on('error', reject)
+    request.write(body.slice(0, half))
+    vi.waitFor(() => expect(isRouted()).toBe(true)).then(() => {
+      between()
+      request.end(body.slice(half))
+    }, reject)
+  })
+}
+
+test('a key revoked or a pairing reset during the upload sends nothing', async () => {
+  const request = vi.fn<RequestFn>(async () => ({
+    kind: 'completed',
+    outcome: { answer: 'Approve', timedOut: false },
+  }))
+  const notify = vi.fn<NotifyFn>(async () => undefined)
+  const bot = { ...toBot(request, 100), notifications: { notify } }
+  const cases = [
+    [{ kind: 'unauthorized', reason: 'wrong' }, 401, { error: 'unauthorized' }],
+    [toRoute(bot), 503, { error: 'not paired' }],
+  ] as const
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  for (const [after, status, answer] of cases) {
+    let current: BotRoute = toRoute(bot, { person: 'u1' })
+    let routeCount = 0
+    const url = await startRouted(() => {
+      routeCount += 1
+      return current
+    })
+    for (const [path, body] of [
+      ['/request', JSON.stringify(valid)],
+      ['/request/async', JSON.stringify(valid)],
+      ['/vote', JSON.stringify(valid)],
+      ['/notify', JSON.stringify({ text: 'hi' })],
+    ] as const) {
+      current = toRoute(bot, { person: 'u1' })
+      routeCount = 0
+      const response = await postInHalves(
+        url,
+        path,
+        body,
+        () => routeCount > 0,
+        () => {
+          current = after
+        },
+      )
+      expect(response).toEqual({ status, body: answer })
+    }
+    await server?.close()
+    server = undefined
+  }
+  error.mockRestore()
+  expect(request).not.toHaveBeenCalled()
+  expect(notify).not.toHaveBeenCalled()
 })
 
 test('the local person of a bot that does not pair sends to nobody in particular', async () => {

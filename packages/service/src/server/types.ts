@@ -75,7 +75,7 @@ export type BotRoute =
 
 /** Picks the key, and so the bot and person, for each call from its Authorization header. */
 export type BotRouter = {
-  /** Never throws; runs before the body is read. */
+  /** Never throws; runs before the body is read, and again once a question or notification is. */
   readonly route: (authorization: string | undefined) => BotRoute
   /** What /openapi.yaml shows besides the port; it needs no token, so it can't ask a bot. */
   readonly openApi: () => Omit<OpenApiOptions, 'port'>

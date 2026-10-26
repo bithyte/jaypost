@@ -46,3 +46,6 @@ export const PAIRED_APPROVERS_HEADING =
   'Add these to your approvers list and the JAYPOST_APPROVERS secret (each also works as -u ID):'
 /** Printed with every new API key: the service keeps only its hash. */
 export const KEY_SHOWN_ONCE_NOTE = "This key isn't shown again; store it now."
+/** `bot add` without an admin key, when the service it meant to write behind came up meanwhile. */
+export const STARTED_MEANWHILE_MESSAGE =
+  'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.'

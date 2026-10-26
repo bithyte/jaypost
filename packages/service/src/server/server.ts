@@ -150,12 +150,12 @@ function describeBot(route: KeyRoute | undefined): string {
  * Builds the HTTP API (POST /request, POST /request/async, GET and DELETE /request/:id,
  * POST /vote, POST /notify, GET /status, GET /log, GET /openapi.yaml) without listening. Every
  * route but /openapi.yaml asks `router` for the call's key first and answers 401 when there is
- * none, before parsing the body. A key whose bot isn't running gets 503 `bot unavailable` and one
- * whose pairing waits for its code 503 `not paired` on the question routes. Aborting the
- * connection cancels a pending /request or /vote; background questions outlive their connections
- * and only their key reads or cancels them. Errors return JSON bodies. A bot without
- * notifications answers POST /notify 501. With `admin`, the /admin routes are served too, behind
- * the admin key only.
+ * none, before parsing the body; routes with a body ask again once it's read. A key whose bot
+ * isn't running gets 503 `bot unavailable` and one whose pairing waits for its code 503
+ * `not paired` on the question routes. Aborting the connection cancels a pending /request or
+ * /vote; background questions outlive their connections and only their key reads or cancels them.
+ * Errors return JSON bodies. A bot without notifications answers POST /notify 501. With `admin`,
+ * the /admin routes are served too, behind the admin key only.
  */
 export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyInstance {
   const routesByRequest = new WeakMap<FastifyRequest, KeyRoute>()
@@ -219,20 +219,23 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
     console.error(`unexpected error handling ${request.url}`, error)
     return reply.code(500).send({ error: 'internal server error' })
   })
+  // Routes the call and remembers its key, or replies 401 and returns undefined.
+  const routeCall = (request: FastifyRequest, reply: FastifyReply): KeyRoute | undefined => {
+    const route = router.route(request.headers.authorization)
+    if (route.kind === 'key') {
+      routesByRequest.set(request, route)
+      return route
+    }
+    console.error(`rejected ${request.method} ${request.url.split('?')[0]}: ${route.reason} token`)
+    reply.code(401).header('WWW-Authenticate', 'Bearer').send({ error: UNAUTHORIZED_ERROR })
+    return undefined
+  }
   const guard = {
     onRequest: async (request: FastifyRequest, reply: FastifyReply) => {
-      const route = router.route(request.headers.authorization)
-      if (route.kind === 'key') {
-        routesByRequest.set(request, route)
-        return
+      if (routeCall(request, reply) === undefined) {
+        return reply
       }
-      console.error(
-        `rejected ${request.method} ${request.url.split('?')[0]}: ${route.reason} token`,
-      )
-      return reply
-        .code(401)
-        .header('WWW-Authenticate', 'Bearer')
-        .send({ error: UNAUTHORIZED_ERROR })
+      return undefined
     },
   }
   // Replies 503 itself and returns undefined when the key's bot isn't running.
@@ -261,17 +264,22 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
       .type('application/yaml; charset=utf-8')
       .send(formatOpenApiYaml({ port: request.socket.localPort ?? 0, ...router.openApi() })),
   )
-  // Replies 503/400/501 itself and returns undefined, or returns the bot and what `parse` made of
-  // the body. Drops the raw body from the Fastify request so a long wait doesn't keep an
-  // attachment's bytes alive; the parsed JSON goes out of scope on return for the same reason.
+  // Replies 401/503/400/501 itself and returns undefined, or returns the bot and what `parse` made
+  // of the body. The key is routed again because the upload can take a while: a key revoked or a
+  // pairing reset meanwhile must not reach the old person. Drops the raw body from the Fastify
+  // request so a long wait doesn't keep an attachment's bytes alive; the parsed JSON goes out of
+  // scope on return for the same reason.
   const readBody = <T>(
     request: FastifyRequest<{ Body: string | undefined }>,
     reply: FastifyReply,
     parse: (bot: ApiBot, route: KeyRoute, json: unknown) => Parsed<T>,
   ): { readonly bot: ApiBot; readonly value: T } | undefined => {
-    const route = requireRoute(request)
     const body = request.body
     request.body = undefined
+    const route = routeCall(request, reply)
+    if (route === undefined) {
+      return undefined
+    }
     const bot = requireBot(route, reply)
     if (bot === undefined) {
       return undefined
@@ -385,7 +393,11 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
     return toStateBody(id, state)
   })
   app.post<{ Body: string | undefined }>('/notify', guard, async (request, reply) => {
-    const route = requireRoute(request)
+    // Routed again after the upload, like readBody.
+    const route = routeCall(request, reply)
+    if (route === undefined) {
+      return reply
+    }
     const bot = requireBot(route, reply)
     if (bot === undefined) {
       return reply

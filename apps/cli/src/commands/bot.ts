@@ -13,6 +13,7 @@ import {
   printResult,
   runAdminCommand,
 } from './admin.ts'
+import { STARTED_MEANWHILE_MESSAGE } from './constants.ts'
 import { resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type {
   AdminDeps,
@@ -23,11 +24,22 @@ import type {
   OpenedAdmin,
 } from './types.ts'
 
-/** How `bot add` adds the bot: through the admin API, or straight into a stopped service's registry. */
+/**
+ * How `bot add` adds the bot: through the admin API, or straight into a stopped service's
+ * registry. `registry` keeps what it takes to probe the service again before writing.
+ */
 type AddRoute =
   | { readonly kind: 'api'; readonly caller: AdminCaller }
-  | { readonly kind: 'registry'; readonly configPath: string }
+  | RegistryRoute
   | { readonly kind: 'refused' }
+
+type RegistryRoute = {
+  readonly kind: 'registry'
+  readonly configPath: string
+  readonly port: number
+  /** Undefined when the admin key can't be read. */
+  readonly caller: AdminCaller | undefined
+}
 
 /** A bot's state, with the reason when it failed. */
 function describeState(bot: AdminBot): string {
@@ -97,7 +109,7 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
       deps.printError(opened.message)
       return { kind: 'refused' }
     }
-    return { kind: 'registry', configPath }
+    return { kind: 'registry', configPath, port: opened.endpoint.port, caller: undefined }
   }
   const probe = await opened.caller.listBots()
   if (probe.kind === 'ok') {
@@ -109,7 +121,34 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
     return { kind: 'refused' }
   }
   const configPath = findRegistryConfigPath(endpoint)
-  return configPath === undefined ? refuseStopped(endpoint, deps) : { kind: 'registry', configPath }
+  return configPath === undefined
+    ? refuseStopped(endpoint, deps)
+    : { kind: 'registry', configPath, port: endpoint.port, caller: opened.caller }
+}
+
+/**
+ * Probes the service again right before the registry write: it may have started while the
+ * settings were asked, and its next save would drop a bot written behind its back. The API when
+ * it now answers to the admin key, the same route while it's still down, else refused.
+ */
+async function recheckStopped(route: RegistryRoute, deps: AdminDeps): Promise<AddRoute> {
+  if (route.caller === undefined) {
+    const status = await deps.fetchStatus(route.port, undefined)
+    if (status.kind === 'unreachable') {
+      return route
+    }
+    deps.printError(STARTED_MEANWHILE_MESSAGE)
+    return { kind: 'refused' }
+  }
+  const probe = await route.caller.listBots()
+  if (probe.kind === 'ok') {
+    return { kind: 'api', caller: route.caller }
+  }
+  if (probe.reason === 'unreachable') {
+    return route
+  }
+  deps.printError(probe.message)
+  return { kind: 'refused' }
 }
 
 /**
@@ -182,10 +221,14 @@ export function runBotAdd(args: BotAddArgs, deps: AdminDeps): Promise<number> {
       return 1
     }
     const settings = withoutOwner(provider, resolved.settings)
-    if (route.kind === 'registry') {
-      return addBotToRegistry(route.configPath, provider, settings, args, deps)
+    const target = route.kind === 'registry' ? await recheckStopped(route, deps) : route
+    if (target.kind === 'refused') {
+      return 1
     }
-    const result = await route.caller.addBot({
+    if (target.kind === 'registry') {
+      return addBotToRegistry(target.configPath, provider, settings, args, deps)
+    }
+    const result = await target.caller.addBot({
       provider: provider.name,
       settings,
       ...(args.label === undefined ? {} : { label: args.label }),

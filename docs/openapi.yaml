@@ -116,6 +116,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/UnknownRequest"
+        "503":
+          $ref: "#/components/responses/BotUnavailable"
     delete:
       operationId: cancelRequest
       summary: Cancel a background question
@@ -133,6 +135,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/UnknownRequest"
+        "503":
+          $ref: "#/components/responses/BotUnavailable"
   /vote:
     post:
       operationId: vote
@@ -1319,6 +1323,12 @@ components:
             $ref: "#/components/schemas/Error"
     NotPaired:
       description: The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BotUnavailable:
+      description: The key's bot isn't running (`bot unavailable`); it is starting or failed.
       content:
         application/json:
           schema:

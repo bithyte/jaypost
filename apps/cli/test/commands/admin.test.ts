@@ -290,6 +290,59 @@ test('bot add writes the registry when no admin key exists and nothing answers',
   expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toHaveLength(1)
 })
 
+test('bot add without an admin key refuses the registry when the service starts meanwhile', async () => {
+  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const env = {
+    HOME: tmp,
+    XDG_CONFIG_HOME: join(tmp, 'cfg'),
+    JAYPOST_PORT: String(await freePort()),
+  }
+  const fetchStatus = vi
+    .fn<FetchStatus>()
+    .mockResolvedValueOnce(UNREACHABLE_STATUS)
+    .mockResolvedValue({ kind: 'unauthorized' })
+  expect(await runBotAdd({}, createDeps(env, { fetchStatus }))).toBe(1)
+  expect(err).toEqual([
+    'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.',
+  ])
+  expect(fetchStatus).toHaveBeenCalledTimes(2)
+  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([])
+})
+
+test('bot add with an admin key uses the api when the service starts meanwhile', async () => {
+  const directory = join(tmp, 'cfg', 'jaypost')
+  const configPath = join(directory, 'config.json')
+  mkdirSync(directory, { recursive: true })
+  const adminKey = `jpa_${'k'.repeat(43)}`
+  writeTokenFile(resolveAdminKeyPath(configPath), adminKey)
+  const port = await freePort()
+  const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
+  // The service comes up while the bot token is asked for, seeded from a config of its own.
+  const password = vi.fn(async () => {
+    writeFileSync(configPath, JSON.stringify({ provider: 'fake', fakeKey: SEED_BOT_TOKEN }))
+    running = await startService({
+      version: '1.2.3',
+      configPath,
+      providers: PROVIDERS,
+      seed: loadSeed({ JAYPOST_CONFIG: configPath }, PROVIDERS),
+      log: vi.fn(),
+      generateCode: () => 'PAIR9999',
+    })
+    await running.started
+    await running.server.listen({ port, host: '127.0.0.1' })
+    return NEW_BOT_TOKEN
+  })
+  const deps = createDeps(env, { providers: PROVIDERS, prompt: createPrompts({ password }) })
+  expect(await runBotAdd({ provider: 'fake' }, deps)).toBe(0)
+  expect(out).toEqual(['Added bot b2 (Fake, fake): running.'])
+  await running?.stop()
+  running = undefined
+  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([
+    expect.objectContaining({ id: 'b1', settings: { fakeKey: SEED_BOT_TOKEN } }),
+    expect.objectContaining({ id: 'b2', settings: { fakeKey: NEW_BOT_TOKEN } }),
+  ])
+})
+
 test('bot add for a native install that never started this version writes its registry', async () => {
   const configPath = join(tmp, 'native', 'config.json')
   writeInstall(paths.installFile, {
