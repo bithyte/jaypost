@@ -2,7 +2,7 @@
 
 The API is meant for localhost only; don't expose it. The container targets publish the port on `127.0.0.1` only; keep it that way.
 
-On top of that, `init` makes an API token and the service answers 401 without it. It stops other users on the machine, a browser page or a container that can reach the port from calling the API. It doesn't stop a process running as you: it can read `~/.config/jaypost/token` (mode 0600) like the CLI does. `init --no-token` turns it off, which leaves any local process able to ask or notify.
+On top of that, `init` makes an API token and the service answers 401 without it. It stops other users on the machine, a browser page or a container that can reach the port from calling the API. It doesn't stop a process running as you: it can read `~/.config/jaypost/token` (mode 0600) like the CLI does. `init --no-token` turns it off, which leaves any local process able to ask or notify. Never use `--no-token` on a service you expose to other machines: a call without a token acts as key `k1`, so anyone who reaches the port can ask and notify as you.
 
 To rotate it, delete the token file and re-run `init`.
 

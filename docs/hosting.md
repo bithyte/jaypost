@@ -13,7 +13,7 @@ There are no user accounts and no signup; the admin hands out keys.
 
 ## Run it on a VM
 
-Install it like any other service (see [Install](install.md)); `init` makes bot `b1`, pairing `p1`, key `k1` and the admin key. The service listens on 127.0.0.1 only. jaypost doesn't do TLS, so to reach it from other machines put a reverse proxy that terminates TLS in front of it and forward to the port. Set `JAYPOST_HOST` only if the proxy runs somewhere that can't reach loopback, and keep the port off the public internet.
+Install it like any other service (see [Install](install.md)); `init` makes bot `b1`, pairing `p1`, key `k1` and the admin key. The service listens on 127.0.0.1 only. jaypost doesn't do TLS, so to reach it from other machines put a reverse proxy that terminates TLS in front of it and forward to the port. Set `JAYPOST_HOST` only if the proxy runs somewhere that can't reach loopback, and keep the port off the public internet. Don't install a service you expose with `--no-token`: a call without a token then acts as key `k1`.
 
 Everything below works from the VM itself. From another machine, point the CLI at the proxy:
 

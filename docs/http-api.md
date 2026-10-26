@@ -59,7 +59,7 @@ Errors are JSON `{ "error": "..." }`:
 | 502    | Message couldn't be sent.                                                                                                                                  |
 | 503    | The key's bot isn't `running` (see `state` in [`GET /status`](#status)), or isn't paired yet.                                                              |
 | 500    | Internal error, or the request was cancelled.                                                                                                              |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                                                |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                          |
 | 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
@@ -83,7 +83,7 @@ The `Location` header is `/request/{id}`. `GET /request/{id}` returns the state:
 
 `DELETE /request/{id}` cancels a pending question (the Telegram message becomes a "cancelled" line) and returns its state, and a following `GET` agrees. On an already settled question it just returns that state. An unknown id answers `404` with `{ "error": "unknown request" }`. Settled questions are kept for 24 h.
 
-Version skew: a service from before this release clamps `timeout` to 300 s and answers `404` to these paths, so a client that needs long timeouts should check the service version first (`info.version` in `GET /openapi.yaml`). A restart drops background questions (`404` afterwards), and their Telegram messages get the expired line on the next start.
+Version skew: a service from before this release clamps `timeout` to 300 s and answers `404` to these paths, so a client that needs long timeouts should check the service version first (`info.version` in `GET /openapi.yaml`). A restart drops background questions (`404` afterwards), and their Telegram messages get the expired line on the next start. A bot restarted after a fatal error drops its background questions the same way: polling one answers `503` while the bot is down, then `404`.
 
 ## Send a notification
 
@@ -196,7 +196,7 @@ curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $(cat ~/.
 
 ## Admin routes
 
-The admin routes manage bots, pairings and keys on a running service, so a remote admin or another app can drive them. They take the admin key as the bearer token, not an API key; an API key, a missing key or a wrong one gets `401`, and the admin key gets `401` on every other route. Bodies are JSON and error messages never quote them. Secrets are never echoed: the API key's plaintext comes back once, from `POST /admin/keys`, and hashes are never returned.
+The admin routes manage bots, pairings and keys on a running service, so a remote admin or another app can drive them. They take the admin key as the bearer token, not an API key; an API key, a missing key or a wrong one gets `401`, and the admin key gets `401` on every other route except `/openapi.yaml`, which takes no key at all. Bodies are JSON and error messages never quote them. Secrets are never echoed: the API key's plaintext comes back once, from `POST /admin/keys`, and hashes are never returned.
 
 | Route                             | Does                                                                                                                                                |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
