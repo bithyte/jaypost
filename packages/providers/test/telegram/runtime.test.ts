@@ -132,9 +132,7 @@ test('409 calls fatal with the old message', async () => {
     ),
   )
   await vi.waitFor(() =>
-    expect(fatal).toHaveBeenCalledWith(
-      'another instance is already polling with this bot token; exiting',
-    ),
+    expect(fatal).toHaveBeenCalledWith('another instance is already polling with this bot token'),
   )
 })
 

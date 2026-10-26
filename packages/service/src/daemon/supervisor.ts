@@ -1,4 +1,4 @@
-import { INITIAL_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS } from './constants.ts'
+import { INITIAL_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS, STABLE_RUN_MS } from './constants.ts'
 import type { BotState, BotSupervisorOptions, RunningBot } from './types.ts'
 
 function formatDelay(delayMs: number): string {
@@ -7,16 +7,20 @@ function formatDelay(delayMs: number): string {
 
 /**
  * Keeps one bot running: starts it, and after a failed start or a fatal provider error retries
- * with doubling backoff until stopped. A successful start resets the backoff. Never throws.
+ * with doubling backoff until stopped. The delay starts over only once a bot has kept running for
+ * the stable period, so one that fails right after each start keeps backing off. Never throws.
  */
 export class BotSupervisor {
   readonly #start: () => Promise<RunningBot>
   readonly #log: (line: string) => void
   readonly #initialDelayMs: number
   readonly #maxDelayMs: number
+  readonly #stableMs: number
+  readonly #onRunning: ((running: RunningBot) => void) | undefined
   #state: BotState = { kind: 'starting' }
   #delayMs: number
-  #timer: ReturnType<typeof setTimeout> | undefined
+  #retryTimer: ReturnType<typeof setTimeout> | undefined
+  #stableTimer: ReturnType<typeof setTimeout> | undefined
   // Bumped by fail and stop, so an attempt that finishes after either is discarded.
   #generation = 0
   #isStopped = false
@@ -26,6 +30,8 @@ export class BotSupervisor {
     this.#log = options.log
     this.#initialDelayMs = options.initialDelayMs ?? INITIAL_RETRY_DELAY_MS
     this.#maxDelayMs = options.maxDelayMs ?? MAX_RETRY_DELAY_MS
+    this.#stableMs = options.stableMs ?? STABLE_RUN_MS
+    this.#onRunning = options.onRunning
     this.#delayMs = this.#initialDelayMs
   }
 
@@ -39,16 +45,18 @@ export class BotSupervisor {
   }
 
   /**
-   * Called from the bot's `fatal`: stops the runtime, marks it failed and schedules a retry.
-   * Ignored once failed or stopped, so a late call from an old runtime changes nothing.
+   * Called from the bot's `fatal`: abandons the runtime (its open questions are rejected), marks it
+   * failed and schedules a retry. Ignored once failed or stopped, so a late call from an old
+   * runtime changes nothing.
    */
   fail(reason: string): void {
     if (this.#isStopped || this.#state.kind === 'failed') {
       return
     }
     this.#generation += 1
+    clearTimeout(this.#stableTimer)
     if (this.#state.kind === 'running') {
-      void this.#state.running.stop()
+      void this.#state.running.abandon()
     }
     this.#retryLater(`stopped: ${reason}`, reason)
   }
@@ -57,8 +65,8 @@ export class BotSupervisor {
   async stop(): Promise<void> {
     this.#isStopped = true
     this.#generation += 1
-    clearTimeout(this.#timer)
-    this.#timer = undefined
+    clearTimeout(this.#retryTimer)
+    clearTimeout(this.#stableTimer)
     const running = this.#state.kind === 'running' ? this.#state.running : undefined
     this.#state = { kind: 'failed', reason: 'stopped' }
     await running?.stop()
@@ -68,7 +76,6 @@ export class BotSupervisor {
     if (this.#isStopped) {
       return
     }
-    this.#timer = undefined
     this.#state = { kind: 'starting' }
     const generation = this.#generation
     let running: RunningBot
@@ -87,7 +94,13 @@ export class BotSupervisor {
       return
     }
     this.#state = { kind: 'running', running }
-    this.#delayMs = this.#initialDelayMs
+    this.#stableTimer = setTimeout(
+      () => {
+        this.#delayMs = this.#initialDelayMs
+      },
+      Math.max(this.#stableMs, this.#delayMs),
+    )
+    this.#onRunning?.(running)
   }
 
   #retryLater(what: string, reason: string): void {
@@ -95,6 +108,6 @@ export class BotSupervisor {
     this.#state = { kind: 'failed', reason }
     this.#delayMs = Math.min(delayMs * 2, this.#maxDelayMs)
     this.#log(`${what}; retrying in ${formatDelay(delayMs)}`)
-    this.#timer = setTimeout(() => void this.#attempt(), delayMs)
+    this.#retryTimer = setTimeout(() => void this.#attempt(), delayMs)
   }
 }

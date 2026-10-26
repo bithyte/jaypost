@@ -396,9 +396,35 @@ test('state and audit go to the bot directory and log lines name the bot', async
   expect(events).toEqual(['asked', 'settled'])
 })
 
-test('rejected credentials throw with the provider reason', async () => {
+test('rejected credentials stop the runtime and throw with the provider reason', async () => {
+  const stop = vi.fn(async () => undefined)
   const provider = createFakeProvider({
-    runtime: { checkCredentials: async () => ({ ok: false, reason: 'fake said no' }) },
+    runtime: { checkCredentials: async () => ({ ok: false, reason: 'fake said no' }), stop },
   })
   await expect(start({ provider })).rejects.toThrow('fake said no')
+  expect(stop).toHaveBeenCalledTimes(1)
+})
+
+test('abandon rejects every open question and drops their saved records', async () => {
+  const directory = createDirectory()
+  const stop = vi.fn(async () => undefined)
+  const provider = createFakeProvider({
+    name: 'fakepair',
+    settings: createPairingFakeProvider().settings,
+    runtime: { pairingInstructions: (code) => code, finalize: async () => undefined, stop },
+  })
+  const { running, runtime } = await start({
+    provider,
+    directory,
+    people: createPeople({ persons: ['u1', 'u2'] }),
+  })
+  const first = running.bot.service.request({ ...REQUEST, recipient: 'u1' })
+  const second = running.bot.service.request({ ...REQUEST, recipient: 'u2' })
+  await vi.waitFor(() => expect(runtime.sent).toHaveLength(2))
+  await running.abandon()
+  const declined = { kind: 'completed', outcome: { answer: 'Decline', timedOut: false } }
+  expect(await first).toEqual(declined)
+  expect(await second).toEqual(declined)
+  expect(stop).toHaveBeenCalledTimes(1)
+  expect(JSON.parse(readFileSync(join(directory, 'state.json'), 'utf8')).requests).toEqual([])
 })

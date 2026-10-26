@@ -250,6 +250,14 @@ export class ApprovalService {
   }
 
   /**
+   * Settles every open question (votes included) as rejected with its timeout option, for a bot
+   * whose runtime is going away. Returns what it rejected, oldest first.
+   */
+  rejectEveryOpen(): readonly PendingSummary[] {
+    return this.#pending.rejectAll()
+  }
+
+  /**
    * The last `count` settled requests sent to `recipient`, newest first; empty for `count <= 0`.
    * Never throws.
    */

@@ -34,6 +34,11 @@ export type ServiceOptions = {
 export type RunningService = {
   readonly server: FastifyInstance
   readonly hub: Hub
+  /**
+   * Resolves once every bot has made its first start attempt; never rejects. Nothing waits for it:
+   * the API answers at once, with 503 for a bot still starting.
+   */
+  readonly started: Promise<void>
   /** Starts cleanup of the previous run's messages once; resolves when done; never rejects. */
   readonly recover: () => Promise<void>
   /**
@@ -76,8 +81,8 @@ function loadSeededRegistry(
 
 /**
  * Loads the registry next to `configPath`, applies the seed, makes sure there is an admin key, and
- * starts every stored bot behind an API that routes each call by its key. A bot that can't start
- * is retried in the background and shows as failed in /status. Throws on a corrupt registry, a
+ * starts every stored bot behind an API that routes each call by its key, without waiting for the
+ * bots. A bot that can't start is retried in the background and shows as failed in /status. Throws on a corrupt registry, a
  * missing setting with no bots stored, or an I/O error. Doesn't listen.
  */
 export async function startService(options: ServiceOptions): Promise<RunningService> {
@@ -100,11 +105,12 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     log,
     ...(options.now === undefined ? {} : { now: options.now }),
   })
-  await hub.start()
+  hub.start()
   const server = createApiServer(hub.router)
   return {
     server,
     hub,
+    started: hub.started,
     recover: () => hub.recover(),
     // hub.stop() freezes every bot's state before the server starts closing.
     stop: async () => {

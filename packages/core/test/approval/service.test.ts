@@ -1147,6 +1147,18 @@ test('rejectForKey settles every question asked with that key, votes included', 
   await other
 })
 
+test('rejectEveryOpen settles every open question, whoever it went to', async () => {
+  const { svc } = setupCounting()
+  const first = svc.request({ ...req, recipient: 'u1', caller: CALLER_1 })
+  const second = svc.request({ ...req, caller: CALLER_2 })
+  await flush()
+  expect(svc.rejectEveryOpen().map((summary) => summary.id)).toEqual(['id1', 'id2'])
+  const rejected = { kind: 'completed', outcome: { answer: 'Decline', timedOut: false } }
+  await expect(first).resolves.toEqual(rejected)
+  await expect(second).resolves.toEqual(rejected)
+  expect(svc.rejectEveryOpen()).toEqual([])
+})
+
 test('the audit sink gets the caller on asked and settled', async () => {
   const events: unknown[][] = []
   const audit: AuditSink = {

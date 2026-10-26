@@ -62,6 +62,8 @@ async function start(
     readonly configPath?: string
     readonly log?: (line: string) => void
     readonly providers?: readonly Provider[]
+    /** False to listen without waiting for the bots' first start attempts. */
+    readonly waitForBots?: boolean
   } = {},
 ): Promise<{ url: string; runtime: FakeRuntime; configPath: string }> {
   const configPath = options.configPath ?? createConfigPath(provider)
@@ -74,6 +76,9 @@ async function start(
     log: options.log ?? vi.fn(),
     generateCode: () => CODE,
   })
+  if (options.waitForBots !== false) {
+    await running.started
+  }
   await running.server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = running.server.server.address() as AddressInfo
   // The runtime that started, or the last one created when none did.
@@ -480,6 +485,48 @@ test('a fatal provider error restarts that bot after a delay', async () => {
   expect(await getStatus(url)).toMatchObject({ state: 'running' })
   runtime.handlers?.fatal('late fatal from the old runtime')
   expect(await getStatus(url)).toMatchObject({ state: 'running' })
+})
+
+test('a blocking question open at a fatal error is answered at once and settled once', async () => {
+  const { provider, finalized } = createRecordingProvider()
+  const { url, runtime, configPath } = await start(provider)
+  await requireRunning().recover()
+  const response = post(url, '/request', REQUEST)
+  await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
+  const id = runtime.sent[0]?.id ?? ''
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  runtime.handlers?.fatal('connection lost')
+  expect(await (await response).json()).toEqual({ answer: 'Decline', timedOut: false })
+  expect(readState(configPath).requests).toEqual([])
+  await vi.advanceTimersByTimeAsync(5_000)
+  expect(provider.runtimes).toHaveLength(2)
+  await requireRunning().recover()
+  expect(finalized.map((entry) => entry.ending)).toEqual([{ kind: 'rejected', answer: 'Decline' }])
+  const settled = readAudit(configPath).filter(
+    (record) => record.event === 'settled' && record.id === id,
+  )
+  expect(settled).toMatchObject([{ outcome: 'rejected', answer: 'Decline' }])
+})
+
+test('the api answers while a bot is still starting', async () => {
+  const { promise, resolve } = Promise.withResolvers<{ ok: true; displayName: string }>()
+  const provider = createFakeProvider({ runtime: { checkCredentials: () => promise } })
+  const { url } = await start(provider, { waitForBots: false })
+  expect(await getStatus(url)).toEqual({
+    paired: true,
+    key: 'k1',
+    pairing: 'p1',
+    state: 'starting',
+    provider: 'fake',
+    maxAttachmentBytes: 0,
+    maxTextLength: 100,
+  })
+  const refused = await post(url, '/request', REQUEST)
+  expect(refused.status).toBe(503)
+  expect(await refused.json()).toEqual({ error: 'bot unavailable' })
+  resolve({ ok: true, displayName: 'fake' })
+  await requireRunning().started
+  expect(await getStatus(url)).toMatchObject({ state: 'running', displayName: 'fake' })
 })
 
 test('restarting with the same env keeps admin changes', async () => {

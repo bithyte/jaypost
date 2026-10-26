@@ -42,6 +42,12 @@ export type RunningBot = {
    * for the next start), then stops the provider runtime; never rejects.
    */
   readonly stop: () => Promise<void>
+  /**
+   * For a runtime that failed: rejects every open question with its timeout option and drops their
+   * saved records, so the next start doesn't expire them again, then stops like `stop`; never
+   * rejects.
+   */
+  readonly abandon: () => Promise<void>
 }
 
 /** Where a supervised bot is: starting, running, or failed and waiting for its next attempt. */
@@ -58,6 +64,13 @@ export type BotSupervisorOptions = {
   readonly initialDelayMs?: number
   /** Longest delay between retries. Default 5 min. */
   readonly maxDelayMs?: number
+  /**
+   * How long a bot must keep running before the delay starts over; the next delay counts too, if
+   * longer. Default 1 min.
+   */
+  readonly stableMs?: number
+  /** Called once a start is accepted, before anything can stop it. */
+  readonly onRunning?: (running: RunningBot) => void
 }
 
 export type HubOptions = {

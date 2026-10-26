@@ -70,7 +70,7 @@ export function createTelegramRuntime(
           }
           handlers.fatal(
             error instanceof GrammyError && error.error_code === 409
-              ? 'another instance is already polling with this bot token; exiting'
+              ? 'another instance is already polling with this bot token'
               : `bot stopped: ${describeError(error)}`,
           )
         })

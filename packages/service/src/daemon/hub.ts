@@ -99,6 +99,7 @@ export class Hub {
   #registry: Registry
   readonly #adminKeyHash: string
   #isRecovering = false
+  #started: Promise<void> = Promise.resolve()
 
   constructor(options: HubOptions) {
     this.#store = options.store
@@ -126,11 +127,18 @@ export class Hub {
   }
 
   /**
-   * Starts a supervisor per stored bot. Resolves once each bot's first attempt has succeeded or
-   * failed; failed bots keep retrying in the background. Never rejects.
+   * Resolves once every bot `start` found has made its first attempt, whether it succeeded or
+   * failed. Never rejects. The API doesn't wait for it: a bot still starting answers 503.
    */
-  async start(): Promise<void> {
-    await Promise.all(this.#registry.bots.map((record) => this.#supervise(record.id)))
+  get started(): Promise<void> {
+    return this.#started
+  }
+
+  /** Starts a supervisor per stored bot without waiting; failed bots keep retrying with backoff. */
+  start(): void {
+    this.#started = Promise.all(
+      this.#registry.bots.map((record) => this.#supervise(record.id)),
+    ).then(() => undefined)
   }
 
   /** Cleans up after the previous run: every running bot now, and bots that start later at once. */
@@ -219,6 +227,7 @@ export class Hub {
         })
       },
       log: (line) => this.#log(`[${botId}] ${line}`),
+      onRunning: (running) => this.#prepareRunning(botId, running),
     })
     this.#supervisors.set(botId, supervisor)
     return supervisor.run()
@@ -233,7 +242,7 @@ export class Hub {
     if (provider === undefined) {
       throw new Error(`unknown provider ${JSON.stringify(record.provider)}`)
     }
-    const running = await startBot({
+    return startBot({
       record,
       provider,
       directory: resolveBotFiles(this.#configPath, botId).directory,
@@ -241,6 +250,10 @@ export class Hub {
       fatal,
       log: this.#log,
     })
+  }
+
+  /** Runs once the supervisor has accepted a started bot. */
+  #prepareRunning(botId: string, running: RunningBot): void {
     // Codes created while the bot was starting.
     for (const pairing of this.#registry.pairings) {
       if (pairing.botId === botId && isPending(pairing)) {
@@ -251,7 +264,6 @@ export class Hub {
     if (this.#isRecovering) {
       void running.recover()
     }
-    return running
   }
 
   /** The pairing instruction for the install's own pending pairing, as the daemon always logged it. */

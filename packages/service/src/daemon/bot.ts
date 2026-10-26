@@ -40,12 +40,15 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
   const runtime = provider.createRuntime(record.settings, log)
   const check = await runtime.checkCredentials()
   if (!check.ok) {
+    // The supervisor retries, so don't leave a client behind on each attempt.
+    await runtime.stop().catch(() => undefined)
     throw new Error(check.reason)
   }
   const displayName = check.displayName
   const pairs = findOwnerSetting(provider) !== undefined
   const pairingInstructions = runtime.pairingInstructions?.bind(runtime)
   if (pairs && pairingInstructions === undefined) {
+    await runtime.stop().catch(() => undefined)
     throw new Error(
       `provider ${JSON.stringify(provider.name)} has an owner setting but no pairing support`,
     )
@@ -160,6 +163,15 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     codes,
     recover,
     stop: async () => {
+      store.freeze()
+      notifications?.stop()
+      await runtime.stop().catch(() => undefined)
+    },
+    abandon: async () => {
+      // Their final edits and audit lines still happen; only the saved records go now.
+      for (const { id } of service.rejectEveryOpen()) {
+        store.removeRequest(id)
+      }
       store.freeze()
       notifications?.stop()
       await runtime.stop().catch(() => undefined)
