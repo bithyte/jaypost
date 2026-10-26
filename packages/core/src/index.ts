@@ -65,6 +65,7 @@ export {
   parseNotifyRequest,
 } from './notify/index.ts'
 export type {
+  DeleteAfter,
   NotificationRecord,
   Notifier,
   NotifyRequest,

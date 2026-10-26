@@ -152,3 +152,65 @@ test('a null attachment is rejected', () => {
     error: 'attachment must be an object',
   })
 })
+
+const NOW = Date.parse('2026-10-26T12:00:00Z')
+
+test('deleteAfter seconds', () => {
+  expect(parseNotifyRequest({ text: 'hi', deleteAfter: 300 }, 3900, 1000, NOW)).toEqual({
+    ok: true,
+    value: { message: { text: 'hi', spans: [] }, deleteAfter: { kind: 'seconds', seconds: 300 } },
+  })
+})
+
+test('deleteAfter numeric string is seconds', () => {
+  const result = parseNotifyRequest({ text: 'hi', deleteAfter: '300' }, 3900, 1000, NOW)
+  expect(result.ok && result.value.deleteAfter).toEqual({ kind: 'seconds', seconds: 300 })
+})
+
+test('deleteAfter timestamp', () => {
+  const result = parseNotifyRequest(
+    { text: 'hi', deleteAfter: '2026-10-26T18:00:00+02:00' },
+    3900,
+    1000,
+    NOW,
+  )
+  expect(result.ok && result.value.deleteAfter).toEqual({
+    kind: 'timestamp',
+    atMs: Date.parse('2026-10-26T16:00:00Z'),
+  })
+})
+
+test('deleteAfter omitted is undefined', () => {
+  const result = parseNotifyRequest({ text: 'hi' }, 3900, 1000, NOW)
+  expect(result.ok && result.value.deleteAfter).toBeUndefined()
+})
+
+test('bad deleteAfter values are rejected', () => {
+  const badValues = [
+    0,
+    -5,
+    '0',
+    '5m',
+    '',
+    '2026-10-26T18:00:00',
+    '2026-13-45T99:00:00Z',
+    null,
+    true,
+  ]
+  for (const deleteAfter of badValues) {
+    expect(parseNotifyRequest({ text: 'hi', deleteAfter }, 3900, 1000, NOW)).toEqual({
+      ok: false,
+      error:
+        'deleteAfter must be a positive number of seconds or an ISO 8601 timestamp with a timezone',
+    })
+  }
+})
+
+test('a deleteAfter timestamp at or before now is rejected', () => {
+  for (const deleteAfter of ['2026-10-26T12:00:00Z', '2026-10-26T11:00:00Z']) {
+    expect(parseNotifyRequest({ text: 'hi', deleteAfter }, 3900, 1000, NOW)).toEqual({
+      ok: false,
+      error: 'deleteAfter is in the past',
+    })
+  }
+})

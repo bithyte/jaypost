@@ -140,6 +140,7 @@ test('200 with outcome', async () => {
     allowText: false,
     timeoutSeconds: 30,
     attachment: undefined,
+    deleteAfter: undefined,
     reaskOnTimeout: false,
   })
 })
