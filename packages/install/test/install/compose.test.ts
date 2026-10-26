@@ -13,6 +13,9 @@ let calls: [string, readonly string[]][]
 let fail: (cmd: string, args: readonly string[]) => boolean
 let ownerOut: string
 let imageIds: string[]
+let adminKeyOut: string
+
+const ADMIN_KEY = `jpa_${'k'.repeat(43)}`
 
 const fakeExec: Exec = async (cmd, args, options) => {
   calls.push([cmd, args])
@@ -24,6 +27,9 @@ const fakeExec: Exec = async (cmd, args, options) => {
   }
   if (args.includes('images')) {
     return { code: 0, stdout: `${imageIds.shift() ?? ''}\n`, stderr: '' }
+  }
+  if (args.includes('admin-key')) {
+    return { code: 0, stdout: adminKeyOut, stderr: '' }
   }
   if (args.includes('audit')) {
     return { code: 0, stdout: 'LINES', stderr: '' }
@@ -70,6 +76,7 @@ beforeEach(() => {
   fail = () => false
   ownerOut = ''
   imageIds = []
+  adminKeyOut = ''
 })
 
 test('unavailable when compose v2 is missing', async () => {
@@ -395,4 +402,44 @@ test('upgrade throws when the build fails and removes nothing', async () => {
   calls = []
   await expect(t.upgrade(base, previous)).rejects.toThrow(/docker compose up/)
   expect(calls.some(([, a]) => a[0] === 'image')).toBe(false)
+})
+
+test('readAdminKey runs admin-key show without a tty', async () => {
+  const { t, paths } = make()
+  adminKeyOut = `${ADMIN_KEY}\n`
+  expect(await t.readAdminKey(rec)).toBe(ADMIN_KEY)
+  expect(calls).toEqual([
+    [
+      'docker',
+      [
+        'compose',
+        '-f',
+        join(paths.composeDirectory, 'compose.yaml'),
+        'run',
+        '--rm',
+        '--no-deps',
+        '-T',
+        'bot',
+        'jaypost',
+        'admin-key',
+        'show',
+      ],
+    ],
+  ])
+})
+
+test('readAdminKey throws with stderr when the container fails', async () => {
+  const { t } = make()
+  fail = (_command, args) => args.includes('admin-key')
+  await expect(t.readAdminKey(rec)).rejects.toThrow(
+    "couldn't read the admin key from the container: x",
+  )
+})
+
+test('readAdminKey refuses output that is not an admin key, without quoting it', async () => {
+  const { t } = make()
+  adminKeyOut = 'garbage output\n'
+  const reading = t.readAdminKey(rec)
+  await expect(reading).rejects.toThrow("the container didn't print a valid admin key")
+  await expect(reading).rejects.not.toThrow('garbage')
 })

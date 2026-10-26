@@ -1,6 +1,8 @@
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { ensureLinger } from '@jaypost/store'
+import type { ExecResult } from '@jaypost/store'
+import { parseContainerAdminKey } from './admin-key.ts'
 import {
   DOCKERIGNORE,
   MIN_PODMAN_MAJOR,
@@ -224,6 +226,31 @@ export function createQuadletTarget(deps: TargetDeps): Target {
         throw new Error(`couldn't read the log from the container: ${result.stderr.trim()}`)
       }
       return result.stdout
+    },
+    async readAdminKey(record) {
+      let running: ExecResult | undefined
+      try {
+        running = await exec('podman', ['exec', SERVICE_NAME, SERVICE_NAME, 'admin-key', 'show'])
+      } catch {
+        // fall through to the one-off container
+      }
+      if (running?.code === 0) {
+        return parseContainerAdminKey(running.stdout)
+      }
+      const result = await exec('podman', [
+        'run',
+        '--rm',
+        '-v',
+        `${VOLUME_NAME}:/data`,
+        formatImageTag(record.version),
+        SERVICE_NAME,
+        'admin-key',
+        'show',
+      ])
+      if (result.code !== 0) {
+        throw new Error(`couldn't read the admin key from the container: ${result.stderr.trim()}`)
+      }
+      return parseContainerAdminKey(result.stdout)
     },
     async isRunning() {
       return (await systemctl('is-active', '--quiet', SERVICE_NAME)).code === 0

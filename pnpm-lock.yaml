@@ -148,6 +148,9 @@ importers:
       '@jaypost/service':
         specifier: workspace:*
         version: link:../service
+      '@jaypost/testing':
+        specifier: workspace:*
+        version: link:../testing
 
   packages/core:
     dependencies:

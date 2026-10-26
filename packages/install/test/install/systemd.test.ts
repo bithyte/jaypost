@@ -582,3 +582,39 @@ test('findUnitExecWords undoes the quoting formatSystemdUnit applies', () => {
   const unit = formatSystemdUnit({ exec: words, config: '/c.json' })
   expect(findUnitExecWords(unit)).toEqual(words)
 })
+
+test('readAdminKey reads the admin key file next to the recorded configFile', async () => {
+  const directory = join(tmp, 'recorded-dir')
+  mkdirSync(directory)
+  const key = `jpa_${'k'.repeat(43)}`
+  writeFileSync(join(directory, 'admin-key'), `${key}\n`)
+  const { t } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
+  const rec = {
+    target: 'systemd' as const,
+    port: 1,
+    version: 'v',
+    configFile: join(directory, 'config.json'),
+  }
+  expect(await t.readAdminKey(rec)).toBe(key)
+})
+
+test('readAdminKey without the file says to start the service', async () => {
+  const { t } = make()
+  const configFile = join(tmp, 'none', 'config.json')
+  await expect(
+    t.readAdminKey({ target: 'systemd', port: 1, version: 'v', configFile }),
+  ).rejects.toThrow(
+    `no admin key in ${JSON.stringify(join(tmp, 'none', 'admin-key'))} yet; start the service once so it writes one`,
+  )
+})
+
+test('readAdminKey with an invalid file never quotes it', async () => {
+  const configFile = join(tmp, 'config.json')
+  writeFileSync(join(tmp, 'admin-key'), 'not a key at all\n')
+  const { t } = make()
+  const reading = t.readAdminKey({ target: 'systemd', port: 1, version: 'v', configFile })
+  await expect(reading).rejects.toThrow(
+    `admin key file ${JSON.stringify(join(tmp, 'admin-key'))} isn't a valid jaypost admin key`,
+  )
+  await expect(reading).rejects.not.toThrow('not a key')
+})

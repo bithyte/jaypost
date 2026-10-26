@@ -13,6 +13,7 @@ import {
   LAUNCHD_PID_PATTERN,
   QUARANTINE_ATTRIBUTE,
 } from './constants.ts'
+import { readAdminKeyFile } from './admin-key.ts'
 import {
   findBinaryCopyConflict,
   printPathHint,
@@ -200,6 +201,9 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
     },
     async readAuditLog(record) {
       return readAuditFiles(resolveAuditPath(resolveConfigFile(record)))
+    },
+    async readAdminKey(record) {
+      return readAdminKeyFile(resolveConfigFile(record))
     },
     async isRunning() {
       const result = await launchctl('print', service)

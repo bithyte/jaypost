@@ -14,6 +14,7 @@ import {
   EXEC_START_LINE_PATTERN,
   SERVICE_NAME,
 } from './constants.ts'
+import { readAdminKeyFile } from './admin-key.ts'
 import {
   findBinaryCopyConflict,
   printPathHint,
@@ -192,6 +193,9 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
     },
     async readAuditLog(record) {
       return readAuditFiles(resolveAuditPath(resolveConfigFile(record)))
+    },
+    async readAdminKey(record) {
+      return readAdminKeyFile(resolveConfigFile(record))
     },
     async isRunning() {
       return (await systemctl('is-active', '--quiet', SERVICE_NAME)).code === 0

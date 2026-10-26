@@ -117,3 +117,21 @@ export const removedKeysSchema = z.looseObject({ removedKeys: z.array(z.string()
 
 /** POST /admin/admin-key: the new admin key; the old one stopped working. */
 export const rotatedAdminKeySchema = z.looseObject({ adminKey: z.string() })
+
+/** GET /admin/bots. Unknown fields are kept. */
+export const botListSchema = z.looseObject({ bots: z.array(adminBotSchema) })
+
+/** POST /admin/bots: the bot just added, already starting. Unknown fields are kept. */
+export const addedBotSchema = z.looseObject({ bot: adminBotSchema })
+
+/** GET /admin/pairings. Unknown fields are kept. */
+export const pairingListSchema = z.looseObject({ pairings: z.array(adminPairingSchema) })
+
+/** GET /admin/keys. Unknown fields are kept. */
+export const keyListSchema = z.looseObject({ keys: z.array(adminKeySchema) })
+
+/** PATCH /admin/keys/:id: the key as it is now. Unknown fields are kept. */
+export const updatedKeySchema = z.looseObject({ key: adminKeySchema })
+
+/** DELETE /admin/keys/:id: an empty object. Unknown fields are kept. */
+export const revokedKeySchema = z.looseObject({})

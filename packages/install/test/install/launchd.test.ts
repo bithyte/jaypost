@@ -416,3 +416,17 @@ test('logsHint names the log file', () => {
   const { t } = make()
   expect(t.logsHint({} as never)).toBe('tail -f ~/Library/Logs/jaypost/jaypost.log')
 })
+
+test('readAdminKey reads the admin key file next to the recorded configFile', async () => {
+  const key = `jpa_${'k'.repeat(43)}`
+  writeFileSync(join(tmp, 'admin-key'), `${key}\n`)
+  const { t } = make({ JAYPOST_CONFIG: join(tmp, 'elsewhere', 'other.json') })
+  expect(
+    await t.readAdminKey({
+      target: 'launchd',
+      port: 1,
+      version: 'v',
+      configFile: join(tmp, 'recorded.json'),
+    }),
+  ).toBe(key)
+})

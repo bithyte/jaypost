@@ -30,6 +30,8 @@ import type {
   AskOptions,
   AskResult,
   Failure,
+  RawApiResult,
+  RawResponse,
   StateBody,
   VoteBody,
   VoteOutcome,
@@ -57,24 +59,41 @@ export async function callApi(
   body: object | undefined,
   options: ApiOptions,
 ): Promise<ApiResult> {
+  const response = await fetchApi(endpoint, method, path, body, options)
+  if (response.kind === 'failed') {
+    return response
+  }
+  if (response.status === 200 || response.status === 202) {
+    return parseOk(response.text)
+  }
+  return toStatusFailure(response.status, path, response.text, options.token !== undefined)
+}
+
+/**
+ * Sends one call and returns the status and body text as they came; only a transport problem
+ * (unreachable, timeout, abort) is a failure. Never throws; no retries.
+ */
+export async function fetchApi(
+  endpoint: URL,
+  method: ApiMethod,
+  path: ApiPath,
+  body: object | undefined,
+  options: ApiOptions,
+): Promise<RawApiResult> {
   const timeout = AbortSignal.timeout(Math.ceil(options.timeoutMs))
   const signal = AbortSignal.any([options.signal, timeout])
-  let response: RawResponse
   try {
-    response = await send(
+    const response = await send(
       resolveApiUrl(endpoint, path),
       method,
       body === undefined ? undefined : JSON.stringify(body),
       signal,
       options.token,
     )
+    return { kind: 'response', ...response }
   } catch {
     return toTransportFailure(endpoint, options, timeout)
   }
-  if (response.status === 200 || response.status === 202) {
-    return parseOk(response.text)
-  }
-  return toStatusFailure(response.status, path, response.text, options.token !== undefined)
 }
 
 const KEEPALIVE_MS = 60_000
@@ -162,8 +181,6 @@ function isTooEarly(timeoutSeconds: number | undefined, elapsedMs: number): bool
   }
   return elapsedMs < Math.min(timeoutSeconds, MAX_TIMEOUT_SECONDS) * 1000 - FETCH_GRACE_MS
 }
-
-type RawResponse = { readonly status: number; readonly text: string }
 
 /** Rejects on connection errors, resets and aborts; an abort destroys the socket. */
 function send(
@@ -351,7 +368,8 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
   }
 }
 
-function readStringField(text: string, key: string): string | undefined {
+/** The string field `key` of the JSON object in `text`, or undefined. Never throws. */
+export function readStringField(text: string, key: string): string | undefined {
   try {
     const parsed: unknown = JSON.parse(text)
     if (typeof parsed === 'object' && parsed !== null && Object.hasOwn(parsed, key)) {

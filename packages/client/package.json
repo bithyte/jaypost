@@ -13,6 +13,7 @@
     "@jaypost/store": "workspace:*"
   },
   "devDependencies": {
-    "@jaypost/service": "workspace:*"
+    "@jaypost/service": "workspace:*",
+    "@jaypost/testing": "workspace:*"
   }
 }

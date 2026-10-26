@@ -399,3 +399,41 @@ test('upgrade throws when the restart fails', async () => {
   )
   expect(calls.some(([c, a]) => c === 'podman' && a[0] === 'rmi')).toBe(false)
 })
+
+const ADMIN_KEY = `jpa_${'k'.repeat(43)}`
+
+test('readAdminKey execs admin-key show in the running container', async () => {
+  const { t } = make()
+  execOut = `${ADMIN_KEY}\n`
+  calls = []
+  expect(await t.readAdminKey(rec)).toBe(ADMIN_KEY)
+  expect(calls).toEqual([['podman', ['exec', 'jaypost', 'jaypost', 'admin-key', 'show']]])
+})
+
+test('readAdminKey falls back to a one-off container when exec fails', async () => {
+  const { t } = make()
+  failArgs = (a) => (a[0] === 'exec' ? 'no such container' : undefined)
+  ownerOut = ADMIN_KEY
+  calls = []
+  expect(await t.readAdminKey(rec)).toBe(ADMIN_KEY)
+  expect(calls).toContainEqual([
+    'podman',
+    ['run', '--rm', '-v', 'jaypost-data:/data', TAG, 'jaypost', 'admin-key', 'show'],
+  ])
+})
+
+test('readAdminKey throws with stderr when both fail', async () => {
+  const { t } = make()
+  failArgs = () => 'boom'
+  await expect(t.readAdminKey(rec)).rejects.toThrow(
+    "couldn't read the admin key from the container: boom",
+  )
+})
+
+test('readAdminKey refuses output that is not an admin key, without quoting it', async () => {
+  const { t } = make()
+  execOut = 'garbage output'
+  const reading = t.readAdminKey(rec)
+  await expect(reading).rejects.toThrow("the container didn't print a valid admin key")
+  await expect(reading).rejects.not.toThrow('garbage')
+})

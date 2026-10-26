@@ -1,6 +1,7 @@
 import { copyFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 import type { Exec, ExecOptions } from '@jaypost/store'
+import { parseContainerAdminKey } from './admin-key.ts'
 import { DOCKERIGNORE, PACKAGE_NAME } from './constants.ts'
 import { readContainerSecrets, removeEnvKey, writeEnvFile } from './envfile.ts'
 import { requireRecordOwner } from './state.ts'
@@ -151,6 +152,22 @@ export function createComposeTarget(deps: TargetDeps): Target {
         throw new Error(`couldn't read the log from the container: ${result.stderr.trim()}`)
       }
       return result.stdout
+    },
+    async readAdminKey() {
+      const result = await compose([
+        'run',
+        '--rm',
+        '--no-deps',
+        '-T',
+        'bot',
+        PACKAGE_NAME,
+        'admin-key',
+        'show',
+      ])
+      if (result.code !== 0) {
+        throw new Error(`couldn't read the admin key from the container: ${result.stderr.trim()}`)
+      }
+      return parseContainerAdminKey(result.stdout)
     },
     async isRunning() {
       const result = await compose(['ps', '--status', 'running', '-q', 'bot'])

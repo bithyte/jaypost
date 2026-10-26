@@ -85,6 +85,11 @@ export type Target = {
   readonly isRunning: (record: InstallRecord) => Promise<boolean>
   /** Raw contents of audit.jsonl.1 then audit.jsonl; '' when neither exists. Throws when it can't read. */
   readonly readAuditLog: (record: InstallRecord) => Promise<string>
+  /**
+   * The admin key the service wrote; containers read it with `jaypost admin-key show` inside.
+   * Throws when it can't be read or isn't a valid key, never quoting it.
+   */
+  readonly readAdminKey: (record: InstallRecord) => Promise<string>
   readonly logsHint: (record: InstallRecord) => string
 }
 

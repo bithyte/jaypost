@@ -43,3 +43,11 @@ export const ATTACHMENT_TOO_OLD_MESSAGE =
   'jaypost service is too old for attachments (run jaypost init to upgrade)'
 /** Shown when the provider can't send attachments. */
 export const ATTACHMENT_NOT_SUPPORTED_MESSAGE = 'attachments not supported by this provider'
+/** Shown when an admin route answers 401: the admin key was wrong or has been rotated. */
+export const ADMIN_KEY_REJECTED_MESSAGE =
+  'jaypost service rejected the admin key; check JAYPOST_ADMIN_KEY, or the admin key file if the key was rotated'
+/** Shown when the service has no admin routes. */
+export const ADMIN_TOO_OLD_MESSAGE =
+  'jaypost service is too old for admin commands (run jaypost init to upgrade)'
+/** The `error` of the 404 the HTTP server sends for a route it doesn't have. */
+export const ROUTE_NOT_FOUND_ERROR = 'Not Found'
