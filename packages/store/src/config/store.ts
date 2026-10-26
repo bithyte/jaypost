@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs'
 import { NO_AUTH, parseToken, TOKEN_ENV_VAR } from '../auth/index.ts'
-import type { ApiAuth } from '../auth/index.ts'
 import { DEFAULT_PROVIDER, parseQuietHours, requireProvider } from '@jaypost/core'
 import type { Provider, QuietHours, SettingValue } from '@jaypost/core'
 import { isMissingFileError, writeFileAtomic } from '../system/index.ts'
@@ -16,7 +15,13 @@ import {
 } from './constants.ts'
 import { findEnvValue, resolveConfigPath } from './paths.ts'
 import { fileConfigSchema } from './schema.ts'
-import type { Config, ConfigPatch, FileConfig } from './types.ts'
+import type {
+  Config,
+  ConfigPatch,
+  FileConfig,
+  ProviderSettingsRead,
+  ServiceConfig,
+} from './types.ts'
 
 /**
  * Returns {} when the file is missing. Throws on invalid JSON or fields, without quoting the file,
@@ -60,19 +65,21 @@ function toInteger(value: unknown): number | undefined {
   return undefined
 }
 
-function resolveAuth(env: NodeJS.ProcessEnv, file: FileConfig): ApiAuth {
+/** JAYPOST_TOKEN, else apiToken in the file; empty means none. Throws without quoting it. */
+export function resolveApiToken(env: NodeJS.ProcessEnv, file: FileConfig): string | undefined {
   const raw = findEnvValue(env, TOKEN_ENV_VAR) ?? (file.apiToken === '' ? undefined : file.apiToken)
   if (raw === undefined) {
-    return NO_AUTH
+    return undefined
   }
   const token = parseToken(raw)
   if (token === undefined) {
     throw new Error(`invalid api token; ${INIT_HINT} (or set ${TOKEN_ENV_VAR})`)
   }
-  return { kind: 'token', token }
+  return token
 }
 
-function resolveQuietHours(file: FileConfig): QuietHours | undefined {
+/** Throws when quietHours is invalid; empty or blank means off. */
+export function resolveQuietHours(file: FileConfig): QuietHours | undefined {
   const raw = file.quietHours
   if (raw === undefined || raw.trim() === '') {
     return undefined
@@ -84,6 +91,12 @@ function resolveQuietHours(file: FileConfig): QuietHours | undefined {
   return result.value
 }
 
+/** The date `raw` names, or undefined when it doesn't parse. Never throws. */
+export function parseMutedUntil(raw: string): Date | undefined {
+  const date = new Date(raw)
+  return Number.isNaN(date.getTime()) ? undefined : date
+}
+
 function resolveMutedUntil(
   file: FileConfig,
   path: string,
@@ -93,12 +106,71 @@ function resolveMutedUntil(
   if (raw === undefined) {
     return undefined
   }
-  const date = new Date(raw)
-  if (Number.isNaN(date.getTime())) {
+  const date = parseMutedUntil(raw)
+  if (date === undefined) {
     log(`ignoring invalid mutedUntil ${JSON.stringify(raw)} in ${JSON.stringify(path)}`)
-    return undefined
   }
   return date
+}
+
+/** JAYPOST_PROVIDER, else the file, else telegram. Throws on an unknown provider. */
+export function resolveConfigProvider(
+  env: NodeJS.ProcessEnv,
+  file: FileConfig,
+  providers: readonly Provider[],
+): Provider {
+  return requireProvider(
+    providers,
+    findEnvValue(env, PROVIDER_ENV_VAR) ?? file.provider ?? DEFAULT_PROVIDER,
+  )
+}
+
+/**
+ * The provider's settings, each from its env var, else the file (empty counts as unset). A missing
+ * required setting gives `missing`; an invalid value throws without quoting it.
+ */
+export function readProviderSettings(
+  env: NodeJS.ProcessEnv,
+  file: FileConfig,
+  provider: Provider,
+): ProviderSettingsRead {
+  const settings: Record<string, SettingValue> = {}
+  for (const setting of provider.settings) {
+    const fileValue = file[setting.configKey]
+    const raw = findEnvValue(env, setting.envVar) ?? (fileValue === '' ? undefined : fileValue)
+    if (raw === undefined) {
+      if (setting.required) {
+        return {
+          kind: 'missing',
+          message: `missing ${setting.description}; ${INIT_HINT} (or set ${setting.envVar})`,
+        }
+      }
+      continue
+    }
+    const value = setting.parse(raw)
+    if (value === undefined) {
+      throw new Error(`invalid ${setting.description}; ${INIT_HINT} (or set ${setting.envVar})`)
+    }
+    settings[setting.configKey] = value
+  }
+  return { kind: 'settings', settings }
+}
+
+function resolveServiceConfig(env: NodeJS.ProcessEnv, file: FileConfig): ServiceConfig {
+  const rawPort = findEnvValue(env, PORT_ENV_VAR) ?? file.port ?? DEFAULT_PORT
+  const port = toInteger(rawPort)
+  if (port === undefined || port < 1 || port > 65535) {
+    throw new Error(`invalid port ${JSON.stringify(String(rawPort))}: must be an integer 1-65535`)
+  }
+  return { port, host: findEnvValue(env, HOST_ENV_VAR) ?? DEFAULT_HOST }
+}
+
+/**
+ * Port (JAYPOST_PORT, else the file, else 8787) and host (JAYPOST_HOST, else loopback). Throws on
+ * an invalid port or config file; ignores provider settings.
+ */
+export function loadServiceConfig(env: NodeJS.ProcessEnv): ServiceConfig {
+  return resolveServiceConfig(env, readConfigFile(resolveConfigPath(env)))
 }
 
 /**
@@ -116,40 +188,21 @@ export function loadConfig(
 ): Config {
   const path = resolveConfigPath(env)
   const file = readConfigFile(path)
-  const provider = requireProvider(
-    providers,
-    findEnvValue(env, PROVIDER_ENV_VAR) ?? file.provider ?? DEFAULT_PROVIDER,
-  )
-  const settings: Record<string, SettingValue> = {}
-  for (const setting of provider.settings) {
-    const fileValue = file[setting.configKey]
-    const raw = findEnvValue(env, setting.envVar) ?? (fileValue === '' ? undefined : fileValue)
-    if (raw === undefined) {
-      if (setting.required) {
-        throw new Error(`missing ${setting.description}; ${INIT_HINT} (or set ${setting.envVar})`)
-      }
-      continue
-    }
-    const value = setting.parse(raw)
-    if (value === undefined) {
-      throw new Error(`invalid ${setting.description}; ${INIT_HINT} (or set ${setting.envVar})`)
-    }
-    settings[setting.configKey] = value
+  const provider = resolveConfigProvider(env, file, providers)
+  const read = readProviderSettings(env, file, provider)
+  if (read.kind === 'missing') {
+    throw new Error(read.message)
   }
-  const rawPort = findEnvValue(env, PORT_ENV_VAR) ?? file.port ?? DEFAULT_PORT
-  const port = toInteger(rawPort)
-  if (port === undefined || port < 1 || port > 65535) {
-    throw new Error(`invalid port ${JSON.stringify(String(rawPort))}: must be an integer 1-65535`)
-  }
-  const auth = resolveAuth(env, file)
+  const { port, host } = resolveServiceConfig(env, file)
+  const token = resolveApiToken(env, file)
   const quietHours = resolveQuietHours(file)
   const mutedUntil = resolveMutedUntil(file, path, log)
   return {
     provider,
-    settings,
+    settings: read.settings,
     port,
-    host: findEnvValue(env, HOST_ENV_VAR) ?? DEFAULT_HOST,
-    auth,
+    host,
+    auth: token === undefined ? NO_AUTH : { kind: 'token', token },
     ...(quietHours === undefined ? {} : { quietHours }),
     ...(mutedUntil === undefined ? {} : { mutedUntil }),
   }

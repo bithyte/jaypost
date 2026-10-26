@@ -24,9 +24,20 @@ export {
   updateKey,
   updatePairingQuiet,
 } from './operations.ts'
+export { resolveAdminKeyPath, resolveBotFiles, resolveRegistryPath } from './paths.ts'
 export { registrySchema } from './schema.ts'
+export { loadSeed } from './seed.ts'
+export {
+  ensureAdminKey,
+  migrateLegacyBotFiles,
+  RegistryStore,
+  resolveAdminKey,
+  resolveSeedAuditPath,
+  writeAdminKeyFile,
+} from './store.ts'
 export type {
   AddBotResult,
+  BotFiles,
   BotInput,
   BotRecord,
   ClaimPairingResult,
@@ -43,6 +54,7 @@ export type {
   ResetPairingResult,
   RevokeKeyResult,
   SeedInput,
+  SeedLoad,
   SeedRecord,
   SeedResult,
   UpdateKeyResult,

@@ -11,7 +11,7 @@ import {
   TOKEN_FILE_NAME,
   TOKEN_PATTERN,
 } from './constants.ts'
-import type { ClientToken } from './types.ts'
+import type { ClientSecretNames, ClientToken } from './types.ts'
 
 /** A new random token: 32 bytes as 43 base64url characters. */
 export function generateToken(): string {
@@ -57,21 +57,37 @@ export function removeTokenFile(path: string): void {
  * and never the value. Never throws.
  */
 export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
-  const fromEnv = findEnvValue(env, TOKEN_ENV_VAR)
+  return resolveClientSecret(env, tokenFile, {
+    envVar: TOKEN_ENV_VAR,
+    fileName: 'token file',
+    valueName: 'jaypost token',
+  })
+}
+
+/**
+ * `resolveClientToken` for any secret with the token's shape: `names.envVar`, then `path`, else
+ * none. Messages name the source with `names` and never quote the value. Never throws.
+ */
+export function resolveClientSecret(
+  env: NodeJS.ProcessEnv,
+  path: string,
+  names: ClientSecretNames,
+): ClientToken {
+  const fromEnv = findEnvValue(env, names.envVar)
   if (fromEnv !== undefined) {
     const token = parseToken(fromEnv)
     return token === undefined
-      ? { kind: 'unusable', message: `${TOKEN_ENV_VAR} isn't a valid jaypost token` }
+      ? { kind: 'unusable', message: `${names.envVar} isn't a valid ${names.valueName}` }
       : { kind: 'token', token, source: 'env' }
   }
   let raw: string | undefined
   try {
-    raw = readTokenFile(tokenFile)
+    raw = readTokenFile(path)
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error)
     return {
       kind: 'unusable',
-      message: `token file ${JSON.stringify(tokenFile)} couldn't be read: ${reason}`,
+      message: `${names.fileName} ${JSON.stringify(path)} couldn't be read: ${reason}`,
     }
   }
   if (raw === undefined) {
@@ -81,7 +97,7 @@ export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): C
   return token === undefined
     ? {
         kind: 'unusable',
-        message: `token file ${JSON.stringify(tokenFile)} isn't a valid jaypost token`,
+        message: `${names.fileName} ${JSON.stringify(path)} isn't a valid ${names.valueName}`,
       }
     : { kind: 'token', token, source: 'file' }
 }

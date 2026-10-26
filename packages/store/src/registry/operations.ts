@@ -373,7 +373,8 @@ function updateSeed(
   }
 }
 
-function withoutOwner(input: BotInput): SettingValues {
+/** The settings without the provider's owner setting, which a bot record never stores. */
+export function withoutOwner(input: BotInput): SettingValues {
   const ownerSetting = findOwnerSetting(input.provider)
   if (ownerSetting === undefined) {
     return input.settings

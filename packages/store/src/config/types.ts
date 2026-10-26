@@ -17,6 +17,14 @@ export type Config = {
   readonly mutedUntil?: Date
 }
 
+/** Port and host; the only service-wide settings left in config.json and the env. */
+export type ServiceConfig = { readonly port: number; readonly host: string }
+
+/** Provider settings read from the env and config.json, or the first required one that's absent. */
+export type ProviderSettingsRead =
+  | { readonly kind: 'settings'; readonly settings: SettingValues }
+  | { readonly kind: 'missing'; readonly message: string }
+
 /** Shape of config.json; every field is optional and unknown keys are kept. */
 export type FileConfig = Readonly<z.infer<typeof fileConfigSchema>>
 

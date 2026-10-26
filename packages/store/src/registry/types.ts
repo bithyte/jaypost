@@ -71,6 +71,19 @@ export type SeedInput = {
   readonly mutedUntil?: string
 }
 
+/** What the env and config.json say bot 1, pairing 1 and key 1 should be. */
+export type SeedLoad =
+  | { readonly kind: 'seed'; readonly provider: Provider; readonly seed: SeedInput }
+  /** A required setting is absent; `message` says which and how to set it. */
+  | { readonly kind: 'missing'; readonly message: string }
+
+/** Where one bot keeps its state and audit files. */
+export type BotFiles = {
+  readonly directory: string
+  readonly statePath: string
+  readonly auditPath: string
+}
+
 export type BotInput = {
   readonly provider: Provider
   readonly settings: SettingValues

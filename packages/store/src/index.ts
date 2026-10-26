@@ -31,6 +31,7 @@ export {
   APPROVERS_ENV_VAR,
   DEFAULT_PORT,
   loadConfig,
+  loadServiceConfig,
   MODE_ENV_VAR,
   PORT_ENV_VAR,
   PROVIDER_ENV_VAR,
@@ -41,7 +42,7 @@ export {
   resolveConfigPath,
   updateConfigFile,
 } from './config/index.ts'
-export type { Config } from './config/index.ts'
+export type { Config, ServiceConfig } from './config/index.ts'
 export { findEnvValue } from './config/paths.ts'
 export {
   addBot,
@@ -55,20 +56,31 @@ export {
   createEmptyRegistry,
   createKey,
   createPairing,
+  ensureAdminKey,
   findKeyByHash,
   generateAdminKey,
   generateApiKey,
   hashKey,
+  loadSeed,
   LOCAL_PERSON,
+  migrateLegacyBotFiles,
   REGISTRY_FILE_NAME,
+  RegistryStore,
   removeBot,
   removePairing,
   resetPairing,
+  resolveAdminKey,
+  resolveAdminKeyPath,
+  resolveBotFiles,
+  resolveRegistryPath,
+  resolveSeedAuditPath,
   revokeKey,
   updateKey,
   updatePairingQuiet,
+  writeAdminKeyFile,
 } from './registry/index.ts'
 export type {
+  BotFiles,
   BotRecord,
   KeyRecord,
   KeyTarget,
@@ -76,6 +88,7 @@ export type {
   PairingRecord,
   Registry,
   SeedInput,
+  SeedLoad,
   SeedRecord,
 } from './registry/index.ts'
 export { resolveStatePath, StateStore } from './state/index.ts'
