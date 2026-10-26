@@ -94,6 +94,7 @@ const NOTIFY_DESCRIPTION = [
   "Tell the user something they don't need to answer, for example that a task finished",
   "or that you're stuck and need help. Returns once sent; doesn't wait for the user.",
   'For commands and diffs, set format to "markdown" and put them in a fenced code block.',
+  'Set delete_after to have it deleted sooner, e.g. 300 for a status update that goes stale.',
   ATTACH_SENTENCE,
 ].join(' ')
 
@@ -112,6 +113,13 @@ const FORMAT_DESCRIPTION =
   'markdown shows **bold**, *italic*, `inline code` and fenced ``` blocks; put commands and diffs in a fenced block (```diff, ```sh) so the user sees them exactly'
 
 const formatSchema = z.enum(MESSAGE_FORMATS).optional().describe(FORMAT_DESCRIPTION)
+
+const deleteAfterSchema = z
+  .union([z.number().positive(), z.string().min(1)])
+  .optional()
+  .describe(
+    'Seconds until the notification is deleted, or an ISO 8601 timestamp with a timezone. Default 8 hours. Use a short one for progress updates that go stale.',
+  )
 
 const attachmentSchema = z
   .union([
@@ -344,6 +352,7 @@ export function createMcpServer(
         text: textSchema,
         format: formatSchema,
         attachment: attachmentSchema,
+        delete_after: deleteAfterSchema,
       },
     },
     async (args, extra): Promise<CallToolResult> => {
@@ -355,6 +364,7 @@ export function createMcpServer(
           ...(args.attachment === undefined
             ? {}
             : { attachment: toAttachmentSource(args.attachment) }),
+          ...(args.delete_after === undefined ? {} : { deleteAfter: args.delete_after }),
         },
         { signal: AbortSignal.any([extra.signal, signal]) },
       )

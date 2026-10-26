@@ -60,6 +60,7 @@ Closing the agent session (the MCP server's stdin) cancels the background questi
 | `text`         | string | yes      | The message.                                                    |
 | `format`       | string | no       | `plain` (default) or `markdown`; see [Formatting](formatting.md). |
 | `attachment`   | object | no       | Same as on `ask_user`.                                |
+| `delete_after` | number or string | no | Seconds until the notification is deleted, or an ISO 8601 timestamp with a timezone. Default 8 hours; not shifted by quiet hours, capped at 47 hours. An older service ignores it. |
 
 Register it with Claude Code:
 

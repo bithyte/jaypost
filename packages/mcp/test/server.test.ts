@@ -633,6 +633,15 @@ test('ask with allow_text and no options is answered by a typed reply', async ()
   })
 })
 
+test('notify_user forwards delete_after, and omits it when not set', async () => {
+  const { port, bodies } = await startRecordingStub()
+  const client = await connect(port)
+  await client.callTool({ name: 'notify_user', arguments: { ...NOTE, delete_after: 300 } })
+  await client.callTool({ name: 'notify_user', arguments: { ...NOTE, delete_after: '300' } })
+  await client.callTool({ name: 'notify_user', arguments: NOTE })
+  expect(bodies.map((body) => body.deleteAfter)).toEqual([300, '300', undefined])
+})
+
 test('allow_text is forwarded only when given', async () => {
   const { port, bodies } = await startRecordingStub()
   const client = await connect(port)

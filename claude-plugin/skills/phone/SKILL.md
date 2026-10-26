@@ -19,7 +19,7 @@ Ask with `ask_user` before a step the permission hook won't catch (it's already 
 
 Don't ask about what you can decide from the code or a sensible default. Pick one and mention it in your report.
 
-Use `notify_user` when no answer is needed: the task is done, you're blocked on something only the user can fix, or a long step finished.
+Use `notify_user` when no answer is needed: the task is done, you're blocked on something only the user can fix, or a long step finished. Pass `delete_after` (seconds) for updates that go stale quickly, so they don't pile up.
 
 ## What the plugin already sends
 
