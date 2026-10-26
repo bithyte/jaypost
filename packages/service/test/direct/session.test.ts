@@ -8,7 +8,7 @@ import type {
   SendNotificationOptions,
 } from '@jaypost/core'
 import { openDirectSession } from '../../src/direct/index.ts'
-import { createFakeProvider } from '@jaypost/testing'
+import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import type { FakeRuntime } from '@jaypost/testing'
 
 type Recorded = {
@@ -250,4 +250,35 @@ test('a fatal provider error rejects a vote with its message', async () => {
   runtime.handlers?.fatal('bot stopped: boom')
   await expect(pending).rejects.toThrow('bot stopped: boom')
   await session.stop()
+})
+
+test('a direct request and notification go to the owner from the settings', async () => {
+  const notified: (string | undefined)[] = []
+  const base = createPairingFakeProvider()
+  const provider = createFakeProvider({
+    name: base.name,
+    settings: base.settings,
+    runtime: {
+      sendNotification: async (_id, _message, options) => {
+        notified.push(options.recipient)
+        return { n: 0 }
+      },
+    },
+  })
+  const session = await openDirectSession(
+    { provider, settings: { fakeKey: 'k', fakeOwner: 'owner-1' } },
+    () => {},
+  )
+  const controller = new AbortController()
+  const pending = session.request(createRequest(), controller.signal)
+  const runtime = requireRuntime(provider.runtimes)
+  await waitForSent(runtime)
+  expect(runtime.sent[0]?.recipient).toBe('owner-1')
+  expect(runtime.handlers?.isPaired('owner-1')).toBe(true)
+  expect(runtime.handlers?.isPaired('someone')).toBe(false)
+  expect(runtime.handlers?.listPaired()).toEqual(['owner-1'])
+  await session.notify({ message: { text: 'Shipped', spans: [] }, attachment: undefined })
+  expect(notified).toEqual(['owner-1'])
+  controller.abort()
+  await pending
 })

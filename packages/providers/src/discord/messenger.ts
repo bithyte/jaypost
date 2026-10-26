@@ -47,13 +47,12 @@ export function createDiscordMessenger(
     if (recipient === undefined) {
       throw new Error('message has no recipient')
     }
-    const userId = recipient
-    const known = channelIdsByUser.get(userId)
+    const known = channelIdsByUser.get(recipient)
     if (known !== undefined) {
       return known
     }
-    const channelId = await client.openDirectChannel(userId)
-    channelIdsByUser.set(userId, channelId)
+    const channelId = await client.openDirectChannel(recipient)
+    channelIdsByUser.set(recipient, channelId)
     return channelId
   }
   function render(message: FormattedText): string {

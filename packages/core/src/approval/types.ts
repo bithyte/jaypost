@@ -24,7 +24,7 @@ export type ApprovalRequest = {
   readonly timeoutSeconds: number
   /** The decoded file to send with the question; `undefined` when the caller sent none. */
   readonly attachment: Attachment | undefined
-  /** User id to send to; omitted means the owner. Never set by `parseApprovalRequest`. */
+  /** User id to send to; the daemon fills in the paired owner. Never set by `parseApprovalRequest`. */
   readonly recipient?: string
   /**
    * On timeout the message is finalized as `reasked` instead of `timedOut`; the result is still

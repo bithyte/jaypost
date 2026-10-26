@@ -30,8 +30,8 @@ export type SendNotificationOptions = {
  */
 export type Notifier = {
   /**
-   * Send `message` to `options.recipient`; with `options.dismissible` it carries a dismiss control for `id`,
-   * if the messenger can delete.
+   * Send `message` to `options.recipient`; with `options.dismissible` it carries a dismiss
+   * control for `id`, if the messenger can delete.
    */
   readonly sendNotification: (
     id: string,

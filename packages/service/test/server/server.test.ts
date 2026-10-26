@@ -711,6 +711,7 @@ async function startReal(
     readonly maxTextLength?: number
     readonly maxOptionCount?: number
     readonly resolveVoters?: ApiBot['resolveVoters']
+    readonly recipient?: string
   } = {},
 ) {
   const messenger = new RecordingMessenger()
@@ -718,7 +719,7 @@ async function startReal(
   server = createApiServer(
     createSingleBotRouter({
       version: TEST_VERSION,
-      recipient: () => undefined,
+      recipient: () => options.recipient,
       service,
       status: options.status ?? (() => ({ paired: true, bot: 'b' })),
       maxTextLength: options.maxTextLength ?? 3900,
@@ -986,6 +987,12 @@ test('/notify takes an attachment', async () => {
   const res = await postNotify(url, JSON.stringify({ text: 'hi', attachment: ATTACHMENT }))
   expect(res.status).toBe(200)
   expect(notify.mock.calls[0]?.[0].attachment?.content.byteLength).toBe(100_000)
+})
+
+test('/request/async asks the bot owner', async () => {
+  const { url, messenger } = await startReal({ recipient: '42' })
+  expect((await postAsync(url, JSON.stringify(valid))).status).toBe(202)
+  expect(messenger.recipients).toEqual(['42'])
 })
 
 test('/request/async takes an attachment', async () => {

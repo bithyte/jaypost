@@ -15,8 +15,8 @@ type KnownIdentity = Extract<DiscordIdentity, { readonly kind: 'ok' }>
 
 /**
  * Discord behind the provider contract. `checkCredentials` must succeed before `start` or
- * `pairingInstructions`. Who is paired is the daemon's to know; the runtime asks `handlers.isPaired`. The token
- * never appears in a reason, a log line or a fatal message.
+ * `pairingInstructions`. Who is paired is the daemon's to know; the runtime asks
+ * `handlers.isPaired`. The token never appears in a reason, a log line or a fatal message.
  */
 export function createDiscordRuntime(
   settings: SettingValues,
