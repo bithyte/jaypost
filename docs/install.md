@@ -97,6 +97,8 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
+The service keeps its bots, pairings and API keys in `registry.json` next to the config file (the data volume for containers), with each bot's `state.json` and `audit.jsonl` under `bots/<id>/`. The env vars and `config.json` only seed the first bot, pairing and key when the registry is empty; after that, change things with `jaypost bot`, `key` and `pairing` (see [Hosting](hosting.md)). Running `init` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
+
 ## One instance per token
 
 Only one instance can run per bot token; on Telegram two would fight over the updates. Discord doesn't stop two services sharing a token, and both get every tap, so run only one. `init` replaces an existing install rather than adding a second. Stop anything you started by hand, including a `docker run` container, before running `init`.

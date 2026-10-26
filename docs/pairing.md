@@ -10,7 +10,9 @@ To move to another account:
 jaypost reset-owner
 ```
 
-It asks first, clears the owner, restarts the service and waits for a new pairing.
+It asks first, resets the install's pairing (the one its key points to) so the old person is forgotten, and waits for a new pairing. The service keeps running, and the keys of that pairing keep working once someone pairs again. Their open questions end with their timeout option. It also removes the owner from the install's inputs (`config.json` for systemd and launchd, the `.env` owner line for containers) so a restart can't pair them again; a container whose old service saved the owner into `/data/config.json` keeps it there until you run `owner clear` inside it or edit the file.
+
+On a service with several bots and people, each key points to a pairing and a person pairs once per bot. Admins manage them with `jaypost pairing` and `jaypost key create`; see [Hosting](hosting.md).
 
 ## Discord setup
 

@@ -53,12 +53,13 @@ Errors are JSON `{ "error": "..." }`:
 | Status | Meaning                                                                                                                                                    |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 400    | Body isn't valid JSON or fails validation (on Discord, more than 25 `options` is `options must have at most 25 entries`). Nothing is sent to the chat app. |
-| 401    | Missing or wrong token.                                                                                                                                    |
+| 401    | Missing or wrong token. A wrong token gets 401 on an install without a token too.                                                                          |
 | 413    | Body over 14 MiB.                                                                                                                                          |
 | 501    | The body has an `attachment` and the provider can't send files (`attachments not supported`).                                                              |
 | 502    | Message couldn't be sent.                                                                                                                                  |
+| 503    | The key's bot isn't `running` (see `state` in [`GET /status`](#status)), or isn't paired yet.                                                              |
 | 500    | Internal error, or the request was cancelled.                                                                                                              |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status` or `/openapi.yaml`.                                                |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                                                |
 | 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
@@ -183,7 +184,37 @@ Attachments need a service at least as new as this release; an older one ignores
 
 ## Status
 
-`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
+`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. It also names the caller's `key` and `pairing` ids, and the `state` of the key's bot: `starting`, `running`, or `failed` with an `error`. A failed bot is retried with backoff and question routes answer 503 until it's `running`. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
+
+## Log
+
+`GET /log` returns the questions asked with the caller's key, oldest first, as `{ "entries": [...], "skippedCount": 0 }`. `skippedCount` is how many log lines couldn't be read. It takes `since` (a duration like `7d`, a date or an ISO date-time), `project` and `limit` (the last N); a bad or repeated parameter is a `400`. Each entry has `id`, `askedAt`, `text`, `options`, `timeoutOption`, `timeoutSeconds`, `status` and, once known, `answer` and `settledAt`, plus the `key` and `pairing` it came from. See [Question log](question-log.md).
+
+```
+curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $(cat ~/.config/jaypost/token)"
+```
+
+## Admin routes
+
+The admin routes manage bots, pairings and keys on a running service, so a remote admin or another app can drive them. They take the admin key as the bearer token, not an API key; an API key, a missing key or a wrong one gets `401`, and the admin key gets `401` on every other route. Bodies are JSON and error messages never quote them. Secrets are never echoed: the API key's plaintext comes back once, from `POST /admin/keys`, and hashes are never returned.
+
+| Route                             | Does                                                                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /admin/bots`                 | Bots with `state` (`starting`, `running`, `failed`), `error`, `pairingCount` and `keyCount`. Never their settings.                                  |
+| `POST /admin/bots`                | `{ "provider", "settings", "label"? }`. Adds a bot, `201`, already starting. `settings` never holds the owner. Credentials another bot uses are rejected. |
+| `DELETE /admin/bots/{id}`         | Removes the bot, its pairings and keys; returns `removedKeys`.                                                                                      |
+| `GET /admin/pairings`             | Pairings, with `person` once paired, `code` while pending and their `keys`. `?bot=` filters.                                                        |
+| `POST /admin/pairings`            | `{ "bot" }`. A pairing with no key, `201`, with its `code` and `instructions`.                                                                      |
+| `POST /admin/pairings/{id}/reset` | Forgets the person and gives the pairing a fresh code. Rejects the open questions of its keys with their timeout option.                            |
+| `DELETE /admin/pairings/{id}`     | Removes the pairing and revokes its keys; returns `removedKeys`.                                                                                    |
+| `GET /admin/keys`                 | Keys without hashes. `?bot=` and `?pairing=` filter.                                                                                                |
+| `POST /admin/keys`                | Exactly one of `bot` (new pairing, returns a `code`), `pairing` or `sameAsKey`, plus `label` and `externalId`. `201` with the plaintext `key`.       |
+| `PATCH /admin/keys/{id}`          | `label` and `externalId`: a string sets, `null` clears, absent keeps.                                                                               |
+| `DELETE /admin/keys/{id}`         | Revokes the key and ends its open questions with their timeout option. Its pairing stays.                                                           |
+| `GET /admin/log`                  | Every bot's questions, each with its `bot`. Filters `bot`, `pairing`, `key`, `since`, `project`, `limit`.                                            |
+| `POST /admin/admin-key`           | Replaces the admin key and returns the new one. The old key stops working at once and the key file is rewritten.                                    |
+
+`/admin/log` doesn't `404` on a `pairing` or `key` id that no longer exists, so the history of revoked keys and removed pairings stays readable. A removed bot's log can't be read through the API; its files stay on disk under `bots/<id>/`. A registry write that fails answers `500` and changes nothing. Unknown ids on the other routes answer `404`. Use the [CLI](commands.md#admin) rather than calling these by hand, unless you're building on top of them. See [Hosting](hosting.md).
 
 ## OpenAPI spec
 

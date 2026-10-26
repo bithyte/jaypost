@@ -34,7 +34,7 @@ Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "S
 jaypost reset-owner
 ```
 
-Clears the paired owner, restarts the service and waits for a new pairing. See [Pairing](pairing.md).
+Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. See [Pairing](pairing.md).
 
 ### `jaypost update`
 
@@ -95,10 +95,53 @@ A Claude Code hook that sends permission prompts to your chat app and takes your
 ### `jaypost log`
 
 ```
-jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--json]
+jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] [--pairing ID] [--key ID] [--all] [--json]
 ```
 
-Prints the questions the service asked and how they ended. `--since` takes a duration (`7d`) or a date, `--project` filters by name, `-n` limits to the last N, `--json` prints one object per line. See [Question log](question-log.md).
+Prints the questions the service asked and how they ended. `--since` takes a duration (`7d`) or a date, `--project` filters by name, `-n` limits to the last N, `--json` prints one object per line. `--bot`, `--pairing`, `--key` and `--all` read every bot's log through the admin routes and need the admin key; without one, `log` prints the caller key's own entries and says so on stderr. See [Question log](question-log.md).
+
+## Admin
+
+These call the admin routes and need the admin key: read from the install on this machine, or `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY`. Every one takes `--json`. See [Hosting](hosting.md).
+
+### `jaypost bot`
+
+```
+jaypost bot add [--provider NAME] [--label TEXT]
+jaypost bot list
+jaypost bot remove ID [-y]
+```
+
+Adds a bot (asks for its settings), lists bots with their state, pairings and keys, or removes one with its pairings and keys.
+
+### `jaypost key`
+
+```
+jaypost key create (--bot ID | --pairing ID | --same-as KEY) [--label TEXT] [--external-id ID]
+jaypost key list [--bot ID] [--pairing ID]
+jaypost key label ID [--label TEXT] [--external-id ID]
+jaypost key revoke ID
+```
+
+`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
+
+### `jaypost pairing`
+
+```
+jaypost pairing create --bot ID
+jaypost pairing list [--bot ID]
+jaypost pairing remove ID [-y]
+```
+
+`create` makes a pairing with no key (an approver invite) and prints its code. `remove` revokes the pairing's keys too.
+
+### `jaypost admin-key rotate`
+
+```
+jaypost admin-key rotate
+```
+
+Replaces the admin key; the old one stops working at once.
 
 ## CI
 

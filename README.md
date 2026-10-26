@@ -79,11 +79,12 @@ A small service on localhost holds each request open until you tap a button, rep
 - [Claude Code](docs/claude-code.md): plugin, permission hook and replies to a finished turn
 - [Agents (MCP)](docs/mcp.md): tools for any MCP client
 - [Shell and Node](docs/scripts.md): `jaypost send` and the `Client`
-- [HTTP API](docs/http-api.md): questions, background questions, notifications, attachments
+- [HTTP API](docs/http-api.md): questions, background questions, notifications, attachments, log, admin routes
 - [Formatting](docs/formatting.md): the markdown subset messages support
 - [CI](docs/ci.md): GitHub Action, direct mode, several approvers
 - [Bot commands](docs/bot.md): `/pending`, `/cancel`, `/history`, quiet hours
 - [Question log](docs/question-log.md): what was asked and how it ended
+- [Hosting](docs/hosting.md): one service, several bots and people, API keys, the admin key
 - [Commands](docs/commands.md): every CLI command
 - [Security](docs/security.md)
 - [Contributing](CONTRIBUTING.md)
