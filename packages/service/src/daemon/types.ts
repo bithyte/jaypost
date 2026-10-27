@@ -1,3 +1,4 @@
+import type { DatabaseSync } from 'node:sqlite'
 import type { Provider, QuietHours, QuietPatch } from '@jaypost/core'
 import type { BotRecord, ClaimCodeResult, Registry, RegistryStore } from '@jaypost/store'
 import type { ApiBot } from '../server/index.ts'
@@ -23,7 +24,9 @@ export type BotPeople = {
 export type BotOptions = {
   readonly record: BotRecord
   readonly provider: Provider
-  /** Where the bot's state and audit files live, from `resolveBotFiles`. */
+  /** Holds the bot's pending requests and notifications. */
+  readonly database: DatabaseSync
+  /** Where the bot's audit file lives, from `resolveBotFiles`. */
   readonly directory: string
   readonly people: BotPeople
   /** The provider can't continue; the caller decides what happens next. */
@@ -78,6 +81,8 @@ export type BotSupervisorOptions = {
 }
 
 export type HubOptions = {
+  /** The open db that `store` is on; each bot keeps its state in it. */
+  readonly database: DatabaseSync
   readonly store: RegistryStore
   /** What `store` holds now; the hub keeps it in memory and saves every change through `store`. */
   readonly registry: Registry

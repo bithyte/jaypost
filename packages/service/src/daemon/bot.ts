@@ -12,13 +12,7 @@ import {
   resolveVoters,
   runOwnerCommand,
 } from '@jaypost/core'
-import {
-  AUDIT_FILE_NAME,
-  AuditLog,
-  LOCAL_PERSON,
-  STATE_FILE_NAME,
-  StateStore,
-} from '@jaypost/store'
+import { AUDIT_FILE_NAME, AuditLog, LOCAL_PERSON, StateStore } from '@jaypost/store'
 import type { PairResult, RuntimeHandlers } from '@jaypost/core'
 import type { BotOptions, RunningBot } from './types.ts'
 
@@ -29,8 +23,8 @@ function recipientFor(person: string): string | undefined {
 
 /**
  * Starts one bot for everyone paired on it: its provider runtime, questions, notifications, each
- * person's quiet hours, and pairing with the codes `people` has pending at each attempt. State and
- * audit files go to `options.directory`; every log line starts with `[<bot id>]`. Throws an Error
+ * person's quiet hours, and pairing with the codes `people` has pending at each attempt. State is
+ * kept in `options.database` and audit files go to `options.directory`; every log line starts with `[<bot id>]`. Throws an Error
  * with the provider's reason when credentials are rejected.
  */
 export async function startBot(options: BotOptions): Promise<RunningBot> {
@@ -53,7 +47,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
       `provider ${JSON.stringify(provider.name)} has an owner setting but no pairing support`,
     )
   }
-  const store = new StateStore(join(options.directory, STATE_FILE_NAME), provider.name, log)
+  const store = new StateStore(options.database, record.id, provider.name, log)
   const saved = store.load()
   const audit = new AuditLog(join(options.directory, AUDIT_FILE_NAME), { log })
   const service = new ApprovalService(runtime, undefined, undefined, { store, audit })

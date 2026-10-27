@@ -1,172 +1,161 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vite-plus/test'
+import { openDatabase } from '../../src/database/index.ts'
 import { resolveStatePath, StateStore } from '../../src/state/index.ts'
 
 const REQUEST = { id: 'r1', reference: { chatId: 1, messageId: 2 }, text: 'Deploy?' }
+const REQUEST_TWO = { id: 'r2', reference: { chatId: 1, messageId: 4 }, text: 'Ship?' }
 const NOTIFICATION = {
   id: 'n1',
   reference: { chatId: 1, messageId: 3 },
   expiresAtMs: 1_792_400_000_000,
 }
 
-function createPath(): string {
-  return join(mkdtempSync(join(tmpdir(), 'tab-state-')), 'state.json')
+function createDatabase(): DatabaseSync {
+  return openDatabase(join(mkdtempSync(join(tmpdir(), 'tab-state-')), 'jaypost.db'))
 }
 
-function readState(path: string): unknown {
-  return JSON.parse(readFileSync(path, 'utf8'))
-}
-
-function writeState(path: string, provider: string): void {
-  const state = { version: 1, provider, requests: [REQUEST], notifications: [] }
-  writeFileSync(path, JSON.stringify(state))
+function createStore(
+  database: DatabaseSync,
+  botId = 'b1',
+  provider = 'telegram',
+  log: (line: string) => void = vi.fn(),
+): StateStore {
+  return new StateStore(database, botId, provider, log)
 }
 
 test('resolves state.json next to the config', () => {
   expect(resolveStatePath('/data/config.json')).toBe('/data/state.json')
 })
 
-test('missing file loads empty and writes nothing', () => {
-  const path = createPath()
+test('loads nothing for a bot with no rows', () => {
   const log = vi.fn()
-  expect(new StateStore(path, 'telegram', log).load()).toEqual({ requests: [], notifications: [] })
-  expect(existsSync(path)).toBe(false)
+  expect(createStore(createDatabase(), 'b1', 'telegram', log).load()).toEqual({
+    requests: [],
+    notifications: [],
+  })
   expect(log).not.toHaveBeenCalled()
 })
 
-test('writes the full state with mode 0o600', () => {
-  const path = createPath()
-  const store = new StateStore(path, 'telegram', vi.fn())
+test('keeps added requests and notifications across a reopen', () => {
+  const database = createDatabase()
+  const store = createStore(database)
   store.addRequest(REQUEST)
   store.addNotification(NOTIFICATION)
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
+  expect(createStore(database).load()).toEqual({
     requests: [REQUEST],
     notifications: [NOTIFICATION],
   })
-  expect(statSync(path).mode & 0o777).toBe(0o600)
 })
 
-test('removes are reflected in the file', () => {
-  const path = createPath()
-  const store = new StateStore(path, 'telegram', vi.fn())
+test('keeps spans and the caller on a request', () => {
+  const database = createDatabase()
+  const full = {
+    ...REQUEST,
+    spans: [
+      { kind: 'bold' as const, offset: 0, length: 3 },
+      { kind: 'pre' as const, offset: 4, length: 2, language: 'ts' },
+    ],
+    caller: { key: 'k1', pairing: 'p1' },
+  }
+  createStore(database).addRequest(full)
+  expect(createStore(database).load().requests).toEqual([full])
+})
+
+test('removes only the given record', () => {
+  const database = createDatabase()
+  const store = createStore(database)
   store.addRequest(REQUEST)
+  store.addRequest(REQUEST_TWO)
   store.addNotification(NOTIFICATION)
   store.removeRequest('r1')
   store.removeNotification('n1')
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
+  store.removeRequest('missing')
+  expect(createStore(database).load()).toEqual({ requests: [REQUEST_TWO], notifications: [] })
+})
+
+test("keeps each bot's state apart", () => {
+  const database = createDatabase()
+  createStore(database, 'b1').addRequest(REQUEST)
+  expect(createStore(database, 'b2').load()).toEqual({ requests: [], notifications: [] })
+  expect(createStore(database, 'b1').load().requests).toEqual([REQUEST])
+})
+
+test('drops state saved for another provider', () => {
+  const database = createDatabase()
+  const saver = createStore(database, 'b1', 'telegram')
+  saver.addRequest(REQUEST)
+  saver.addNotification(NOTIFICATION)
+  const log = vi.fn()
+  expect(createStore(database, 'b1', 'discord', log).load()).toEqual({
+    requests: [],
+    notifications: [],
+  })
+  expect(log.mock.calls).toEqual([['ignoring saved state for provider "telegram"']])
+  expect(createStore(database, 'b1', 'telegram').load()).toEqual({
     requests: [],
     notifications: [],
   })
 })
 
-test('removing an unknown id writes nothing', () => {
-  const path = createPath()
-  const store = new StateStore(path, 'telegram', vi.fn())
-  store.removeRequest('x')
-  store.removeNotification('x')
-  expect(existsSync(path)).toBe(false)
-})
-
-test('load keeps the previous records for later writes', () => {
-  const path = createPath()
-  writeState(path, 'telegram')
-  const store = new StateStore(path, 'telegram', vi.fn())
-  expect(store.load()).toEqual({ requests: [REQUEST], notifications: [] })
-  store.addNotification(NOTIFICATION)
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
-    requests: [REQUEST],
-    notifications: [NOTIFICATION],
-  })
-})
-
-test('corrupt JSON is logged, ignored and overwritten by the next write', () => {
-  const path = createPath()
-  writeFileSync(path, '{')
-  const log = vi.fn()
-  const store = new StateStore(path, 'telegram', log)
-  expect(store.load()).toEqual({ requests: [], notifications: [] })
-  expect(log).toHaveBeenCalledWith(`ignoring state file ${JSON.stringify(path)}: invalid JSON`)
+test('drops an invalid row without quoting it', () => {
+  const database = createDatabase()
+  const store = createStore(database)
   store.addRequest(REQUEST)
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
+  database
+    .prepare(
+      "INSERT INTO requests (bot_id, id, provider, record) VALUES ('b1', 'r9', 'telegram', ?)",
+    )
+    .run('{"id":"r9","text":"SECRET-2"}')
+  database
+    .prepare(
+      "INSERT INTO notifications (bot_id, id, provider, record) VALUES ('b1', 'n9', 'telegram', ?)",
+    )
+    .run('not json SECRET-3')
+  const log = vi.fn()
+  expect(createStore(database, 'b1', 'telegram', log).load()).toEqual({
     requests: [REQUEST],
     notifications: [],
   })
+  expect(log.mock.calls).toEqual([
+    ['ignoring a saved request: invalid or missing fields'],
+    ['ignoring a saved notification: invalid or missing fields'],
+  ])
+  expect(JSON.stringify(log.mock.calls)).not.toContain('SECRET')
+  const remaining = database.prepare('SELECT id FROM requests').all()
+  expect(remaining).toEqual([{ id: 'r1' }])
 })
 
-test('provider mismatch is logged and discarded', () => {
-  const path = createPath()
-  writeState(path, 'telegram')
-  const log = vi.fn()
-  expect(new StateStore(path, 'fake', log).load()).toEqual({ requests: [], notifications: [] })
-  expect(log).toHaveBeenCalledWith(
-    `ignoring state file ${JSON.stringify(path)}: written for provider "telegram"`,
-  )
-})
-
-test('other read errors are logged and ignored', () => {
-  const path = createPath()
-  mkdirSync(path)
-  const log = vi.fn()
-  expect(new StateStore(path, 'telegram', log).load()).toEqual({ requests: [], notifications: [] })
-  expect(log).toHaveBeenCalledTimes(1)
-  expect(log.mock.calls[0]?.[0]).toMatch(
-    new RegExp(
-      `^ignoring state file ${JSON.stringify(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: `,
-    ),
-  )
-})
-
-test('a failed write is logged, not thrown, and the next write has everything', () => {
-  const blocker = join(mkdtempSync(join(tmpdir(), 'tab-state-')), 'blocker')
-  writeFileSync(blocker, 'x')
-  const path = join(blocker, 'state.json')
-  const log = vi.fn()
-  const store = new StateStore(path, 'telegram', log)
-  expect(() => store.addRequest(REQUEST)).not.toThrow()
-  expect(log).toHaveBeenCalledTimes(1)
-  expect(
-    String(log.mock.calls[0]?.[0]).startsWith(`failed to save state to ${JSON.stringify(path)}: `),
-  ).toBe(true)
-  rmSync(blocker)
-  mkdirSync(blocker)
-  store.addNotification(NOTIFICATION)
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
-    requests: [REQUEST],
-    notifications: [NOTIFICATION],
-  })
-})
-
-test('after freeze nothing changes on disk', () => {
-  const path = createPath()
-  const store = new StateStore(path, 'telegram', vi.fn())
+test('freeze ignores later changes', () => {
+  const database = createDatabase()
+  const store = createStore(database)
   store.addRequest(REQUEST)
   store.freeze()
+  store.addRequest(REQUEST_TWO)
   store.removeRequest('r1')
   store.addNotification(NOTIFICATION)
-  expect(readState(path)).toEqual({
-    version: 1,
-    provider: 'telegram',
-    requests: [REQUEST],
-    notifications: [],
-  })
+  expect(createStore(database).load()).toEqual({ requests: [REQUEST], notifications: [] })
+})
+
+test('logs and keeps going when a write fails', () => {
+  const database = createDatabase()
+  const log = vi.fn()
+  const store = createStore(database, 'b1', 'telegram', log)
+  database.close()
+  expect(() => store.addRequest(REQUEST)).not.toThrow()
+  expect(() => store.addRequest(REQUEST_TWO)).not.toThrow()
+  expect(log).toHaveBeenCalledTimes(2)
+  expect(log).toHaveBeenCalledTimes(2)
+})
+
+test('logs and loads empty when the db cannot be read', () => {
+  const database = createDatabase()
+  const log = vi.fn()
+  const store = createStore(database, 'b1', 'telegram', log)
+  database.close()
+  expect(store.load()).toEqual({ requests: [], notifications: [] })
+  expect(log).toHaveBeenCalledTimes(1)
 })

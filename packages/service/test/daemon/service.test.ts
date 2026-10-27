@@ -151,13 +151,32 @@ function writeBotFile(configPath: string, name: string, contents: string): void 
   writeFileSync(path, contents)
 }
 
-/** bot 1's state.json as a previous run left it. */
+/** Rows in bot 1's request and notification tables, as a previous run left them. */
 function writeSavedState(configPath: string, state: Record<string, unknown>): void {
-  writeBotFile(
-    configPath,
-    'state.json',
-    JSON.stringify({ version: 1, provider: 'fake', requests: [], notifications: [], ...state }),
-  )
+  const {
+    provider = 'fake',
+    requests = [],
+    notifications = [],
+  } = state as {
+    provider?: string
+    requests?: { id: string }[]
+    notifications?: { id: string }[]
+  }
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    for (const [table, records] of [
+      ['requests', requests],
+      ['notifications', notifications],
+    ] as const) {
+      for (const record of records) {
+        database
+          .prepare(`INSERT INTO ${table} (bot_id, id, provider, record) VALUES ('b1', ?, ?, ?)`)
+          .run(record.id, provider, JSON.stringify(record))
+      }
+    }
+  } finally {
+    database.close()
+  }
 }
 
 /** Runs `use` on a store over the db next to `configPath`, closing the db after. */
@@ -194,8 +213,16 @@ function refuseRegistryWrites(configPath: string): () => void {
   }
 }
 
-const readState = (configPath: string) =>
-  JSON.parse(readFileSync(botFile(configPath, 'b1', 'state.json'), 'utf8'))
+/** The request records bot 1 has in the db now. */
+function readState(configPath: string): { requests: unknown[] } {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    const rows = database.prepare("SELECT record FROM requests WHERE bot_id = 'b1'").all()
+    return { requests: rows.map((row) => JSON.parse(String(row.record))) }
+  } finally {
+    database.close()
+  }
+}
 
 const readRegistry = (configPath: string): Registry =>
   withRegistryStore(configPath, (store) => store.load())
@@ -915,23 +942,28 @@ test('state from another provider is discarded', async () => {
   await start(provider, { configPath, log })
   await requireRunning().recover()
   expect(finalized).toEqual([])
-  expect(log).toHaveBeenCalledWith(
-    `[b1] ignoring state file ${JSON.stringify(botFile(configPath, 'b1', 'state.json'))}: written for provider "other"`,
-  )
+  expect(log).toHaveBeenCalledWith('[b1] ignoring saved state for provider "other"')
+  expect(readState(configPath).requests).toEqual([])
 })
 
-test("an unwritable state file doesn't fail /request or /notify", async () => {
+test("an unwritable state table doesn't fail /request or /notify", async () => {
   const { provider } = createRecordingProvider()
   const configPath = createConfigPath(provider)
-  mkdirSync(botFile(configPath, 'b1', 'state.json'), { recursive: true })
   const log = vi.fn()
   const { url, runtime } = await start(provider, { configPath, log })
+  const blocker = openDatabase(resolveDatabasePath(configPath))
+  for (const table of ['requests', 'notifications']) {
+    blocker.exec(
+      `CREATE TRIGGER refuse_${table} BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+    )
+  }
+  blocker.close()
   expect((await post(url, '/notify', { text: 'hi' })).status).toBe(200)
   const response = post(url, '/request', REQUEST)
   await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
   runtime.handlers?.answer(runtime.sent[0]?.id ?? '', 0)
   expect((await response).status).toBe(200)
-  expect(log).toHaveBeenCalledWith(expect.stringContaining('failed to save state to'))
+  expect(log).toHaveBeenCalledWith(expect.stringContaining('[b1] failed to save state'))
 })
 
 test('stop closes the db, which removes its wal file', async () => {

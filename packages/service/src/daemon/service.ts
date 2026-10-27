@@ -93,6 +93,7 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     const adminKeyPath = resolveAdminKeyPath(configPath)
     const adminKey = ensureAdminKey(adminKeyPath, log)
     hub = new Hub({
+      database,
       store,
       registry,
       providers: options.providers,

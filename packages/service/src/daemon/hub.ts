@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto'
+import type { DatabaseSync } from 'node:sqlite'
 import {
   formatCode,
   generateCode as generateDefaultCode,
@@ -137,6 +138,7 @@ export class Hub implements AdminApi {
   readonly #configPath: string
   readonly #version: string
   readonly #now: () => Date
+  readonly #database: DatabaseSync
   readonly #generateCode: () => string
   readonly #log: (line: string) => void
   readonly #supervisors = new Map<string, BotSupervisor>()
@@ -149,6 +151,7 @@ export class Hub implements AdminApi {
   #started: Promise<void> = Promise.resolve()
 
   constructor(options: HubOptions) {
+    this.#database = options.database
     this.#store = options.store
     this.#registry = options.registry
     this.#providersByName = new Map(options.providers.map((provider) => [provider.name, provider]))
@@ -564,6 +567,7 @@ export class Hub implements AdminApi {
     return startBot({
       record,
       provider,
+      database: this.#database,
       directory: resolveBotFiles(this.#configPath, botId).directory,
       people: this.#createPeople(botId),
       fatal,
