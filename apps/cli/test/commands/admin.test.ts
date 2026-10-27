@@ -18,7 +18,6 @@ import { resolveInstallPaths, writeInstall } from '@jaypost/install'
 import type { InstallPaths, InstallRecord, Target, TargetName } from '@jaypost/install'
 import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import {
-  resolveAdminEndpoint,
   runAdminKeyRotate,
   runAdminKeyShow,
   runBotAdd,
@@ -457,15 +456,10 @@ test('JAYPOST_ADMIN_KEY wins over the target for a local install', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: started.port, version: '1.0.0' })
   const compose = fakeTarget('compose', async () => 'unused')
   const env = { HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }
-  const endpoint = await resolveAdminEndpoint(env, paths, targets({ compose }))
-  expect(endpoint).toEqual({
-    kind: 'local',
-    endpoint: { kind: 'url', url: new URL(`http://127.0.0.1:${started.port}/`) },
-    port: started.port,
-    adminKey: { kind: 'found', adminKey: started.adminKey },
-    install: { target: 'compose', port: started.port, version: '1.0.0' },
-    configPath: undefined,
-  })
+  expect(await runBotList({ json: true }, createDeps(env, { targets: targets({ compose }) }))).toBe(
+    0,
+  )
+  expect(err).toEqual([])
   expect(compose.readAdminKey).not.toHaveBeenCalled()
 })
 

@@ -1,7 +1,5 @@
 import {
-  ADMIN_KEY_ENV_VAR,
   DEFAULT_LOG_LIMIT,
-  findEnvValue,
   formatAuditJsonLines,
   formatAuditTable,
   MIN_AUDIT_VERSION,
@@ -12,11 +10,11 @@ import {
   selectAuditEntries,
 } from '@jaypost/store'
 import type { AuditEntry, ClientToken } from '@jaypost/store'
-import { AdminCaller, Caller, findEnvEndpoint } from '@jaypost/client'
-import type { Failure, LogFilter, ServiceEndpoint } from '@jaypost/client'
+import { Caller, findEnvEndpoint } from '@jaypost/client'
+import type { AdminCaller, Failure, LogFilter, ServiceEndpoint } from '@jaypost/client'
 import type { LogPage } from '@jaypost/protocol'
 import { findExistingInstall } from '@jaypost/install'
-import { resolveAdminEndpoint } from './admin-endpoint.ts'
+import { openAdmin } from './admin-access.ts'
 import type { LogArgs, LogDeps } from './types.ts'
 
 /** Entries to print and how many lines were skipped, or why there are none. */
@@ -116,33 +114,14 @@ function hasAdminFlag(args: LogArgs): boolean {
  * service's key), else GET /log on the same service. Never throws.
  */
 async function resolveLogSource(deps: LogDeps): Promise<LogSource> {
-  const remote = findEnvEndpoint(deps.env)
-  if (remote?.kind === 'invalid') {
-    return { kind: 'failed', message: remote.message }
-  }
-  if (remote !== undefined && findEnvValue(deps.env, ADMIN_KEY_ENV_VAR) === undefined) {
-    return { kind: 'client', endpoint: remote, reason: `${ADMIN_KEY_ENV_VAR} isn't set` }
-  }
-  const endpoint = await resolveAdminEndpoint(deps.env, deps.paths, deps.targets)
-  switch (endpoint.kind) {
+  const opened = await openAdmin(deps)
+  switch (opened.kind) {
     case 'failed':
-      return endpoint
-    case 'remote':
-      return {
-        kind: 'admin',
-        caller: new AdminCaller({ endpoint: endpoint.endpoint, adminKey: endpoint.adminKey }),
-      }
-    case 'local':
-      if (endpoint.adminKey.kind === 'missing') {
-        return { kind: 'client', endpoint: endpoint.endpoint, reason: endpoint.adminKey.message }
-      }
-      return {
-        kind: 'admin',
-        caller: new AdminCaller({
-          endpoint: endpoint.endpoint,
-          adminKey: endpoint.adminKey.adminKey,
-        }),
-      }
+      return opened
+    case 'noKey':
+      return { kind: 'client', endpoint: opened.endpoint.endpoint, reason: opened.message }
+    case 'opened':
+      return { kind: 'admin', caller: opened.caller }
   }
 }
 

@@ -1,5 +1,6 @@
 import type { CreatedKey, KeysBody } from '@jaypost/protocol'
-import { formatTable, openAdminCaller, printResult, runAdminCommand } from './admin.ts'
+import { openAdminCaller } from './admin-access.ts'
+import { formatTable, printResult, runAdminCommand } from './admin.ts'
 import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
 import { formatInvite } from './pairing.ts'
 import type { AdminDeps, AdminIdArgs, KeyCreateArgs, KeyLabelArgs, KeyListArgs } from './types.ts'

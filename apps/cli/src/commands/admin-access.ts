@@ -9,10 +9,10 @@ import {
   resolveAdminKeyPath,
   resolveConfigPath,
 } from '@jaypost/store'
-import { findEnvEndpoint, toLocalEndpoint } from '@jaypost/client'
+import { AdminCaller, findEnvEndpoint, toLocalEndpoint } from '@jaypost/client'
 import { findExistingInstall } from '@jaypost/install'
 import type { InstallPaths, InstallRecord, Target, TargetName } from '@jaypost/install'
-import type { AdminEndpoint, AdminKeyLookup } from './types.ts'
+import type { AdminDeps, AdminEndpoint, AdminKeyLookup, OpenedAdmin } from './types.ts'
 
 const PORT_PATTERN = /^\d{1,5}$/
 
@@ -22,12 +22,43 @@ export function isNativeInstall(record: InstallRecord): boolean {
 }
 
 /**
- * Where the admin commands go: with `JAYPOST_URL`, that URL and `JAYPOST_ADMIN_KEY` (required);
- * else the local install's port, with the key from `JAYPOST_ADMIN_KEY` or the install's target;
- * else 127.0.0.1 on `JAYPOST_PORT` or the config's port, with the key from `JAYPOST_ADMIN_KEY` or
- * the admin key file next to the config. Never throws; never quotes a key.
+ * The admin caller for this machine or `JAYPOST_URL`; `noKey` for a service whose admin key can't
+ * be found, or `failed`. Prints nothing. Never throws.
  */
-export async function resolveAdminEndpoint(
+export async function openAdmin(
+  deps: Pick<AdminDeps, 'env' | 'paths' | 'targets'>,
+): Promise<OpenedAdmin> {
+  const endpoint = await resolveAdminEndpoint(deps.env, deps.paths, deps.targets)
+  if (endpoint.kind === 'failed') {
+    return endpoint
+  }
+  if (endpoint.adminKey.kind === 'missing') {
+    return { kind: 'noKey', endpoint, message: endpoint.adminKey.message }
+  }
+  const caller = new AdminCaller({
+    endpoint: endpoint.endpoint,
+    adminKey: endpoint.adminKey.adminKey,
+  })
+  return { kind: 'opened', caller, endpoint }
+}
+
+/** `openAdmin`'s caller, or undefined once the reason is printed. Never throws. */
+export async function openAdminCaller(deps: AdminDeps): Promise<AdminCaller | undefined> {
+  const opened = await openAdmin(deps)
+  if (opened.kind !== 'opened') {
+    deps.printError(opened.message)
+    return undefined
+  }
+  return opened.caller
+}
+
+/**
+ * Where the admin commands go: with `JAYPOST_URL`, that URL and `JAYPOST_ADMIN_KEY`; else the
+ * local install's port, with the key from `JAYPOST_ADMIN_KEY` or the install's target; else
+ * 127.0.0.1 on `JAYPOST_PORT` or the config's port, with the key from `JAYPOST_ADMIN_KEY` or the
+ * admin key file next to the config. Never throws; never quotes a key.
+ */
+async function resolveAdminEndpoint(
   env: NodeJS.ProcessEnv,
   paths: InstallPaths,
   targets: Readonly<Record<TargetName, Target>>,
@@ -42,10 +73,14 @@ export async function resolveAdminEndpoint(
     if (remote.kind === 'invalid') {
       return { kind: 'failed', message: remote.message }
     }
-    if (envKey === undefined) {
-      return { kind: 'failed', message: 'JAYPOST_URL is set, so set JAYPOST_ADMIN_KEY too' }
+    return {
+      kind: 'remote',
+      endpoint: remote,
+      adminKey:
+        envKey === undefined
+          ? { kind: 'missing', message: 'JAYPOST_URL is set, so set JAYPOST_ADMIN_KEY too' }
+          : { kind: 'found', adminKey: envKey },
     }
-    return { kind: 'remote', endpoint: remote, adminKey: envKey }
   }
   const install = findExistingInstall(paths, targets, env)?.record
   if (install !== undefined) {

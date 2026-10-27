@@ -1,5 +1,4 @@
 export { runAdminKeyRotate, runAdminKeyShow } from './admin.ts'
-export { resolveAdminEndpoint } from './admin-endpoint.ts'
 export { formatWaitTitle } from './answer-wait.ts'
 export { runAudit } from './audit.ts'
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
@@ -24,9 +23,7 @@ export { runUninstall } from './uninstall.ts'
 export { runFinishUpdate, runUpdate } from './update.ts'
 export type {
   AdminDeps,
-  AdminEndpoint,
   AdminIdArgs,
-  AdminKeyLookup,
   AdminOutputArgs,
   AdminRemoveArgs,
   BotAddArgs,

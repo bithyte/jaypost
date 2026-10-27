@@ -4,15 +4,8 @@ import type { Provider, SettingValues } from '@jaypost/core'
 import { addBot, RegistryStore, resolveRegistryPath } from '@jaypost/store'
 import type { AdminCaller } from '@jaypost/client'
 import type { AdminBot, BotsBody } from '@jaypost/protocol'
-import { isNativeInstall } from './admin-endpoint.ts'
-import {
-  formatCount,
-  formatTable,
-  openAdmin,
-  openAdminCaller,
-  printResult,
-  runAdminCommand,
-} from './admin.ts'
+import { openAdmin, openAdminCaller } from './admin-access.ts'
+import { formatCount, formatTable, printResult, runAdminCommand } from './admin.ts'
 import { STARTED_MEANWHILE_MESSAGE } from './constants.ts'
 import { resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type {
@@ -72,18 +65,6 @@ function withoutOwner(provider: Provider, settings: SettingValues): SettingValue
   )
 }
 
-/**
- * The registry `bot add` may write itself once the service is known to be down: a native install's
- * or, with nothing installed, the one next to the config. Undefined for a container, whose
- * registry lives in its volume.
- */
-function findRegistryConfigPath(endpoint: LocalAdminEndpoint): string | undefined {
-  if (endpoint.install !== undefined && !isNativeInstall(endpoint.install)) {
-    return undefined
-  }
-  return endpoint.configPath
-}
-
 /** Prints why the stopped local service can't take the bot and returns `refused`. */
 function refuseStopped(endpoint: LocalAdminEndpoint, deps: AdminDeps): AddRoute {
   const name = endpoint.install === undefined ? 'jaypost' : endpoint.install.target
@@ -103,13 +84,22 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
     return { kind: 'refused' }
   }
   if (opened.kind === 'noKey') {
-    const configPath = findRegistryConfigPath(opened.endpoint)
-    const status = await deps.fetchStatus(opened.endpoint.port, undefined)
-    if (configPath === undefined || status.kind !== 'unreachable') {
+    const { endpoint } = opened
+    if (endpoint.kind !== 'local' || endpoint.configPath === undefined) {
       deps.printError(opened.message)
       return { kind: 'refused' }
     }
-    return { kind: 'registry', configPath, port: opened.endpoint.port, caller: undefined }
+    const status = await deps.fetchStatus(endpoint.port, undefined)
+    if (status.kind !== 'unreachable') {
+      deps.printError(opened.message)
+      return { kind: 'refused' }
+    }
+    return {
+      kind: 'registry',
+      configPath: endpoint.configPath,
+      port: endpoint.port,
+      caller: undefined,
+    }
   }
   const probe = await opened.caller.listBots()
   if (probe.kind === 'ok') {
@@ -120,10 +110,14 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
     deps.printError(probe.message)
     return { kind: 'refused' }
   }
-  const configPath = findRegistryConfigPath(endpoint)
-  return configPath === undefined
+  return endpoint.configPath === undefined
     ? refuseStopped(endpoint, deps)
-    : { kind: 'registry', configPath, port: endpoint.port, caller: opened.caller }
+    : {
+        kind: 'registry',
+        configPath: endpoint.configPath,
+        port: endpoint.port,
+        caller: opened.caller,
+      }
 }
 
 /**

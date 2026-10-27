@@ -1,47 +1,13 @@
 import { ADMIN_KEY_ENV_VAR, findEnvValue, resolveConfigPath } from '@jaypost/store'
 import { readAdminKeyFile } from '@jaypost/install'
-import { AdminCaller } from '@jaypost/client'
 import type { AdminResult } from '@jaypost/client'
-import { resolveAdminEndpoint } from './admin-endpoint.ts'
+import { openAdmin } from './admin-access.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact } from './provider-setup.ts'
-import type { AdminDeps, AdminOutputArgs, OpenedAdmin } from './types.ts'
+import type { AdminDeps, AdminOutputArgs } from './types.ts'
 
 /** What `formatTable` puts in an empty cell. */
 const EMPTY_CELL = '-'
-
-/**
- * The admin caller for this machine or `JAYPOST_URL`; `noKey` for a local service whose admin
- * key can't be read, or `failed`. Prints nothing. Never throws.
- */
-export async function openAdmin(deps: AdminDeps): Promise<OpenedAdmin> {
-  const endpoint = await resolveAdminEndpoint(deps.env, deps.paths, deps.targets)
-  if (endpoint.kind === 'failed') {
-    return endpoint
-  }
-  if (endpoint.kind === 'remote') {
-    const caller = new AdminCaller({ endpoint: endpoint.endpoint, adminKey: endpoint.adminKey })
-    return { kind: 'opened', caller, endpoint }
-  }
-  if (endpoint.adminKey.kind === 'missing') {
-    return { kind: 'noKey', endpoint, message: endpoint.adminKey.message }
-  }
-  const caller = new AdminCaller({
-    endpoint: endpoint.endpoint,
-    adminKey: endpoint.adminKey.adminKey,
-  })
-  return { kind: 'opened', caller, endpoint }
-}
-
-/** `openAdmin`'s caller, or undefined once the reason is printed. Never throws. */
-export async function openAdminCaller(deps: AdminDeps): Promise<AdminCaller | undefined> {
-  const opened = await openAdmin(deps)
-  if (opened.kind !== 'opened') {
-    deps.printError(opened.message)
-    return undefined
-  }
-  return opened.caller
-}
 
 /**
  * Prints `result`: its value as JSON with `--json`, else `format(value)`; a failure goes to stderr.

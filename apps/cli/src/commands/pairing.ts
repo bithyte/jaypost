@@ -1,5 +1,6 @@
 import type { PairingInvite, PairingsBody } from '@jaypost/protocol'
-import { formatCount, formatTable, openAdminCaller, printResult, runAdminCommand } from './admin.ts'
+import { openAdminCaller } from './admin-access.ts'
+import { formatCount, formatTable, printResult, runAdminCommand } from './admin.ts'
 import type { AdminDeps, AdminRemoveArgs, PairingCreateArgs, PairingListArgs } from './types.ts'
 
 /** The pairing code and, when the bot gives them, the instructions for sending it. */

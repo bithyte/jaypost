@@ -340,20 +340,20 @@ export type OpenedRuntime =
     }
   | { readonly kind: 'failed' }
 
-/** The admin key for a local service, or why there is none (already worded for the user). */
+/** The admin key for the service, or why there is none (already worded for the user). */
 export type AdminKeyLookup =
   | { readonly kind: 'found'; readonly adminKey: string }
   | { readonly kind: 'missing'; readonly message: string }
 
 /**
- * Where the admin commands send their calls: `JAYPOST_URL` with `JAYPOST_ADMIN_KEY`, or the
- * service on this machine (an install, or none with the config's port), or why neither works.
+ * Where the admin commands send their calls: `JAYPOST_URL` (its key from `JAYPOST_ADMIN_KEY`), or
+ * the service on this machine (an install, or none with the config's port), or why neither works.
  */
 export type AdminEndpoint =
   | {
       readonly kind: 'remote'
       readonly endpoint: ServiceEndpoint
-      readonly adminKey: string
+      readonly adminKey: AdminKeyLookup
     }
   | {
       readonly kind: 'local'
@@ -374,8 +374,8 @@ export type LocalAdminEndpoint = Extract<AdminEndpoint, { readonly kind: 'local'
 export type ReachableEndpoint = Exclude<AdminEndpoint, { readonly kind: 'failed' }>
 
 /**
- * A caller with its endpoint; `noKey` is a local service whose admin key can't be read (the
- * message says why); `failed` is no usable endpoint.
+ * A caller with its endpoint; `noKey` is a service whose admin key can't be found (the message
+ * says why); `failed` is no usable endpoint.
  */
 export type OpenedAdmin =
   | {
@@ -385,7 +385,7 @@ export type OpenedAdmin =
     }
   | {
       readonly kind: 'noKey'
-      readonly endpoint: LocalAdminEndpoint
+      readonly endpoint: ReachableEndpoint
       readonly message: string
     }
   | { readonly kind: 'failed'; readonly message: string }

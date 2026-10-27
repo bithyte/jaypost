@@ -401,6 +401,18 @@ test('log with JAYPOST_URL and no admin key reads GET /log with the client token
   expect(err).toEqual([])
 })
 
+test('log --all with JAYPOST_URL and no admin key says to set it', async () => {
+  const started = await start(TWO_KEYS_LOG)
+  const targets = installedOn(started.port, started.adminKey)
+  const env = { HOME: tmp, JAYPOST_URL: `http://127.0.0.1:${started.port}` }
+  const token = { kind: 'token', token: API_TOKEN, source: 'env' } as const
+  expect(await runLog({ all: true, json: true }, deps(targets, { env, token }))).toBe(0)
+  expect((out[0] ?? '').split('\n').map((line) => JSON.parse(line).id)).toEqual(['a'])
+  expect(err).toEqual([
+    "JAYPOST_URL is set, so set JAYPOST_ADMIN_KEY too; showing only this client's questions, without --bot, --pairing, --key or --all",
+  ])
+})
+
 test('log --key without a readable admin key says it shows only the client key', async () => {
   const started = await start(TWO_KEYS_LOG)
   const targets = installedOn(started.port, started.adminKey)
