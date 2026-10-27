@@ -55,6 +55,7 @@ export {
   API_KEY_PREFIX,
   applySeed,
   BOTS_DIRECTORY_NAME,
+  claimCode,
   claimPairing,
   countBotRecords,
   createEmptyRegistry,

@@ -139,6 +139,12 @@ export type ClaimPairingResult =
   | { readonly kind: 'merged'; readonly registry: Registry; readonly pairing: PairingRecord }
   | { readonly kind: 'notPending' }
 
+/** `wrong` means no pending pairing on the bot has the code; `noCodes` that none is pending. */
+export type ClaimCodeResult =
+  | Exclude<ClaimPairingResult, { readonly kind: 'notPending' }>
+  | { readonly kind: 'wrong' }
+  | { readonly kind: 'noCodes' }
+
 /** `notPairing` means the pairing's bot doesn't pair, so nobody could claim the new code. */
 export type ResetPairingResult =
   | { readonly kind: 'reset'; readonly registry: Registry; readonly pairing: PairingRecord }

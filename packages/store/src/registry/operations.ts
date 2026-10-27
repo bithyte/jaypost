@@ -1,18 +1,21 @@
-import { findOwnerSetting, listSecretValues } from '@jaypost/core'
+import { findOwnerSetting, listSecretValues, normalizeCode } from '@jaypost/core'
 import type { QuietPatch, SettingValues } from '@jaypost/core'
 import {
   BOT_ID_PREFIX,
   KEY_ID_PREFIX,
   LOCAL_PERSON,
+  NO_CODES,
   NOT_PENDING,
   PAIRING_ID_PREFIX,
   REGISTRY_VERSION,
+  WRONG_CODE,
 } from './constants.ts'
 import { isPending } from './queries.ts'
 import type {
   AddBotResult,
   BotInput,
   BotRecord,
+  ClaimCodeResult,
   ClaimPairingResult,
   CreateKeyResult,
   CreatePairingResult,
@@ -538,6 +541,26 @@ export function claimPairing(
     return NOT_PENDING
   }
   return claim(registry, pairing, person)
+}
+
+/**
+ * `person` sent `text` to `botId`: claims the bot's pending pairing whose code it is (case, dashes
+ * and whitespace ignored), merging like `claimPairing`. A code already claimed, reset or removed is
+ * `wrong`. Never throws.
+ */
+export function claimCode(
+  registry: Registry,
+  botId: string,
+  text: string,
+  person: string,
+): ClaimCodeResult {
+  const pending = registry.pairings.filter((pairing) => pairing.botId === botId).filter(isPending)
+  if (pending.length === 0) {
+    return NO_CODES
+  }
+  const typed = normalizeCode(text)
+  const pairing = pending.find((other) => normalizeCode(other.code) === typed)
+  return pairing === undefined ? WRONG_CODE : claim(registry, pairing, person)
 }
 
 /**

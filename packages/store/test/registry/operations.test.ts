@@ -3,6 +3,7 @@ import { expect, test } from 'vite-plus/test'
 import {
   addBot,
   applySeed,
+  claimCode,
   claimPairing,
   createEmptyRegistry,
   createKey,
@@ -392,6 +393,38 @@ test('the same person on another bot is a separate pairing', () => {
     },
     pairing,
   })
+})
+
+test('a code claims the pending pairing that has it, case, dashes and spaces ignored', () => {
+  const result = claimCode(createPairedRegistry(), 'b1', ' code-0002 ', '222')
+  expect(result).toStrictEqual(claimPairing(createPairedRegistry(), 'b1', 'p2', '222'))
+  expect(result).toMatchObject({ kind: 'claimed', pairing: { id: 'p2', person: '222' } })
+})
+
+test('a code sent by someone already paired on the bot merges into their pairing', () => {
+  const result = claimCode(createPairedRegistry(), 'b1', 'CODE0002', '111')
+  expect(result).toStrictEqual(claimPairing(createPairedRegistry(), 'b1', 'p2', '111'))
+  expect(result).toMatchObject({ kind: 'merged', pairing: { id: 'p1' } })
+})
+
+test('a code that is spent, unknown or on another bot is wrong', () => {
+  let registry = expectKind(
+    addBot(createPairedRegistry(), { provider: TELEGRAM_LIKE, settings: { botToken: 'u' } }, AT),
+    'added',
+  ).registry
+  registry = expectKind(createPairing(registry, 'b2', 'CODE0003', true, AT), 'created').registry
+  expect(claimCode(registry, 'b1', 'CODE0001', '999')).toStrictEqual({ kind: 'wrong' })
+  expect(claimCode(registry, 'b1', 'CODE0009', '999')).toStrictEqual({ kind: 'wrong' })
+  expect(claimCode(registry, 'b1', 'CODE0003', '999')).toStrictEqual({ kind: 'wrong' })
+})
+
+test('a bot with no pending pairing has no codes', () => {
+  const registry = expectKind(
+    claimCode(createPairedRegistry(), 'b1', 'CODE0002', '222'),
+    'claimed',
+  ).registry
+  expect(claimCode(registry, 'b1', 'CODE0002', '333')).toStrictEqual({ kind: 'noCodes' })
+  expect(claimCode(registry, 'b9', 'CODE0002', '333')).toStrictEqual({ kind: 'noCodes' })
 })
 
 test('resetting a pairing drops the person and sets a new code', () => {

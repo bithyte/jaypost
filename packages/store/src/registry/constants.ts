@@ -1,4 +1,4 @@
-import type { ClaimPairingResult } from './types.ts'
+import type { ClaimCodeResult, ClaimPairingResult } from './types.ts'
 
 export const REGISTRY_VERSION = 1
 
@@ -28,3 +28,7 @@ export const PAIRING_ID_PREFIX = 'p'
 export const KEY_ID_PREFIX = 'k'
 
 export const NOT_PENDING = { kind: 'notPending' } as const satisfies ClaimPairingResult
+
+export const WRONG_CODE = { kind: 'wrong' } as const satisfies ClaimCodeResult
+
+export const NO_CODES = { kind: 'noCodes' } as const satisfies ClaimCodeResult

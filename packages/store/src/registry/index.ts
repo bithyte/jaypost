@@ -12,6 +12,7 @@ export { generateAdminKey, generateApiKey, hashKey } from './keys.ts'
 export {
   addBot,
   applySeed,
+  claimCode,
   claimPairing,
   createEmptyRegistry,
   createKey,
@@ -49,6 +50,7 @@ export type {
   BotFiles,
   BotInput,
   BotRecord,
+  ClaimCodeResult,
   ClaimPairingResult,
   CreateKeyResult,
   CreatePairingResult,
