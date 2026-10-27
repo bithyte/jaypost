@@ -102,6 +102,11 @@ export type Notification = {
   readonly format?: MessageFormat
   /** One file sent with the message. Needs a service that supports attachments. */
   readonly attachment?: AttachmentInput
+  /**
+   * Seconds, or an ISO 8601 timestamp, until the notification is deleted. Needs a service at least
+   * this new; an older one keeps the 8h default.
+   */
+  readonly deleteAfter?: number | string
   readonly signal?: AbortSignal
 }
 
@@ -162,6 +167,7 @@ export type NotifyBody = {
   readonly project?: string
   readonly format?: MessageFormat
   readonly attachment?: AttachmentBody
+  readonly deleteAfter?: number | string
 }
 
 /** `now` returns milliseconds; default `performance.now`. */

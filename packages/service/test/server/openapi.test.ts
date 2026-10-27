@@ -70,7 +70,12 @@ test('request bodies come from the parser schemas', () => {
     'project',
     'format',
     'attachment',
+    'deleteAfter',
   ])
+  expect(NotifyRequest.properties?.deleteAfter).toMatchObject({
+    type: ['number', 'string'],
+    description: expect.stringContaining('ISO 8601'),
+  })
 })
 
 test('yaml parses back to the document', () => {

@@ -340,6 +340,7 @@ export function toNotifyBody(message: Message, attachment: AttachmentBody | unde
     ...(message.project === undefined ? {} : { project: message.project }),
     ...(message.format === undefined ? {} : { format: message.format }),
     ...(attachment === undefined ? {} : { attachment }),
+    ...(message.deleteAfter === undefined ? {} : { deleteAfter: message.deleteAfter }),
   }
 }
 

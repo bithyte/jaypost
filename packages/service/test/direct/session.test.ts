@@ -155,7 +155,11 @@ test('the owner gets no commands', async () => {
 test('notify sends without dismiss and never starts the runtime', async () => {
   const { provider, recorded, opened } = createSession()
   const session = await opened
-  await session.notify({ message: { text: 'Shipped', spans: [] }, attachment: undefined })
+  await session.notify({
+    message: { text: 'Shipped', spans: [] },
+    attachment: undefined,
+    deleteAfter: undefined,
+  })
   expect(recorded.notified).toEqual([
     { id: expect.any(String), text: 'Shipped', options: { silent: false, dismissible: false } },
   ])
@@ -171,7 +175,11 @@ test('a failed notification is a SendError carrying the cause', async () => {
     },
   })
   const session = await opened
-  const sent = session.notify({ message: { text: 'Shipped', spans: [] }, attachment: undefined })
+  const sent = session.notify({
+    message: { text: 'Shipped', spans: [] },
+    attachment: undefined,
+    deleteAfter: undefined,
+  })
   await expect(sent).rejects.toBeInstanceOf(SendError)
   await expect(sent).rejects.toThrow('failed to send notification')
   await expect(sent).rejects.toMatchObject({ cause })
@@ -181,7 +189,11 @@ test('notify throws when the provider has no notifications', async () => {
   const { opened } = createSession({ sendNotification: undefined })
   const session = await opened
   await expect(
-    session.notify({ message: { text: 'Shipped', spans: [] }, attachment: undefined }),
+    session.notify({
+      message: { text: 'Shipped', spans: [] },
+      attachment: undefined,
+      deleteAfter: undefined,
+    }),
   ).rejects.toThrow("Fake can't send notifications")
 })
 
@@ -277,7 +289,11 @@ test('a direct request and notification go to the owner from the settings', asyn
   expect(runtime.handlers?.isPaired('owner-1')).toBe(true)
   expect(runtime.handlers?.isPaired('someone')).toBe(false)
   expect(runtime.handlers?.listPaired()).toEqual(['owner-1'])
-  await session.notify({ message: { text: 'Shipped', spans: [] }, attachment: undefined })
+  await session.notify({
+    message: { text: 'Shipped', spans: [] },
+    attachment: undefined,
+    deleteAfter: undefined,
+  })
   expect(notified).toEqual(['owner-1'])
   controller.abort()
   await pending

@@ -106,6 +106,7 @@ It returns `200 { "ok": true }` as soon as Telegram accepts the message. The mes
 | `project`    | string | no       | Shown as `[project]` on the first line. Trimmed, max 100 chars. Counts toward `maxTextLength`.                      |
 | `format`     | string | no       | `plain` (default) or `markdown`. See [Formatting](formatting.md).                                                     |
 | `attachment` | object | no       | One file sent with the message. See [Attachments](#attachments).                                                    |
+| `deleteAfter` | number or string | no | When the notification is deleted: seconds after it is sent, or an ISO 8601 timestamp with a timezone. Not shifted by quiet hours; capped at 47 hours. Default 8 hours, starting when quiet hours end. An older service ignores it. |
 
 Errors are JSON `{ "error": "..." }`:
 

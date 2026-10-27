@@ -291,6 +291,24 @@ test('notify exits 1 when sending fails', async () => {
   expect(recorded.stopCount).toBe(1)
 })
 
+test('direct notify refuses a bad deleteAfter before anything is sent', async () => {
+  const { provider } = createProvider()
+  const { deps, errors } = createDeps(provider)
+  expect(await runDirectSendNotify({ text: 'x', deleteAfter: '5m' }, deps)).toBe(1)
+  expect(errors).toEqual([
+    'jaypost: deleteAfter must be a positive number of seconds or an ISO 8601 timestamp with a timezone',
+  ])
+  expect(provider.runtimes).toEqual([])
+})
+
+test('direct notify accepts a good deleteAfter and sends once', async () => {
+  const { provider, recorded } = createProvider()
+  const { deps, errors } = createDeps(provider)
+  expect(await runDirectSendNotify({ text: 'Shipped', deleteAfter: '300' }, deps)).toBe(0)
+  expect(recorded.notified).toEqual(['Shipped'])
+  expect(errors).toEqual([])
+})
+
 test('notify exits 1 with the parser message before anything is sent', async () => {
   const { provider } = createProvider()
   const { deps, errors } = createDeps(provider)

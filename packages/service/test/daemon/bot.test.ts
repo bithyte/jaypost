@@ -34,7 +34,7 @@ const REQUEST: ApprovalRequest = {
   attachment: undefined,
 }
 
-const NOTE = { message: { text: 'hi', spans: [] }, attachment: undefined }
+const NOTE = { message: { text: 'hi', spans: [] }, attachment: undefined, deleteAfter: undefined }
 
 let running: RunningBot | undefined
 

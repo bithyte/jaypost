@@ -145,6 +145,7 @@ test('200 with outcome', async () => {
     allowText: false,
     timeoutSeconds: 30,
     attachment: undefined,
+    deleteAfter: undefined,
     reaskOnTimeout: false,
     caller: { key: 'k1', pairing: 'p1' },
   })
@@ -407,6 +408,32 @@ test('POST /notify returns ok once sent', async () => {
   expect(res.status).toBe(200)
   expect(await res.json()).toEqual({ ok: true })
   expect(notify).toHaveBeenCalledWith({ message: { text: 'hi', spans: [] } }, undefined)
+})
+
+test('POST /notify passes deleteAfter on to notify', async () => {
+  const notify = vi.fn<NotifyFn>(async () => {})
+  const url = await start(vi.fn<RequestFn>(), undefined, notify)
+  const res = await postNotify(url, JSON.stringify({ text: 'hi', deleteAfter: 300 }))
+  expect(res.status).toBe(200)
+  expect(notify).toHaveBeenCalledWith(
+    {
+      message: { text: 'hi', spans: [] },
+      deleteAfter: { kind: 'seconds', seconds: 300 },
+    },
+    undefined,
+  )
+})
+
+test('POST /notify 400 on a bad deleteAfter, notify not called', async () => {
+  const notify = vi.fn<NotifyFn>()
+  const url = await start(vi.fn<RequestFn>(), undefined, notify)
+  const res = await postNotify(url, JSON.stringify({ text: 'hi', deleteAfter: '5m' }))
+  expect(res.status).toBe(400)
+  expect(await res.json()).toEqual({
+    error:
+      'deleteAfter must be a positive number of seconds or an ISO 8601 timestamp with a timezone',
+  })
+  expect(notify).not.toHaveBeenCalled()
 })
 
 test('POST /notify 400 on bad JSON and bad text, notify not called', async () => {

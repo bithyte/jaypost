@@ -97,6 +97,7 @@ export function toMessage(args: SendNotifyArgs): Message {
     ...(args.project === undefined ? {} : { project: args.project }),
     ...(args.format === undefined ? {} : { format: args.format }),
     ...(args.attachment === undefined ? {} : { attachment: args.attachment }),
+    ...(args.deleteAfter === undefined ? {} : { deleteAfter: args.deleteAfter }),
   }
 }
 

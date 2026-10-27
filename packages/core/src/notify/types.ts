@@ -1,11 +1,18 @@
 import type { Attachment, MessageReference } from '../approval/index.ts'
 import type { FormattedText } from '../format/index.ts'
 
+/** When a notification is deleted: this long after it's sent, or at this absolute time. */
+export type DeleteAfter =
+  | { readonly kind: 'seconds'; readonly seconds: number }
+  | { readonly kind: 'timestamp'; readonly atMs: number }
+
 /** As produced by `parseNotifyRequest`. */
 export type NotifyRequest = {
   readonly message: FormattedText
   /** The decoded file to send with the notification; `undefined` when the caller sent none. */
   readonly attachment: Attachment | undefined
+  /** When to delete the notification; `undefined` keeps the default lifetime. */
+  readonly deleteAfter: DeleteAfter | undefined
 }
 
 /** Outcome of validating a /notify body; `error` is the client-facing message. */

@@ -45,6 +45,10 @@ const BODY_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
     description:
       '`plain` (default) or `markdown`, a small subset: code spans and fenced blocks, bold, italic, strikethrough, headings and quotes. Anything else stays as typed. See docs/formatting.md in the repo.',
   },
+  deleteAfter: {
+    description:
+      'When the notification is deleted: seconds after it is sent, or an ISO 8601 timestamp with a timezone. Not shifted by quiet hours; capped at 47 hours. Default 8 hours, starting when quiet hours end.',
+  },
   allowText: { description: 'Let the owner answer by replying with text. Default false.' },
   options: {
     description:

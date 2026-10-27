@@ -240,6 +240,8 @@ export type SendNotifyArgs = {
   readonly format?: MessageFormat
   /** A file to send with the message. */
   readonly attachment?: AttachmentSource
+  /** Seconds or an ISO 8601 timestamp, as typed; the service decides which and validates it. */
+  readonly deleteAfter?: string
 }
 
 /** Where `send` talks to and writes; aborting `signal` cancels the call. */

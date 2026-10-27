@@ -217,6 +217,16 @@ test('notify omits unset fields', async () => {
   expect(bodies).toEqual([{ text: 'done' }])
 })
 
+test('notify forwards deleteAfter', async () => {
+  const { port, bodies } = await startRecordingStub('{"paired":true}')
+  await caller(port).notify({ text: 'done', deleteAfter: 300 }, CALL)
+  await caller(port).notify({ text: 'done', deleteAfter: '2026-10-26T18:00:00Z' }, CALL)
+  expect(bodies).toEqual([
+    { text: 'done', deleteAfter: 300 },
+    { text: 'done', deleteAfter: '2026-10-26T18:00:00Z' },
+  ])
+})
+
 test('notify delivers a text attachment', async () => {
   const { port, notifications } = await startApi()
   const result = await caller(port).notify(
