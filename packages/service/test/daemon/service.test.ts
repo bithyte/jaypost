@@ -459,6 +459,32 @@ test('GET /log only returns the caller key lines', async () => {
   expect((await call(url, 'GET', '/log?limit=-1')).status).toBe(400)
 })
 
+test("a key's /log has no bot field", async () => {
+  const provider = createFakeProvider()
+  const { url, runtime } = await start(provider)
+  const response = post(url, '/request', REQUEST)
+  await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
+  const id = runtime.sent[0]?.id ?? ''
+  runtime.handlers?.answer(id, 0)
+  await response
+  const body = await (await call(url, 'GET', '/log')).json()
+  expect(body.entries).toEqual([
+    {
+      id,
+      askedAt: expect.any(String),
+      settledAt: expect.any(String),
+      text: REQUEST.text,
+      options: REQUEST.options,
+      timeoutOption: REQUEST.timeoutOption,
+      timeoutSeconds: expect.any(Number),
+      status: 'answered',
+      answer: 'Approve',
+      key: 'k1',
+      pairing: 'p1',
+    },
+  ])
+})
+
 test('a tokenless install treats no token as key 1 and a wrong token as 401', async () => {
   const { url } = await start(createFakeProvider())
   expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1', pairing: 'p1' })
@@ -972,6 +998,42 @@ test('stop closes the db, which removes its wal file', async () => {
   expect(existsSync(walPath)).toBe(true)
   await stopRunning()
   expect(existsSync(walPath)).toBe(false)
+})
+
+test('stop closes the db', async () => {
+  const { configPath } = await start(createFakeProvider())
+  await stopRunning()
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    expect(() => database.exec('CREATE TABLE after_stop (id INTEGER)')).not.toThrow()
+  } finally {
+    database.close()
+  }
+})
+
+test('prunes questions older than 30 days at start', async () => {
+  const provider = createFakeProvider()
+  const configPath = createConfigPath(provider)
+  const now = new Date('2026-10-27T12:00:00.000Z')
+  const database = openDatabase(resolveDatabasePath(configPath))
+  database
+    .prepare(
+      "INSERT INTO questions (bot_id, id, asked_at, text, options, timeout_option, timeout_seconds) VALUES ('b1', 'stale', ?, 'Old?', '[\"Yes\"]', 'Yes', 60)",
+    )
+    .run(new Date(now.getTime() - 31 * 86_400_000).toISOString())
+  database.close()
+  const log = vi.fn()
+  running = await startService({
+    version: TEST_VERSION,
+    configPath,
+    providers: [provider],
+    seed: loadSeed({ JAYPOST_CONFIG: configPath }, [provider]),
+    log,
+    now: () => now,
+  })
+  expect(log).toHaveBeenCalledWith('pruned 1 questions older than 30 days')
+  await stopRunning()
+  expect(readAudit(configPath)).toEqual([])
 })
 
 test('a start that fails on a corrupt registry closes the db and never quotes it', async () => {

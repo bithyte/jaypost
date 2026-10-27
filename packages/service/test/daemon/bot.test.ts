@@ -99,7 +99,6 @@ async function start(
   options: {
     readonly people?: BotPeople
     readonly provider?: Provider & { readonly runtimes: FakeRuntime[] }
-    readonly directory?: string
     readonly database?: DatabaseSync
     readonly log?: (line: string) => void
   } = {},
@@ -109,7 +108,6 @@ async function start(
     record: RECORD,
     provider,
     database: options.database ?? createDatabase(),
-    directory: options.directory ?? createDirectory(),
     people: options.people ?? createPeople(),
     fatal: vi.fn(),
     log: options.log ?? vi.fn(),
@@ -404,8 +402,7 @@ test('describe and pairingInstructions show the provider without pairing state',
   expect(running.bot.pairingInstructions?.('ABCD2345')).toBe('Say ABCD2345 to fake')
 })
 
-test('state and audit go to the bot directory and log lines name the bot', async () => {
-  const directory = createDirectory()
+test('state and audit go to the db and log lines name the bot', async () => {
   const database = createDatabase()
   database
     .prepare(
@@ -415,7 +412,6 @@ test('state and audit go to the bot directory and log lines name the bot', async
   const log = vi.fn()
   const { running, runtime } = await start({
     provider: createNotifyingProvider().provider,
-    directory,
     database,
     log,
     people: createPeople({ persons: ['u1'] }),

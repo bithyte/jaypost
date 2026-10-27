@@ -26,8 +26,6 @@ export type BotOptions = {
   readonly provider: Provider
   /** Holds the bot's pending requests and notifications. */
   readonly database: DatabaseSync
-  /** Where the bot's audit file lives, from `resolveBotFiles`. */
-  readonly directory: string
   readonly people: BotPeople
   /** The provider can't continue; the caller decides what happens next. */
   readonly fatal: (message: string) => void
@@ -87,8 +85,6 @@ export type HubOptions = {
   /** What `store` holds now; the hub keeps it in memory and saves every change through `store`. */
   readonly registry: Registry
   readonly providers: readonly Provider[]
-  /** Bot directories live next to it. */
-  readonly configPath: string
   readonly adminKey: string
   /** Where the admin key file is; rotating the key rewrites it. */
   readonly adminKeyPath: string

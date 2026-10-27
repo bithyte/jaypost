@@ -3,10 +3,12 @@ import { generateCode as generateDefaultCode, isPairingProvider } from '@jaypost
 import type { Provider } from '@jaypost/core'
 import {
   applySeed,
+  AUDIT_RETENTION_MS,
   ensureAdminKey,
   loadSeed,
   loadServiceConfig,
   openDatabase,
+  pruneAuditLog,
   RegistryStore,
   resolveAdminKeyPath,
   resolveConfigPath,
@@ -15,13 +17,14 @@ import {
 import type { Registry, SeedLoad, ServiceConfig } from '@jaypost/store'
 import { SERVICE_PROVIDERS } from '@jaypost/providers'
 import { createApiServer } from '../server/index.ts'
+import { PRUNE_INTERVAL_MS } from './constants.ts'
 import { Hub } from './hub.ts'
 
 /** What the service needs to start every stored bot, and the version its API reports. */
 export type ServiceOptions = {
   /** Shown in /openapi.yaml. */
   readonly version: string
-  /** jaypost.db, the admin key file and the bot directories live next to it. */
+  /** jaypost.db and the admin key file live next to it. */
   readonly configPath: string
   readonly providers: readonly Provider[]
   /** Bot 1, pairing 1 and key 1 as the env and config.json describe them, from `loadSeed`. */
@@ -97,7 +100,6 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
       store,
       registry,
       providers: options.providers,
-      configPath,
       adminKey,
       adminKeyPath,
       version: options.version,
@@ -109,6 +111,20 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     database.close()
     throw error
   }
+  const now = options.now ?? (() => new Date())
+  const prune = (): void => {
+    try {
+      const count = pruneAuditLog(database, new Date(now().getTime() - AUDIT_RETENTION_MS))
+      if (count > 0) {
+        log(`pruned ${count} questions older than 30 days`)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      log(`failed to prune the question log: ${message}`)
+    }
+  }
+  prune()
+  const pruneTimer = setInterval(prune, PRUNE_INTERVAL_MS).unref()
   hub.start()
   const server = createApiServer(hub.router, hub)
   return {
@@ -118,6 +134,7 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     recover: () => hub.recover(),
     // hub.stop() freezes every bot's state before the server starts closing.
     stop: async () => {
+      clearInterval(pruneTimer)
       await Promise.allSettled([hub.stop(), server.close()])
       // A second stop finds the db closed already.
       if (database.isOpen) {

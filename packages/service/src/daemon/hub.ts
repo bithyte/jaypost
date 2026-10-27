@@ -23,12 +23,10 @@ import {
   isPending,
   isSeedLine,
   listKeys,
-  formatAuditLines,
-  parseAuditLog,
+  readAuditEntries,
   removeBot,
   removePairing,
   resetPairing,
-  resolveBotFiles,
   revokeKey,
   selectAuditEntries,
   updateKey,
@@ -135,7 +133,6 @@ function toDuplicate(botId: string): AdminFailure {
 export class Hub implements AdminApi {
   readonly #store: RegistryStore
   readonly #providersByName: ReadonlyMap<string, Provider>
-  readonly #configPath: string
   readonly #version: string
   readonly #now: () => Date
   readonly #database: DatabaseSync
@@ -155,7 +152,6 @@ export class Hub implements AdminApi {
     this.#store = options.store
     this.#registry = options.registry
     this.#providersByName = new Map(options.providers.map((provider) => [provider.name, provider]))
-    this.#configPath = options.configPath
     this.#adminKeyPath = options.adminKeyPath
     this.#adminKeyHash = hashKey(options.adminKey)
     this.#version = options.version
@@ -443,26 +439,15 @@ export class Hub implements AdminApi {
   }
 
   /**
-   * Every stored bot's questions (or one bot's), each with its bot, merged oldest first and then
+   * Every bot's questions, removed bots' included (or one bot's, stored or not), each with its bot, merged oldest first and then
    * filtered. Lines from before keys existed are the seed key's. `pairing` and `key` may name
    * removed ones, so their history stays readable. Throws when a log can't be read.
    */
   readLog(query: AdminLogQuery): AuditReadResult | AdminFailure {
-    const { bot } = query
-    const record = bot === undefined ? undefined : this.#findBot(bot)
-    if (bot !== undefined && record === undefined) {
-      return toNotFound({ kind: 'notFound', what: 'bot', id: bot })
-    }
-    const now = this.#now()
-    const entries: AuditEntry[] = []
-    let skippedCount = 0
-    for (const { id } of record === undefined ? this.#registry.bots : [record]) {
-      const raw = formatAuditLines(this.#database, id)
-      const read = parseAuditLog(raw, now)
-      skippedCount += read.skippedCount
-      entries.push(...read.entries.map((entry) => this.#toAdminEntry(id, entry)))
-    }
-    const merged = entries.toSorted((left, right) => left.askedAt.localeCompare(right.askedAt))
+    const { entries, skippedCount } = readAuditEntries(this.#database, this.#now(), query.bot)
+    const merged = entries
+      .map(({ botId, entry }) => this.#toAdminEntry(botId, entry))
+      .toSorted((left, right) => left.askedAt.localeCompare(right.askedAt))
     return { entries: selectAuditEntries(merged, query), skippedCount }
   }
 
@@ -568,7 +553,6 @@ export class Hub implements AdminApi {
       record,
       provider,
       database: this.#database,
-      directory: resolveBotFiles(this.#configPath, botId).directory,
       people: this.#createPeople(botId),
       fatal,
       log: this.#log,
@@ -703,8 +687,9 @@ export class Hub implements AdminApi {
 
   /** The key's questions in its bot's log; lines from before keys existed are the seed key's. */
   #readLog(keyId: string, botId: string, query: LogQuery): AuditReadResult {
-    const raw = formatAuditLines(this.#database, botId)
-    const { entries, skippedCount } = parseAuditLog(raw, this.#now())
+    const read = readAuditEntries(this.#database, this.#now(), botId)
+    const entries = read.entries.map(({ entry }) => entry)
+    const { skippedCount } = read
     const isSeedKey = this.#registry.seed?.keyId === keyId
     const own = entries.filter(
       (entry) => entry.key === keyId || (isSeedKey && isSeedLine(this.#registry, botId, entry)),

@@ -727,8 +727,8 @@ test('admin log filters by bot, pairing and key', async () => {
   expect(await projects('?limit=1')).toEqual(['three'])
   expect(await projects('?since=1h')).toEqual(['one', 'two', 'three'])
   expect(await admin(started, 'GET', '/admin/log?bot=b9')).toEqual({
-    status: 404,
-    body: { error: 'unknown bot "b9"' },
+    status: 200,
+    body: { entries: [], skippedCount: 0 },
   })
   expect(await admin(started, 'GET', '/admin/log?limit=0')).toEqual({
     status: 400,
@@ -741,6 +741,36 @@ test('admin log filters by bot, pairing and key', async () => {
   const own = await call(url, 'GET', '/log', { token: TOKEN })
   expect((await own.json()).entries.map((entry: Record<string, string>) => entry.project)).toEqual([
     'one',
+  ])
+})
+
+test("admin log serves every bot's questions from the db, removed bots included", async () => {
+  const other = createFakeProvider()
+  const started = await start({ providers: [createPairingFakeProvider(), other] })
+  const { url, runtime } = started
+  await admin(started, 'POST', '/admin/bots', { provider: 'fake', settings: { fakeKey: 'two' } })
+  const onSecondBot = await admin(started, 'POST', '/admin/keys', { bot: 'b2' })
+  const second = other.runtimes.at(-1)
+  const ask = async (token: string, project: string, target: FakeRuntime | undefined) => {
+    const asked = post(url, '/request', { ...REQUEST, project }, token)
+    await vi.waitFor(() => expect(target?.sent).toHaveLength(1))
+    target?.handlers?.answer(target.sent.at(-1)?.id ?? '', 0)
+    expect((await asked).status).toBe(200)
+  }
+  await ask(TOKEN, 'one', runtime)
+  await ask(onSecondBot.body.key, 'two', second)
+  expect((await admin(started, 'DELETE', '/admin/bots/b2')).status).toBe(200)
+  const all = await admin(started, 'GET', '/admin/log')
+  expect(
+    all.body.entries.map((entry: Record<string, string>) => [entry.project, entry.bot]),
+  ).toEqual([
+    ['one', 'b1'],
+    ['two', 'b2'],
+  ])
+  const removed = await admin(started, 'GET', '/admin/log?bot=b2')
+  expect(removed.status).toBe(200)
+  expect(removed.body.entries.map((entry: Record<string, string>) => entry.project)).toEqual([
+    'two',
   ])
 })
 
