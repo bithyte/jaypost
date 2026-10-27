@@ -638,7 +638,7 @@ paths:
         - adminKey: []
       operationId: readAdminLog
       summary: Every bot's questions
-      description: Oldest first, each with its bot. `pairing` and `key` may name removed ones, so their history stays readable.
+      description: Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `pairing` and `key` may name removed ones, so their history stays readable.
       parameters:
         - name: bot
           in: query

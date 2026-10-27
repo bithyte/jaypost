@@ -2,7 +2,7 @@
   "name": "@jaypost/store",
   "version": "0.0.0",
   "private": true,
-  "description": "Config, state, auth tokens, audit log and file helpers on the local machine",
+  "description": "Config, the sqlite db, auth tokens and file helpers on the local machine",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"

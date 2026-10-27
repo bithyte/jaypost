@@ -21,21 +21,13 @@ Statuses are `answered`, `rejected` (shown as `<answer> (rejected)`), `timedOut`
 
 Each entry records the `key` and `pairing` it came from (and the `bot`, on admin reads). A key holder reads only its own entries, through [`GET /log`](http-api.md#log); the admin reads every bot's.
 
-Where the log lives. Each bot has its own file under `bots/<id>/`, and the table shows the first bot's, `bots/b1/audit.jsonl`, which `jaypost log` reads without flags. An install from before this release has its old `audit.jsonl` moved there. A removed bot's files stay on disk, but its log can't be read through the API.
+Where the log lives. It's the `questions` table in `jaypost.db`, which holds every bot's questions; `jaypost log` reads the first bot's without flags. Questions older than 30 days are deleted at service start and then once a day.
 
 | Install                     | File                                                                 |
 | --------------------------- | -------------------------------------------------------------------- |
-| systemd, launchd            | `bots/b1/audit.jsonl` next to the config file, normally `~/.config/jaypost/` |
-| Quadlet                     | `/data/bots/b1/audit.jsonl` in the `jaypost-data` volume             |
-| Compose                     | `/data/bots/b1/audit.jsonl` in the compose project's `data` volume  |
-| no install, `start` by hand | `bots/b1/` next to `$JAYPOST_CONFIG` or the default config path     |
-
-At 10 MiB the file rotates to `audit.jsonl.1`, and the old `.1` is dropped, so about two files' worth of history is kept. `log` reads both. To delete the log by hand:
-
-```
-rm -f ~/.config/jaypost/bots/*/audit.jsonl*
-podman exec jaypost rm -f /data/bots/b1/audit.jsonl /data/bots/b1/audit.jsonl.1
-docker compose -f ~/.config/jaypost/compose/compose.yaml exec bot rm -f /data/bots/b1/audit.jsonl /data/bots/b1/audit.jsonl.1
-```
+| systemd, launchd            | `jaypost.db` next to the config file, normally `~/.config/jaypost/`  |
+| Quadlet                     | `/data/jaypost.db` in the `jaypost-data` volume                      |
+| Compose                     | `/data/jaypost.db` in the compose project's `data` volume            |
+| no install, `start` by hand | `jaypost.db` next to `$JAYPOST_CONFIG` or the default config path    |
 
 `uninstall` removes the log only when you also purge the credentials. Installs from 0.4.0 or earlier don't keep a log; run `jaypost init` to upgrade, then `log` works.

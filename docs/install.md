@@ -9,7 +9,7 @@ Create a bot first and have the token ready: with [@BotFather](https://t.me/BotF
 
 If it finds an existing install it offers to replace it, reusing the saved bot token and owner (no re-pairing). If there's no install but a bot token was kept by `uninstall`, it reuses that (and the owner) too. If `init` fails partway, run it again; the old install record and saved bot token are kept until the new install succeeds.
 
-Node 24+ is needed for `npx` and the systemd and launchd targets unless you use the standalone binary; the container targets bring their own Node.
+Node 24.15+ is needed for `npx` and the systemd and launchd targets unless you use the standalone binary; the container targets bring their own Node.
 
 ## Standalone binary
 
@@ -45,7 +45,7 @@ Needs Podman 4.4 or newer and a systemd user session. Written:
 
 - `~/.config/jaypost/quadlet/` with a `Dockerfile`, `.env` (bot token, port, owner, `JAYPOST_TOKEN`) and a `.dockerignore` that keeps `.env` out of the image build
 - `~/.config/containers/systemd/jaypost.container`
-- image `localhost/jaypost:<version>`, volume `jaypost-data` (holds the pairing state and `state.json`)
+- image `localhost/jaypost:<version>`, volume `jaypost-data` (holds the pairing state and `jaypost.db`)
 
 Runs as a user service named `jaypost`. `init` enables linger (`loginctl enable-linger`) if needed so it survives logout; it tells you if that needs a password. Logs:
 
@@ -58,7 +58,7 @@ journalctl --user -u jaypost -f
 Needs Docker with the compose v2 plugin, and your user in the `docker` group (otherwise `init` reports it can't talk to docker and skips this target). Written:
 
 - `~/.config/jaypost/compose/` with `Dockerfile`, `compose.yaml`, `.env` (bot token, port, owner, `JAYPOST_TOKEN`) and `.dockerignore`
-- a named volume `data` in the `jaypost` compose project (holds the pairing state and `state.json`)
+- a named volume `data` in the `jaypost` compose project (holds the pairing state and `jaypost.db`)
 
 Logs:
 
@@ -73,7 +73,7 @@ This target is untested on real Docker so far.
 No container. `init` installs the package globally with npm (`npm i -g`), or into `~/.local/share/jaypost/npm` if the global prefix isn't writable. If you ran `init` from an already-installed copy, it uses that. Written:
 
 - `~/.config/jaypost/config.json` (bot token, port, owner, `apiToken`)
-- `~/.config/jaypost/state.json` (pending requests and notification expiries, written by the service)
+- `~/.config/jaypost/jaypost.db` (bots, keys, pending requests and the question log, written by the service)
 - `~/.config/systemd/user/jaypost.service` with absolute paths to `node`, the CLI and the config file (`JAYPOST_CONFIG` is always set in the unit, and `install.json` records the same path)
 
 Logs: `journalctl --user -u jaypost -f`. Linger is handled as for Quadlet.
@@ -84,7 +84,7 @@ With the [standalone binary](#standalone-binary) there's no npm package; the uni
 
 A per-user LaunchAgent, no container. With the [standalone binary](#standalone-binary), `init` copies it to `~/.local/bin/jaypost` and the agent runs that; otherwise it installs the package with npm as the systemd target does and runs `node` with the CLI. Written:
 
-- `~/.config/jaypost/config.json` (bot token, port, owner, `apiToken`) and `state.json`, as for systemd
+- `~/.config/jaypost/config.json` (bot token, port, owner, `apiToken`) and `jaypost.db`, as for systemd
 - `~/Library/LaunchAgents/io.github.bithyte.jaypost.plist` with absolute paths to the command and the config file (`JAYPOST_CONFIG` is always set in the plist, and `install.json` records the same path)
 
 The agent runs only while you're logged in to the Mac, and launchd restarts it if it exits with a failure. `init` needs a desktop session, so it won't offer launchd over SSH with nobody logged in.
@@ -97,7 +97,7 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/config.json`, else `~/.config/jaypost/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. The same env var is what clients read, with the token file as their fallback. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
-The service keeps its bots, pairings and API keys in `registry.json` next to the config file (the data volume for containers), with each bot's `state.json` and `audit.jsonl` under `bots/<id>/`. The env vars and `config.json` only seed the first bot, pairing and key when the registry is empty; after that, change things with `jaypost bot`, `key` and `pairing` (see [Hosting](hosting.md)). Running `init` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
+The service keeps its bots, pairings and API keys in `jaypost.db` next to the config file (the data volume for containers), along with pending requests and the question log. The env vars and `config.json` only seed the first bot, pairing and key when the registry is empty; after that, change things with `jaypost bot`, `key` and `pairing` (see [Hosting](hosting.md)). Running `init` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
 
 ## One instance per token
 

@@ -52,9 +52,9 @@ jaypost uninstall
 
 Stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log.
 
-Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `init` finds them and reuses the bot token and owner without asking. For systemd and launchd, `state.json` and the question log stay. The API token file `~/.config/jaypost/token` is kept too, and the next `init` reuses it.
+Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `init` finds them and reuses the bot token and owner without asking. For systemd and launchd, `jaypost.db` (with the question log) stays. The API token file `~/.config/jaypost/token` is kept too, and the next `init` reuses it.
 
-Yes also removes the target's image, volume and files (for systemd and launchd that includes `state.json` and `audit.jsonl`). The launchd log file in `~/Library/Logs/jaypost/` is kept even then.
+Yes also removes the target's image, volume and files (for systemd and launchd that includes `jaypost.db`). The launchd log file in `~/Library/Logs/jaypost/` is kept even then.
 
 For systemd and launchd the npm package stays; `uninstall` prints the command to remove it, `npm rm -g jaypost`, or `npm rm -g --prefix ~/.local/share/jaypost/npm jaypost` if `init` installed it into that prefix.
 

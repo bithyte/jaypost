@@ -10,7 +10,7 @@ A wrong token gets 401 even on an `init --no-token` install, which used to accep
 
 ## Several people
 
-On a [hosted service](hosting.md) every person has their own API keys. The service stores only a hash of each (the key is shown once, when it's created) and never returns one. The admin key is separate: it unlocks the admin routes and nothing else, can't ask or notify, and an API key never opens an admin route. It lives in `admin-key` next to `config.json` (the data volume for containers), mode 0600; `jaypost admin-key rotate` replaces it and the old one stops working at once. Treat it like the bot tokens, which also sit under that directory. `registry.json` holds bot tokens and the people ids, mode 0600 too.
+On a [hosted service](hosting.md) every person has their own API keys. The service stores only a hash of each (the key is shown once, when it's created) and never returns one. The admin key is separate: it unlocks the admin routes and nothing else, can't ask or notify, and an API key never opens an admin route. It lives in `admin-key` next to `config.json` (the data volume for containers), mode 0600; `jaypost admin-key rotate` replaces it and the old one stops working at once. Treat it like the bot tokens, which also sit under that directory. `jaypost.db` (also next to `config.json`) holds bot tokens, key hashes and people ids, mode 0600 too, as are its `-wal` and `-shm` files.
 
 A key holder can't see or affect another key's questions or log, and a key can't make the bot message someone who has never started a chat with it.
 

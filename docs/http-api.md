@@ -215,7 +215,7 @@ The admin routes manage bots, pairings and keys on a running service, so a remot
 | `GET /admin/log`                  | Every bot's questions, each with its `bot`. Filters `bot`, `pairing`, `key`, `since`, `project`, `limit`.                                            |
 | `POST /admin/admin-key`           | Replaces the admin key and returns the new one. The old key stops working at once and the key file is rewritten.                                    |
 
-`/admin/log` doesn't `404` on a `pairing` or `key` id that no longer exists, so the history of revoked keys and removed pairings stays readable. A removed bot's log can't be read through the API; its files stay on disk under `bots/<id>/`. A registry write that fails answers `500` and changes nothing. Unknown ids on the other routes answer `404`. Use the [CLI](commands.md#admin) rather than calling these by hand, unless you're building on top of them. See [Hosting](hosting.md).
+`/admin/log` doesn't `404` on a `pairing` or `key` id that no longer exists, so the history of revoked keys and removed pairings stays readable. `/admin/log` covers every bot, removed ones too, until their questions are 30 days old. A registry write that fails answers `500` and changes nothing. Unknown ids on the other routes answer `404`. Use the [CLI](commands.md#admin) rather than calling these by hand, unless you're building on top of them. See [Hosting](hosting.md).
 
 ## OpenAPI spec
 

@@ -25,7 +25,7 @@ Runs on your machine, talks only to you.
 
 ## Quick start
 
-You need Node 24+ and a bot token, from [@BotFather](https://t.me/BotFather) on Telegram or the [Discord developer portal](docs/pairing.md#discord-setup).
+You need Node 24.15+ and a bot token, from [@BotFather](https://t.me/BotFather) on Telegram or the [Discord developer portal](docs/pairing.md#discord-setup).
 
 ```
 npx jaypost init

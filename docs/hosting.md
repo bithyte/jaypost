@@ -24,7 +24,7 @@ export JAYPOST_ADMIN_KEY=jpa_...
 
 On the VM the CLI finds the admin key on its own: in `~/.config/jaypost/admin-key` (mode 0600) for systemd and launchd, and inside the data volume for containers (it runs `jaypost admin-key show` there). `JAYPOST_ADMIN_KEY` wins when it's set.
 
-Admin changes apply to the running service, no restart needed. State lives next to `config.json` (the data volume for containers): `registry.json`, `admin-key`, and `bots/<id>/state.json` and `bots/<id>/audit.jsonl` for each bot. An install from before this release is moved in place: its bot becomes `b1`, its owner pairing `p1`, its API token key `k1`, and the old `state.json` and `audit.jsonl` move into `bots/b1/`. Clients keep working with no change.
+Admin changes apply to the running service, no restart needed. State lives next to `config.json` (the data volume for containers): `jaypost.db` (bots, pairings, keys, pending requests and the question log) and `admin-key`. An install from before the db isn't read: run `jaypost init` again, and it starts with an empty registry (the old json files are ignored).
 
 ## Add a bot
 
@@ -38,7 +38,7 @@ jaypost bot remove b2
 
 `bot list` shows each bot's state, pairings and keys. A bot that fails to start (rejected credentials, a provider error) shows `failed` with the reason, retries with backoff (5 seconds, doubling up to 5 minutes), and the other bots keep serving. A bot that fails fatally while running rejects its open questions with their timeout option. Questions on a bot that isn't `running` get 503.
 
-`bot remove` deletes the bot with its pairings and keys, and asks first unless `-y`. Its files stay on disk under `bots/<id>/`, but the API can't read its log any more.
+`bot remove` deletes the bot with its pairings and keys, and asks first unless `-y`. Its questions stay readable through `/admin/log` until they're 30 days old.
 
 ## Hand out keys
 
