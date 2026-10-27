@@ -121,6 +121,8 @@ export type InitArgs = {
 
 /** Everything `runResetOwner` touches outside itself, injected for tests. */
 export type ResetOwnerDeps = {
+  /** Read for `JAYPOST_URL`, which reset-owner refuses, and `JAYPOST_ADMIN_KEY`. */
+  readonly env: NodeJS.ProcessEnv
   readonly targets: Readonly<Record<TargetName, Target>>
   readonly paths: InstallPaths
   readonly providers: readonly Provider[]

@@ -1,9 +1,4 @@
-import {
-  AdminCaller,
-  ADMIN_TOO_OLD_MESSAGE,
-  describeUnauthorized,
-  toLocalEndpoint,
-} from '@jaypost/client'
+import { ADMIN_TOO_OLD_MESSAGE, describeUnauthorized, findEnvEndpoint } from '@jaypost/client'
 import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
@@ -11,6 +6,7 @@ import type { Provider } from '@jaypost/core'
 import { resolveClientToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
+import { openAdmin } from './admin-access.ts'
 import { POLL_INTERVAL_MS, START_POLL_COUNT } from './constants.ts'
 import { createAbortableSleep } from './pairing-wait.ts'
 import { PromptAborted } from './prompts.ts'
@@ -39,11 +35,18 @@ export function resolveResetOwnerToken(env: NodeJS.ProcessEnv, tokenFile: string
  * Unlinks the paired owner without a restart: reads /status with key 1's token to learn its
  * pairing (and names it in the prompt), resets that pairing through the admin route, drops the
  * owner from the install's seed inputs and waits for a new pairing. A stopped service is restarted
- * after the prompt. Returns 0 on success or if the user declines, 1 on failure, not installed or a
- * provider that doesn't pair, 130 on interrupt.
+ * after the prompt. Refuses while `JAYPOST_URL` is set: it only works on this machine's install.
+ * Returns 0 on success or if the user declines, 1 on failure, not installed, `JAYPOST_URL` set or
+ * a provider that doesn't pair, 130 on interrupt.
  */
 export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const print = deps.progress.note
+  if (findEnvEndpoint(deps.env) !== undefined) {
+    print(
+      "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run reset-owner again.",
+    )
+    return 1
+  }
   const existing = findExistingInstall(deps.paths, deps.targets)
   if (!existing) {
     print('Not installed. Run "jaypost init".')
@@ -183,7 +186,7 @@ async function findPairing(
 }
 
 /**
- * Resets the pairing (`known`, or the one /status names now) with the install's admin key, then
+ * Resets the pairing (`known`, or the one /status names now) through `openAdmin`, then
  * drops the owner from the install's seed inputs so a later re-seed can't pair them again. Throws
  * when interrupted or when the seed inputs can't be written.
  */
@@ -198,14 +201,12 @@ async function resetOwnerPairing(
   if (found.kind === 'failed') {
     return found
   }
-  let adminKey: string
-  try {
-    adminKey = await target.readAdminKey(record)
-  } catch (error) {
-    return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+  // Opened only now: a service restarted a moment ago may have just written its admin key.
+  const opened = await openAdmin(deps)
+  if (opened.kind !== 'opened') {
+    return { kind: 'failed', message: opened.message }
   }
-  const caller = new AdminCaller({ endpoint: toLocalEndpoint(record.port), adminKey })
-  const reset = await caller.resetPairing(found.pairingId)
+  const reset = await opened.caller.resetPairing(found.pairingId)
   if (reset.kind === 'failed') {
     return { kind: 'failed', message: reset.message }
   }

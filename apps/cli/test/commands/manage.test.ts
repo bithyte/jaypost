@@ -118,6 +118,7 @@ const PAIRED_K1 = answered({ paired: true, key: 'k1', pairing: 'p1' })
 
 function base(over = {}) {
   return {
+    env: {},
     targets: targets(),
     paths,
     providers: [telegramProvider, createFakeProvider()],
@@ -623,6 +624,27 @@ test('reset-owner yes: resets the pairing with the admin key and waits, with no 
     port,
     version: '1.0.0',
   })
+})
+
+test('reset-owner resets with JAYPOST_ADMIN_KEY over the install key', async () => {
+  const { seen } = await seedResetStub()
+  const envKey = `jpa_${'E'.repeat(43)}`
+  const d = resetDeps({ env: { JAYPOST_ADMIN_KEY: envKey } })
+  expect(await runResetOwner(d)).toBe(0)
+  expect(seen).toEqual([
+    { url: 'POST /admin/pairings/p1/reset', authorization: `Bearer ${envKey}` },
+  ])
+  expect(d.targets.systemd.readAdminKey).not.toHaveBeenCalled()
+})
+
+test('reset-owner with JAYPOST_URL set refuses before anything else', async () => {
+  const d = resetDeps({ env: { JAYPOST_URL: 'https://jaypost.example' } })
+  expect(await runResetOwner(d)).toBe(1)
+  expect(notes()).toEqual([
+    "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run reset-owner again.",
+  ])
+  expect(d.fetchStatus).not.toHaveBeenCalled()
+  expect(d.confirm).not.toHaveBeenCalled()
 })
 
 test('reset-owner on a container drops the owner from its inputs without clearOwner', async () => {

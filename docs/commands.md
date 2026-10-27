@@ -34,7 +34,7 @@ Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "S
 jaypost reset-owner
 ```
 
-Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. See [Pairing](pairing.md).
+Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md).
 
 ### `jaypost update`
 

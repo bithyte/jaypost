@@ -461,6 +461,7 @@ function runResetOwnerCommand(): Promise<number> {
   return runWithSignals(
     (controller) =>
       runResetOwner({
+        env: process.env,
         targets,
         paths,
         providers: PROVIDERS,
