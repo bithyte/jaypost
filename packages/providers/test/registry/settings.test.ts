@@ -3,13 +3,14 @@ import {
   collectSettings,
   findOwnerSetting,
   hasRequiredSecrets,
+  isPairingProvider,
   listSecretValues,
   MAX_ATTACHMENT_BYTES,
   requireProvider,
   resolveMaxAttachmentBytes,
   resolveVoters,
 } from '@jaypost/core'
-import { PROVIDERS } from '../../src/registry/index.ts'
+import { PROVIDERS, SERVICE_PROVIDERS } from '../../src/registry/index.ts'
 import { createFakeProvider } from '@jaypost/testing'
 
 const telegram = requireProvider(PROVIDERS, 'telegram')
@@ -22,6 +23,11 @@ test('requireProvider rejects an unknown name', () => {
 
 test('findOwnerSetting finds the owner setting', () => {
   expect(findOwnerSetting(telegram)?.configKey).toBe('ownerId')
+})
+
+test('isPairingProvider is true for a provider with an owner setting', () => {
+  expect(isPairingProvider(telegram)).toBe(true)
+  expect(isPairingProvider(requireProvider(SERVICE_PROVIDERS, 'terminal'))).toBe(false)
 })
 
 test('collectSettings skips invalid values', () => {

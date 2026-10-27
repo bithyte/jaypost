@@ -117,7 +117,7 @@ function createPairedRegistry(): Registry {
     createKey(registry, { kind: 'newPairing', botId: 'b1' }, 'h1', {}, 'CODE0001', true, AT),
     'created',
   ).registry
-  registry = expectKind(claimPairing(registry, 'p1', '111'), 'claimed').registry
+  registry = expectKind(claimPairing(registry, 'b1', 'p1', '111'), 'claimed').registry
   registry = expectKind(
     createKey(registry, { kind: 'pairing', pairingId: 'p1' }, 'h2', {}, 'UNUSED01', true, AT),
     'created',
@@ -346,7 +346,7 @@ test('a terminal-like bot gets one local pairing and no code', () => {
 })
 
 test('redeeming a code sets the person and drops the code', () => {
-  const result = claimPairing(createPairedRegistry(), 'p2', '222')
+  const result = claimPairing(createPairedRegistry(), 'b1', 'p2', '222')
   const pairing = { id: 'p2', botId: 'b1', person: '222', createdAt: CREATED }
   expect(result).toStrictEqual({
     kind: 'claimed',
@@ -356,7 +356,7 @@ test('redeeming a code sets the person and drops the code', () => {
 })
 
 test('redeeming a second code on the same bot moves its keys to the existing pairing', () => {
-  const result = claimPairing(createPairedRegistry(), 'p2', '111')
+  const result = claimPairing(createPairedRegistry(), 'b1', 'p2', '111')
   expect(result).toStrictEqual({
     kind: 'merged',
     registry: {
@@ -377,7 +377,7 @@ test('the same person on another bot is a separate pairing', () => {
     'added',
   ).registry
   registry = expectKind(createPairing(registry, 'b2', 'CODE0003', true, AT), 'created').registry
-  const result = claimPairing(registry, 'p3', '111')
+  const result = claimPairing(registry, 'b2', 'p3', '111')
   const pairing = { id: 'p3', botId: 'b2', person: '111', createdAt: CREATED }
   expect(result).toStrictEqual({
     kind: 'claimed',
@@ -395,12 +395,31 @@ test('the same person on another bot is a separate pairing', () => {
 })
 
 test('resetting a pairing drops the person and sets a new code', () => {
-  const result = resetPairing(createPairedRegistry(), 'p1', 'CODE0009')
+  const result = resetPairing(createPairedRegistry(), 'p1', 'CODE0009', true)
   const pairing = { id: 'p1', botId: 'b1', code: 'CODE0009', createdAt: CREATED }
   expect(result).toStrictEqual({
     kind: 'reset',
     registry: { ...PAIRED, pairings: [pairing, PAIRED.pairings[1]] },
     pairing,
+  })
+})
+
+test('a claim of a pairing that already has a person is not pending', () => {
+  expect(claimPairing(createPairedRegistry(), 'b1', 'p1', '999')).toStrictEqual({
+    kind: 'notPending',
+  })
+})
+
+test('a claim of a pairing on another bot is not pending', () => {
+  expect(claimPairing(createPairedRegistry(), 'b2', 'p2', '222')).toStrictEqual({
+    kind: 'notPending',
+  })
+})
+
+test('resetting a pairing on a bot that does not pair is refused', () => {
+  expect(resetPairing(createPairedRegistry(), 'p1', 'CODE0009', false)).toStrictEqual({
+    kind: 'notPairing',
+    botId: 'b1',
   })
 })
 
@@ -483,12 +502,8 @@ test('removing, resetting, revoking or updating something unknown is not found',
     what: 'pairing',
     id: 'p9',
   })
-  expect(claimPairing(registry, 'p9', '1')).toStrictEqual({
-    kind: 'notFound',
-    what: 'pairing',
-    id: 'p9',
-  })
-  expect(resetPairing(registry, 'p9', 'C')).toStrictEqual({
+  expect(claimPairing(registry, 'b1', 'p9', '1')).toStrictEqual({ kind: 'notPending' })
+  expect(resetPairing(registry, 'p9', 'C', true)).toStrictEqual({
     kind: 'notFound',
     what: 'pairing',
     id: 'p9',
@@ -667,7 +682,7 @@ test('seeding a different provider resets the bot pairings', () => {
     createKey(registry, { kind: 'newPairing', botId: 'b1' }, 'h2', {}, 'CODE0001', true, AT),
     'created',
   ).registry
-  registry = expectKind(claimPairing(registry, 'p2', '222'), 'claimed').registry
+  registry = expectKind(claimPairing(registry, 'b1', 'p2', '222'), 'claimed').registry
   const { owner: _owner, ...seed } = SEED
   const result = applySeed(
     registry,
@@ -725,7 +740,7 @@ test('seeding with a new fingerprint reuses the owner pairing when the seed pair
     createKey(registry, { kind: 'newPairing', botId: 'b1' }, 'h2', {}, 'CODE0001', true, AT),
     'created',
   ).registry
-  registry = expectKind(claimPairing(registry, 'p2', '111'), 'claimed').registry
+  registry = expectKind(claimPairing(registry, 'b1', 'p2', '111'), 'claimed').registry
   const result = applySeed(registry, { ...SEED, fingerprint: 'f2' }, true, createCodes(), LATER)
   expect(result).toStrictEqual({
     registry: {

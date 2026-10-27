@@ -18,6 +18,11 @@ export function findOwnerSetting(provider: Provider): ProviderSetting | undefine
   return provider.settings.find((setting) => setting.owner)
 }
 
+/** Whether the provider's bots pair with people: it has an owner setting. */
+export function isPairingProvider(provider: Provider): boolean {
+  return findOwnerSetting(provider) !== undefined
+}
+
 /**
  * `voters` parsed by the owner setting and deduplicated in order, so `0111` and ` 111` are the
  * same voter as `111`; without `voters`, `person` (already in the form taps report), or `noOwner`

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { findOwnerSetting, generateCode as generateDefaultCode } from '@jaypost/core'
+import { generateCode as generateDefaultCode, isPairingProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
 import {
   applySeed,
@@ -66,7 +66,7 @@ function loadSeededRegistry(
     }
     return stored
   }
-  const pairs = findOwnerSetting(seed.provider) !== undefined
+  const pairs = isPairingProvider(seed.provider)
   const now = options.now ?? (() => new Date())
   const { registry } = applySeed(stored, seed.seed, pairs, generateCode, now())
   // SeedResult.isNew only says the seed record is new; the move needs a registry with no bots.

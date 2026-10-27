@@ -38,8 +38,8 @@ function writeRegistry(): Registry {
   if (created.kind !== 'created') {
     throw new Error('no bot b1')
   }
-  const claimed = claimPairing(created.registry, created.pairing.id, 'u2')
-  if (claimed.kind === 'notFound') {
+  const claimed = claimPairing(created.registry, 'b1', created.pairing.id, 'u2')
+  if (claimed.kind === 'notPending') {
     throw new Error('no pairing p2')
   }
   new RegistryStore(resolveRegistryPath(file)).save(claimed.registry)

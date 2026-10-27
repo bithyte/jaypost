@@ -72,7 +72,8 @@ function clearSeedPairing(store: RegistryStore, registry: Registry): void {
   if (registry.seed === undefined) {
     return
   }
-  const result = resetPairing(registry, registry.seed.pairingId, generateCode())
+  // Only a provider with an owner setting gets here, so the seed bot pairs.
+  const result = resetPairing(registry, registry.seed.pairingId, generateCode(), true)
   if (result.kind === 'reset') {
     store.save(result.registry)
   }

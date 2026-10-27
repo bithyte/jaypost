@@ -130,14 +130,19 @@ export type CreateKeyResult =
     }
   | NotFound
 
-/** `merged` means the person was already paired on the bot, so `pairing` is that older one. */
+/**
+ * `merged` means the person was already paired on the bot, so `pairing` is that older one.
+ * `notPending` means the pairing is gone, on another bot, or already has a person.
+ */
 export type ClaimPairingResult =
   | { readonly kind: 'claimed'; readonly registry: Registry; readonly pairing: PairingRecord }
   | { readonly kind: 'merged'; readonly registry: Registry; readonly pairing: PairingRecord }
-  | NotFound
+  | { readonly kind: 'notPending' }
 
+/** `notPairing` means the pairing's bot doesn't pair, so nobody could claim the new code. */
 export type ResetPairingResult =
   | { readonly kind: 'reset'; readonly registry: Registry; readonly pairing: PairingRecord }
+  | { readonly kind: 'notPairing'; readonly botId: string }
   | NotFound
 
 export type RevokeKeyResult = { readonly kind: 'revoked'; readonly registry: Registry } | NotFound

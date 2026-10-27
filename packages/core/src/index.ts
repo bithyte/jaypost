@@ -80,6 +80,7 @@ export {
   findOwnerSetting,
   findProvider,
   hasRequiredSecrets,
+  isPairingProvider,
   listSecretValues,
   requireProvider,
   resolveMaxAttachmentBytes,

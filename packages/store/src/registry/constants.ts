@@ -1,3 +1,5 @@
+import type { ClaimPairingResult } from './types.ts'
+
 export const REGISTRY_VERSION = 1
 
 /** Registry file name inside the config directory. */
@@ -24,3 +26,5 @@ export const BOT_ID_PREFIX = 'b'
 export const PAIRING_ID_PREFIX = 'p'
 
 export const KEY_ID_PREFIX = 'k'
+
+export const NOT_PENDING = { kind: 'notPending' } as const satisfies ClaimPairingResult

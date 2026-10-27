@@ -1,8 +1,8 @@
 import { timingSafeEqual } from 'node:crypto'
 import {
-  findOwnerSetting,
   formatCode,
   generateCode as generateDefaultCode,
+  isPairingProvider,
   parseQuietHours,
   resolveMaxAttachmentBytes,
 } from '@jaypost/core'
@@ -330,12 +330,17 @@ export class Hub implements AdminApi {
     if (pairing === undefined) {
       return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
     }
-    if (!this.#isPairingBot(pairing.botId)) {
-      return toInvalid(`pairing ${pairingId} is on bot ${pairing.botId}, which doesn't pair`)
-    }
-    const result = resetPairing(this.#registry, pairingId, this.#generateCode())
+    const result = resetPairing(
+      this.#registry,
+      pairingId,
+      this.#generateCode(),
+      this.#isPairingBot(pairing.botId),
+    )
     if (result.kind === 'notFound') {
       return toNotFound(result)
+    }
+    if (result.kind === 'notPairing') {
+      return toInvalid(`pairing ${pairingId} is on bot ${result.botId}, which doesn't pair`)
     }
     this.#commit(result.registry)
     this.#release(pairing, this.#listKeyIds(pairingId))
@@ -615,14 +620,9 @@ export class Hub implements AdminApi {
   }
 
   #claim(botId: string, pairingId: string, person: string): void {
-    const pairing = this.#registry.pairings.find((other) => other.id === pairingId)
-    // claimPairing would replace a person already there.
-    if (pairing === undefined || pairing.botId !== botId || !isPending(pairing)) {
+    const result = claimPairing(this.#registry, botId, pairingId, person)
+    if (result.kind === 'notPending') {
       this.#log(`[${botId}] ignored a claim of pairing ${pairingId}, which isn't pending`)
-      return
-    }
-    const result = claimPairing(this.#registry, pairingId, person)
-    if (result.kind === 'notFound') {
       return
     }
     this.#registry = result.registry
@@ -739,7 +739,7 @@ export class Hub implements AdminApi {
   #isPairingBot(botId: string): boolean {
     const record = this.#findBot(botId)
     const provider = record === undefined ? undefined : this.#providersByName.get(record.provider)
-    return provider === undefined || findOwnerSetting(provider) !== undefined
+    return provider === undefined || isPairingProvider(provider)
   }
 
   #findState(botId: string): BotState {

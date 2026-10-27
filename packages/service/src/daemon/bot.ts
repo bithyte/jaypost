@@ -1,8 +1,8 @@
 import { join } from 'node:path'
 import {
   ApprovalService,
-  findOwnerSetting,
   isCodeShaped,
+  isPairingProvider,
   NotificationService,
   OWNER_COMMANDS,
   PairingCodes,
@@ -45,7 +45,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     throw new Error(check.reason)
   }
   const displayName = check.displayName
-  const pairs = findOwnerSetting(provider) !== undefined
+  const pairs = isPairingProvider(provider)
   const pairingInstructions = runtime.pairingInstructions?.bind(runtime)
   if (pairs && pairingInstructions === undefined) {
     await runtime.stop().catch(() => undefined)

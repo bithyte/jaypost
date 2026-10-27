@@ -4,9 +4,11 @@ import {
   BOT_ID_PREFIX,
   KEY_ID_PREFIX,
   LOCAL_PERSON,
+  NOT_PENDING,
   PAIRING_ID_PREFIX,
   REGISTRY_VERSION,
 } from './constants.ts'
+import { isPending } from './queries.ts'
 import type {
   AddBotResult,
   BotInput,
@@ -146,7 +148,7 @@ function claim(
   registry: Registry,
   pairing: PairingRecord,
   person: string,
-): Exclude<ClaimPairingResult, NotFound> {
+): Exclude<ClaimPairingResult, typeof NOT_PENDING> {
   const existing = registry.pairings.find(
     (other) => other.id !== pairing.id && other.botId === pairing.botId && other.person === person,
   )
@@ -520,31 +522,40 @@ function resolveKeyTarget(
 }
 
 /**
- * `person` redeemed the pairing's code. One pairing per bot and person: when another pairing on
- * the bot has them, this one's keys move there and it is deleted (`merged`). Call it for pending
- * pairings only: it doesn't check for a person already set, and would replace them. Never throws.
+ * `person` redeemed the code of a pending pairing on `botId`. One pairing per bot and person: when
+ * another pairing on the bot has them, this one's keys move there and it is deleted (`merged`). A
+ * pairing that isn't pending on `botId` (a late code from a replaced runtime) is `notPending`, so
+ * a person already set is never replaced. Never throws.
  */
 export function claimPairing(
   registry: Registry,
+  botId: string,
   pairingId: string,
   person: string,
 ): ClaimPairingResult {
   const pairing = registry.pairings.find((other) => other.id === pairingId)
-  if (pairing === undefined) {
-    return notFound('pairing', pairingId)
+  if (pairing === undefined || pairing.botId !== botId || !isPending(pairing)) {
+    return NOT_PENDING
   }
   return claim(registry, pairing, person)
 }
 
-/** Drops the pairing's person and makes it wait for `code`; keys and quiet settings stay. */
+/**
+ * Drops the pairing's person and makes it wait for `code`; keys and quiet settings stay. `pairs`
+ * says whether the pairing's bot pairs; without it the reset is `notPairing`. Never throws.
+ */
 export function resetPairing(
   registry: Registry,
   pairingId: string,
   code: string,
+  pairs: boolean,
 ): ResetPairingResult {
   const pairing = registry.pairings.find((other) => other.id === pairingId)
   if (pairing === undefined) {
     return notFound('pairing', pairingId)
+  }
+  if (!pairs) {
+    return { kind: 'notPairing', botId: pairing.botId }
   }
   const pending = toPending(pairing, code)
   return { kind: 'reset', registry: replacePairing(registry, pending), pairing: pending }
