@@ -154,3 +154,35 @@ export type SeedResult = {
   readonly registry: Registry
   readonly isNew: boolean
 }
+
+/** A pending pairing: no person yet, and the code that claims it. */
+export type PendingPairing = PairingRecord & { readonly code: string }
+
+/**
+ * What an API key reaches. `missing` is a call without a token on a seed that isn't open; `wrong`
+ * is an unknown key, or one whose pairing is gone.
+ */
+export type KeyLookup =
+  | { readonly kind: 'found'; readonly key: KeyRecord; readonly pairing: PairingRecord }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'wrong' }
+
+export type BotRecordCounts = {
+  readonly pairingCount: number
+  readonly keyCount: number
+}
+
+/** A key with the bot its pairing is on. */
+export type KeyOnBot = {
+  readonly key: KeyRecord
+  readonly botId: string
+}
+
+export type KeyFilter = {
+  readonly bot?: string
+  readonly pairing?: string
+}
+
+export type ListKeysResult =
+  | { readonly kind: 'listed'; readonly keys: readonly KeyOnBot[] }
+  | NotFound

@@ -647,8 +647,3 @@ export function applySeed(
     isNew: false,
   }
 }
-
-/** The key stored with `hash`, or undefined. A hashless seed key never matches. */
-export function findKeyByHash(registry: Registry, hash: string): KeyRecord | undefined {
-  return registry.keys.find((key) => key.hash === hash)
-}

@@ -42,8 +42,8 @@ export function parseAuditLog(raw: string, now: Date): AuditReadResult {
 }
 
 /**
- * `since` is inclusive on `askedAt`; `project`, `pairing` and `bot` are exact matches; `key` too,
- * with entries without a key taken as `unkeyedAs`'s; `limit` keeps the last N.
+ * `since` is inclusive on `askedAt`; `project`, `key`, `pairing` and `bot` are exact matches;
+ * `limit` keeps the last N.
  */
 export function selectAuditEntries(
   entries: readonly AuditEntry[],
@@ -54,7 +54,7 @@ export function selectAuditEntries(
     (entry) =>
       (sinceMs === undefined || Date.parse(entry.askedAt) >= sinceMs) &&
       (filter.project === undefined || entry.project === filter.project) &&
-      (filter.key === undefined || (entry.key ?? filter.unkeyedAs) === filter.key) &&
+      (filter.key === undefined || entry.key === filter.key) &&
       (filter.pairing === undefined || entry.pairing === filter.pairing) &&
       (filter.bot === undefined || entry.bot === filter.bot),
   )

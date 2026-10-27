@@ -191,7 +191,7 @@ test('an asked line with a non-string key is skipped', () => {
   expect(parseAuditLog(raw, NOW)).toEqual({ entries: [], skippedCount: 1 })
 })
 
-test('selectAuditEntries filters by key and pairing, and unkeyedAs claims old lines', () => {
+test('selectAuditEntries filters by key and pairing', () => {
   const askedAt = '2026-10-18T10:00:00.000Z'
   const entries: AuditEntry[] = [
     { ...entry('a', askedAt), key: 'k1', pairing: 'p1' },
@@ -201,10 +201,8 @@ test('selectAuditEntries filters by key and pairing, and unkeyedAs claims old li
   const ids = (filter: Parameters<typeof selectAuditEntries>[1]) =>
     selectAuditEntries(entries, filter).map((item) => item.id)
   expect(ids({ key: 'k1' })).toEqual(['a'])
-  expect(ids({ key: 'k1', unkeyedAs: 'k1' })).toEqual(['a', 'c'])
-  expect(ids({ key: 'k2', unkeyedAs: 'k1' })).toEqual(['b'])
   expect(ids({ pairing: 'p2' })).toEqual(['b'])
-  expect(ids({ unkeyedAs: 'k1' })).toEqual(['a', 'b', 'c'])
+  expect(ids({})).toEqual(['a', 'b', 'c'])
 })
 
 test('selectAuditEntries filters by bot', () => {

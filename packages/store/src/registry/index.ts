@@ -16,7 +16,6 @@ export {
   createEmptyRegistry,
   createKey,
   createPairing,
-  findKeyByHash,
   removeBot,
   removePairing,
   resetPairing,
@@ -24,6 +23,15 @@ export {
   updateKey,
   updatePairingQuiet,
 } from './operations.ts'
+export {
+  countBotRecords,
+  findKeyRoute,
+  findPairingOf,
+  isPending,
+  isSeedLine,
+  listKeys,
+  listPendingCodes,
+} from './queries.ts'
 export { resolveAdminKeyPath, resolveBotFiles, resolveRegistryPath } from './paths.ts'
 export { registrySchema } from './schema.ts'
 export { loadSeed } from './seed.ts'
@@ -37,6 +45,7 @@ export {
 } from './store.ts'
 export type {
   AddBotResult,
+  BotRecordCounts,
   BotFiles,
   BotInput,
   BotRecord,
@@ -44,11 +53,16 @@ export type {
   CreateKeyResult,
   CreatePairingResult,
   KeyDetails,
+  KeyFilter,
+  KeyLookup,
+  KeyOnBot,
   KeyPatch,
   KeyRecord,
   KeyTarget,
+  ListKeysResult,
   NotFound,
   PairingRecord,
+  PendingPairing,
   Registry,
   RemoveResult,
   ResetPairingResult,

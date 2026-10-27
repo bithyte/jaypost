@@ -7,7 +7,6 @@ import {
   createEmptyRegistry,
   createKey,
   createPairing,
-  findKeyByHash,
   removeBot,
   removePairing,
   resetPairing,
@@ -511,12 +510,6 @@ test('quiet settings are set and deleted per pairing', () => {
 test('quiet settings for an unknown pairing leave the registry as it was', () => {
   const registry = createPairedRegistry()
   expect(updatePairingQuiet(registry, 'p9', { quietHours: '22:00-07:00' })).toBe(registry)
-})
-
-test('a key is found by its hash', () => {
-  const registry = createPairedRegistry()
-  expect(findKeyByHash(registry, 'h2')).toStrictEqual(PAIRED.keys[1])
-  expect(findKeyByHash(registry, 'h9')).toBeUndefined()
 })
 
 test('seeding an empty registry makes bot 1, pairing 1 and key 1', () => {

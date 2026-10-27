@@ -1,5 +1,6 @@
 import { findOwnerSetting, formatCode } from '@jaypost/core'
 import type { Provider, SettingValue, SettingValues } from '@jaypost/core'
+import { isPending } from '@jaypost/store'
 import type { KeyDetails, KeyRecord, KeyTarget, NotFound, PairingRecord } from '@jaypost/store'
 import type { AdminKey, AdminPairing, CreateKeyBody } from '@jaypost/protocol'
 import type { AdminFailure, Parsed } from '../server/index.ts'
@@ -74,9 +75,7 @@ export function toAdminPairing(pairing: PairingRecord, keys: readonly KeyRecord[
     bot: pairing.botId,
     ...(pairing.person === undefined ? {} : { person: pairing.person }),
     state: pairing.person === undefined ? 'pending' : 'paired',
-    ...(pairing.person === undefined && pairing.code !== undefined
-      ? { code: formatCode(pairing.code) }
-      : {}),
+    ...(isPending(pairing) ? { code: formatCode(pairing.code) } : {}),
     keys: keys.filter((key) => key.pairingId === pairing.id).map((key) => key.id),
   }
 }

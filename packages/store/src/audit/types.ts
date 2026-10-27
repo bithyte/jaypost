@@ -64,6 +64,4 @@ export type AuditFilter = {
   readonly key?: string
   readonly pairing?: string
   readonly bot?: string
-  /** Lines without a key count as this key's, for logs written before the upgrade. */
-  readonly unkeyedAs?: string
 }

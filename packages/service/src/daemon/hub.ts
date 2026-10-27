@@ -11,12 +11,18 @@ import {
   addBot,
   AUTHORIZATION_PATTERN,
   claimPairing,
+  countBotRecords,
   createKey,
   createPairing,
-  findKeyByHash,
+  findKeyRoute,
+  findPairingOf,
   generateAdminKey,
   generateApiKey,
   hashKey,
+  isPending,
+  isSeedLine,
+  listKeys,
+  listPendingCodes,
   parseAuditLog,
   readAuditFiles,
   removeBot,
@@ -33,7 +39,7 @@ import type {
   AuditEntry,
   AuditReadResult,
   BotRecord,
-  KeyRecord,
+  KeyLookup,
   KeyTarget,
   PairingRecord,
   Registry,
@@ -112,10 +118,6 @@ function toQuiet(pairing: PairingRecord | undefined): {
     ...(parsed?.ok === true ? { quietHours: parsed.value } : {}),
     ...(mutedUntil === undefined || Number.isNaN(mutedUntil.getTime()) ? {} : { mutedUntil }),
   }
-}
-
-function isPending(pairing: PairingRecord): pairing is PairingRecord & { readonly code: string } {
-  return pairing.person === undefined && pairing.code !== undefined
 }
 
 function toDuplicate(botId: string): AdminFailure {
@@ -360,22 +362,11 @@ export class Hub implements AdminApi {
     readonly bot?: string
     readonly pairing?: string
   }): { readonly keys: readonly AdminKey[] } | AdminFailure {
-    if (query.bot !== undefined && this.#findBot(query.bot) === undefined) {
-      return toNotFound({ kind: 'notFound', what: 'bot', id: query.bot })
+    const result = listKeys(this.#registry, query)
+    if (result.kind === 'notFound') {
+      return toNotFound(result)
     }
-    if (query.pairing !== undefined && this.#findPairing(query.pairing) === undefined) {
-      return toNotFound({ kind: 'notFound', what: 'pairing', id: query.pairing })
-    }
-    return {
-      keys: this.#registry.keys.flatMap((key) => {
-        const pairing = this.#findPairing(key.pairingId)
-        const isMatch =
-          pairing !== undefined &&
-          (query.bot === undefined || pairing.botId === query.bot) &&
-          (query.pairing === undefined || pairing.id === query.pairing)
-        return isMatch ? [toAdminKey(key, pairing.botId)] : []
-      }),
-    }
+    return { keys: result.keys.map(({ key, botId }) => toAdminKey(key, botId)) }
   }
 
   /**
@@ -514,9 +505,7 @@ export class Hub implements AdminApi {
     const state = this.#findState(record.id)
     const displayName =
       state.kind === 'running' ? state.running.bot.describe().displayName : undefined
-    const pairingIds = this.#registry.pairings
-      .filter((pairing) => pairing.botId === record.id)
-      .map((pairing) => pairing.id)
+    const { pairingCount, keyCount } = countBotRecords(this.#registry, record.id)
     return {
       id: record.id,
       provider: record.provider,
@@ -524,18 +513,19 @@ export class Hub implements AdminApi {
       ...(displayName === undefined ? {} : { displayName }),
       state: state.kind,
       ...(state.kind === 'failed' ? { error: state.reason } : {}),
-      pairingCount: pairingIds.length,
-      keyCount: this.#registry.keys.filter((key) => pairingIds.includes(key.pairingId)).length,
+      pairingCount,
+      keyCount,
     }
   }
 
   /** An entry of `botId`'s log with its bot; a seed bot line without a key is the seed key's. */
   #toAdminEntry(botId: string, entry: AuditEntry): AuditEntry {
-    const seed = this.#registry.seed
-    const isSeedLine = entry.key === undefined && seed?.botId === botId
+    const { seed } = this.#registry
     return {
       ...entry,
-      ...(isSeedLine ? { key: seed.keyId, pairing: seed.pairingId } : {}),
+      ...(seed !== undefined && isSeedLine(this.#registry, botId, entry)
+        ? { key: seed.keyId, pairing: seed.pairingId }
+        : {}),
       bot: botId,
     }
   }
@@ -582,10 +572,8 @@ export class Hub implements AdminApi {
   /** Runs once the supervisor has accepted a started bot. */
   #prepareRunning(botId: string, running: RunningBot): void {
     // Codes created while the bot was starting.
-    for (const pairing of this.#registry.pairings) {
-      if (pairing.botId === botId && isPending(pairing)) {
-        running.codes.add(pairing.id, pairing.code)
-      }
+    for (const [pairingId, code] of listPendingCodes(this.#registry, botId)) {
+      running.codes.add(pairingId, code)
     }
     this.#logSeedCode(botId, running)
     if (this.#isRecovering) {
@@ -610,19 +598,18 @@ export class Hub implements AdminApi {
   }
 
   #createPeople(botId: string): BotPeople {
-    const pairingsOnBot = (): readonly PairingRecord[] =>
-      this.#registry.pairings.filter((pairing) => pairing.botId === botId)
     return {
-      isPaired: (person) => this.#findPairingOf(botId, person) !== undefined,
-      list: () => [...new Set(pairingsOnBot().flatMap((pairing) => pairing.person ?? []))],
-      pendingCodes: () =>
-        new Map(
-          pairingsOnBot()
-            .filter(isPending)
-            .map((pairing) => [pairing.id, pairing.code]),
+      isPaired: (person) => findPairingOf(this.#registry, botId, person) !== undefined,
+      list: () => [
+        ...new Set(
+          this.#registry.pairings.flatMap((pairing) =>
+            pairing.botId === botId && pairing.person !== undefined ? [pairing.person] : [],
+          ),
         ),
+      ],
+      pendingCodes: () => listPendingCodes(this.#registry, botId),
       claim: (pairingId, person) => this.#claim(botId, pairingId, person),
-      quietHours: (person) => toQuiet(this.#findPairingOf(botId, person)),
+      quietHours: (person) => toQuiet(findPairingOf(this.#registry, botId, person)),
       saveQuiet: (person, patch) => this.#saveQuiet(botId, person, patch),
     }
   }
@@ -650,7 +637,7 @@ export class Hub implements AdminApi {
   }
 
   #saveQuiet(botId: string, person: string, patch: QuietPatch): void {
-    const pairing = this.#findPairingOf(botId, person)
+    const pairing = findPairingOf(this.#registry, botId, person)
     if (pairing === undefined) {
       throw new Error(`${person} isn't paired on ${botId}`)
     }
@@ -658,15 +645,11 @@ export class Hub implements AdminApi {
   }
 
   #route(authorization: string | undefined): BotRoute {
-    const found = this.#findKey(authorization)
+    const found = this.#findKeyRoute(authorization)
     if (found.kind !== 'found') {
       return { kind: 'unauthorized', reason: found.kind }
     }
-    const { key } = found
-    const pairing = this.#registry.pairings.find((other) => other.id === key.pairingId)
-    if (pairing === undefined) {
-      return { kind: 'unauthorized', reason: 'wrong' }
-    }
+    const { key, pairing } = found
     const running = this.#findRunning(pairing.botId)
     const route: KeyRoute = {
       kind: 'key',
@@ -679,17 +662,9 @@ export class Hub implements AdminApi {
     return route
   }
 
-  #findKey(
-    authorization: string | undefined,
-  ):
-    | { readonly kind: 'found'; readonly key: KeyRecord }
-    | { readonly kind: 'missing' }
-    | { readonly kind: 'wrong' } {
+  #findKeyRoute(authorization: string | undefined): KeyLookup {
     if (authorization === undefined) {
-      const seed = this.#registry.seed
-      const open =
-        seed?.isOpen === true ? this.#registry.keys.find((key) => key.id === seed.keyId) : undefined
-      return open === undefined ? { kind: 'missing' } : { kind: 'found', key: open }
+      return findKeyRoute(this.#registry, undefined)
     }
     const presented = AUTHORIZATION_PATTERN.exec(authorization)?.[1]
     if (presented === undefined) {
@@ -697,8 +672,7 @@ export class Hub implements AdminApi {
     }
     // Hashes of random keys: comparing them leaks nothing about the keys themselves.
     const hash = hashKey(presented)
-    const key = hash === this.#adminKeyHash ? undefined : findKeyByHash(this.#registry, hash)
-    return key === undefined ? { kind: 'wrong' } : { kind: 'found', key }
+    return hash === this.#adminKeyHash ? { kind: 'wrong' } : findKeyRoute(this.#registry, hash)
   }
 
   /** /status for a key, from the registry as it is now; `routed` stands in once it's gone. */
@@ -735,16 +709,11 @@ export class Hub implements AdminApi {
   #readLog(keyId: string, botId: string, query: LogQuery): AuditReadResult {
     const raw = readAuditFiles(resolveBotFiles(this.#configPath, botId).auditPath)
     const { entries, skippedCount } = parseAuditLog(raw, this.#now())
-    const seed = this.#registry.seed
-    const isSeedKey = seed?.keyId === keyId && seed.botId === botId
-    return {
-      entries: selectAuditEntries(entries, {
-        ...query,
-        key: keyId,
-        ...(isSeedKey ? { unkeyedAs: keyId } : {}),
-      }),
-      skippedCount,
-    }
+    const isSeedKey = this.#registry.seed?.keyId === keyId
+    const own = entries.filter(
+      (entry) => entry.key === keyId || (isSeedKey && isSeedLine(this.#registry, botId, entry)),
+    )
+    return { entries: selectAuditEntries(own, query), skippedCount }
   }
 
   #describeOpenApi(): Omit<OpenApiOptions, 'port'> {
@@ -787,12 +756,6 @@ export class Hub implements AdminApi {
 
   #findBot(botId: string): BotRecord | undefined {
     return this.#registry.bots.find((record) => record.id === botId)
-  }
-
-  #findPairingOf(botId: string, person: string): PairingRecord | undefined {
-    return this.#registry.pairings.find(
-      (pairing) => pairing.botId === botId && pairing.person === person,
-    )
   }
 
   #findPairingOfKey(keyId: string): PairingRecord | undefined {
