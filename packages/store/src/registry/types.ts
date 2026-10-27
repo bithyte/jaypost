@@ -77,13 +77,6 @@ export type SeedLoad =
   /** A required setting is absent; `message` says which and how to set it. */
   | { readonly kind: 'missing'; readonly message: string }
 
-/** Where one bot keeps its state and audit files. */
-export type BotFiles = {
-  readonly directory: string
-  readonly statePath: string
-  readonly auditPath: string
-}
-
 export type BotInput = {
   readonly provider: Provider
   readonly settings: SettingValues

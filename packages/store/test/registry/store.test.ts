@@ -19,8 +19,6 @@ import {
   removeBot,
   resolveAdminKey,
   resolveAdminKeyPath,
-  resolveBotFiles,
-  resolveSeedAuditPath,
   writeAdminKeyFile,
 } from '../../src/registry/index.ts'
 import type { Registry } from '../../src/registry/index.ts'
@@ -35,15 +33,6 @@ const SEED = {
   pairingId: 'p1',
   keyId: 'k1',
   isOpen: false,
-}
-
-const REGISTRY: Registry = {
-  version: 1,
-  lastIds: { bot: 1, pairing: 1, key: 1 },
-  bots: [{ id: 'b1', provider: 'telegram', settings: { botToken: 'tok' }, createdAt: CREATED }],
-  pairings: [{ id: 'p1', botId: 'b1', person: '7', quietHours: '22:00-07:00', createdAt: CREATED }],
-  keys: [{ id: 'k1', pairingId: 'p1', hash: 'f'.repeat(64), createdAt: CREATED }],
-  seed: SEED,
 }
 
 const FULL_REGISTRY: Registry = {
@@ -155,13 +144,8 @@ function listTempFiles(path: string): readonly string[] {
   return readdirSync(path).filter((name) => name.endsWith('.tmp'))
 }
 
-test('admin key and bot files live next to config.json', () => {
+test('the admin key lives next to config.json', () => {
   expect(resolveAdminKeyPath('/data/config.json')).toBe('/data/admin-key')
-  expect(resolveBotFiles('/data/config.json', 'b2')).toEqual({
-    directory: '/data/bots/b2',
-    statePath: '/data/bots/b2/state.json',
-    auditPath: '/data/bots/b2/audit.jsonl',
-  })
 })
 
 test('loads an empty registry from a new db', () => {
@@ -297,19 +281,6 @@ test('refuses rows that break the schema without quoting them', () => {
   const load = (): Registry => new RegistryStore(database).load()
   expect(load).toThrow(`database ${JSON.stringify(databasePath)} has an invalid registry`)
   expect(load).not.toThrow(/SECRET-2/)
-})
-
-test('the seed audit path is the seed bot one, or the legacy one without a db', () => {
-  expect(resolveSeedAuditPath(configPath)).toBe(join(directory, 'audit.jsonl'))
-  expect(readdirSync(directory)).toEqual([])
-  new RegistryStore(openTestDatabase()).save({ ...REGISTRY, seed: { ...SEED, botId: 'b3' } })
-  expect(resolveSeedAuditPath(configPath)).toBe(join(directory, 'bots', 'b3', 'audit.jsonl'))
-})
-
-test('a registry without a seed record gives the legacy audit path', () => {
-  const { seed: _seed, ...withoutSeed } = REGISTRY
-  new RegistryStore(openTestDatabase()).save(withoutSeed)
-  expect(resolveSeedAuditPath(configPath)).toBe(join(directory, 'audit.jsonl'))
 })
 
 test('ensureAdminKey writes a jpa_ key once and returns the same key after', () => {

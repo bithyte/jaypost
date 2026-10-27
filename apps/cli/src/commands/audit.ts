@@ -1,9 +1,9 @@
-import { readAuditFiles, resolveConfigPath, resolveSeedAuditPath } from '@jaypost/store'
+import { readSeedAuditLog, resolveConfigPath } from '@jaypost/store'
 import { writeAll } from './stdout.ts'
 
 /**
- * Hidden helper; runs inside containers so the CLI can read the seed bot's audit log in the data
- * volume. Returns 0, 1 when it can't be read (a corrupt registry is named, never quoted), 2 on bad
+ * Hidden helper; runs inside containers so the CLI can read the seed bot's question log in the
+ * data volume's db. Returns 0, 1 when it can't be read (a corrupt db is named, never quoted), 2 on bad
  * usage.
  */
 export function runAudit(
@@ -16,7 +16,7 @@ export function runAudit(
     return 2
   }
   try {
-    write(readAuditFiles(resolveSeedAuditPath(resolveConfigPath(env))))
+    write(readSeedAuditLog(resolveConfigPath(env)))
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
     return 1

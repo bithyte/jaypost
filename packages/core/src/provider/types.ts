@@ -81,7 +81,7 @@ export type RuntimeHandlers = {
 
 export type ProviderRuntime = {
   readonly checkCredentials: () => Promise<CredentialCheck>
-  /** The returned reference must be JSON-serializable (it's saved to the state file). */
+  /** The returned reference must be JSON-serializable (it's saved in the db). */
   readonly sendRequest: (
     id: string,
     message: FormattedText,
@@ -102,7 +102,7 @@ export type ProviderRuntime = {
     message: FormattedText,
     buttons: MessageButtons | undefined,
   ) => Promise<void>
-  /** The returned reference must be JSON-serializable (it's saved to the state file). */
+  /** The returned reference must be JSON-serializable (it's saved in the db). */
   readonly sendNotification?: (
     id: string,
     message: FormattedText,

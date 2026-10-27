@@ -4,9 +4,8 @@ import {
   formatAuditTable,
   MIN_AUDIT_VERSION,
   parseAuditLog,
-  readAuditFiles,
+  readSeedAuditLog,
   resolveConfigPath,
-  resolveSeedAuditPath,
   selectAuditEntries,
 } from '@jaypost/store'
 import type { AuditEntry, ClientToken } from '@jaypost/store'
@@ -66,7 +65,7 @@ async function readRaw(deps: LogDeps): Promise<string | { readonly message: stri
   try {
     const existing = findExistingInstall(deps.paths, deps.targets, deps.env)
     if (existing === undefined) {
-      return readAuditFiles(resolveSeedAuditPath(resolveConfigPath(deps.env)))
+      return readSeedAuditLog(resolveConfigPath(deps.env))
     }
     const { record } = existing
     if (isTooOld(record.version, deps.version)) {
@@ -80,8 +79,8 @@ async function readRaw(deps: LogDeps): Promise<string | { readonly message: stri
   }
 }
 
-/** The seed bot's log from the install's files (or the ones next to the config), filtered here. */
-async function readFromFiles(filter: LogFilter, deps: LogDeps): Promise<LogRead> {
+/** The seed bot's log from the install's target (or the db next to the config), filtered here. */
+async function readFromDatabase(filter: LogFilter, deps: LogDeps): Promise<LogRead> {
   const raw = await readRaw(deps)
   if (typeof raw !== 'string') {
     return { kind: 'failed', message: raw.message }
@@ -182,7 +181,7 @@ function readClientLog(
 }
 
 /**
- * Prints the question log: from the install's target (or the files next to the config when nothing
+ * Prints the question log: from the install's target (or the db next to the config when nothing
  * is installed), or through the API with `--bot`, `--pairing`, `--key`, `--all` or `JAYPOST_URL`.
  * Returns 0, or 1 when the log can't be read or the install is too old.
  */
@@ -195,7 +194,7 @@ export async function runLog(args: LogArgs, deps: LogDeps): Promise<number> {
   }
   const read = isApiRead(args, deps.env)
     ? await readFromApi(args, filter, deps)
-    : await readFromFiles(filter, deps)
+    : await readFromDatabase(filter, deps)
   if (read.kind === 'failed') {
     deps.printError(read.message)
     return 1

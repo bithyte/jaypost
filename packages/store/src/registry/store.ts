@@ -1,13 +1,9 @@
-import { existsSync } from 'node:fs'
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { isDeepStrictEqual } from 'node:util'
-import { resolveAuditPath } from '../audit/store.ts'
 import { parseToken, readTokenFile, resolveClientSecret, writeTokenFile } from '../auth/token.ts'
 import type { ClientToken } from '../auth/types.ts'
-import { openDatabase, resolveDatabasePath } from '../database/database.ts'
 import { ADMIN_KEY_ENV_VAR, REGISTRY_VERSION } from './constants.ts'
 import { generateAdminKey } from './keys.ts'
-import { resolveBotFiles } from './paths.ts'
 import { registrySchema } from './schema.ts'
 import type { BotRecord, KeyRecord, PairingRecord, Registry, SeedRecord } from './types.ts'
 
@@ -315,27 +311,6 @@ function writeSeed(
     keyId: next.keyId,
     isOpen: next.isOpen ? 1 : 0,
   })
-}
-
-/**
- * The seed bot's audit file, or the pre-upgrade one next to config.json when there's no db yet
- * (or its registry has no seed). Never creates the db. Throws on a corrupt registry.
- */
-export function resolveSeedAuditPath(configPath: string): string {
-  const databasePath = resolveDatabasePath(configPath)
-  if (!existsSync(databasePath)) {
-    return resolveAuditPath(configPath)
-  }
-  const database = openDatabase(databasePath)
-  let seed: SeedRecord | undefined
-  try {
-    seed = new RegistryStore(database).load().seed
-  } finally {
-    database.close()
-  }
-  return seed === undefined
-    ? resolveAuditPath(configPath)
-    : resolveBotFiles(configPath, seed.botId).auditPath
 }
 
 /** Atomically writes `key` plus a newline, readable by the owner only. */

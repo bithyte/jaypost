@@ -1,11 +1,20 @@
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vitest'
 import { parse } from 'yaml'
+import {
+  applySeed,
+  createEmptyRegistry,
+  loadSeed,
+  openDatabase,
+  RegistryStore,
+  resolveDatabasePath,
+} from '@jaypost/store'
+import { createPairingFakeProvider } from '@jaypost/testing'
 import { main } from '../src/cli.ts'
 import { VERSION } from '../src/constants.ts'
 
@@ -331,27 +340,67 @@ function runAuditDump(args: readonly string[], directory: string) {
   })
 }
 
-test('audit dump writes .1 then current from the config directory, whole', () => {
+/** Seeds `directory`'s db with the fakepair seed bot (b1) and one question row per id. */
+function seedQuestions(directory: string, ids: readonly string[]): void {
+  const configPath = join(directory, 'config.json')
+  writeFileSync(configPath, JSON.stringify({ provider: 'fakepair', fakeKey: 'k', fakeOwner: 'u1' }))
+  const providers = [createPairingFakeProvider()]
+  const loaded = loadSeed({ JAYPOST_CONFIG: configPath }, providers)
+  if (loaded.kind !== 'seed') {
+    throw new Error(loaded.message)
+  }
+  const seeded = applySeed(
+    createEmptyRegistry(),
+    loaded.seed,
+    true,
+    () => 'SEED1111',
+    new Date('2026-10-19T08:00:00Z'),
+  )
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    new RegistryStore(database).save(seeded.registry)
+    database.exec('BEGIN')
+    const insert = database.prepare(
+      "INSERT INTO questions (bot_id, id, asked_at, text, options, timeout_option, timeout_seconds) VALUES (?, ?, '2026-10-19T07:00:00.000Z', ?, ?, 'Decline', 300)",
+    )
+    for (const id of ids) {
+      insert.run(
+        id.startsWith('other') ? 'b2' : 'b1',
+        id,
+        `question ${id} ${'x'.repeat(100)}`,
+        '["Approve","Decline"]',
+      )
+    }
+    database.exec('COMMIT')
+  } finally {
+    database.close()
+  }
+}
+
+test("audit dump writes the seed bot's rows as jsonl, whole", () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-audit-'))
   try {
-    const current = `${'x'.repeat(2 * 1024 * 1024)}\n`
-    writeFileSync(join(directory, 'audit.jsonl.1'), 'old\n')
-    writeFileSync(join(directory, 'audit.jsonl'), current)
+    const ids = Array.from({ length: 2500 }, (_, index) => `id${index}`)
+    seedQuestions(directory, [...ids, 'other1'])
     const result = runAuditDump(['dump'], directory)
     expect(result.status).toBe(0)
-    expect(result.stdout.length).toBe(`old\n${current}`.length)
-    expect(result.stdout === `old\n${current}`).toBe(true)
+    const lines = result.stdout.split('\n')
+    expect(lines.at(-1)).toBe('')
+    expect(lines).toHaveLength(2501)
+    expect(result.stdout).not.toContain('other1')
+    expect(result.stdout.length).toBeGreaterThan(65_536 * 3)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
 })
 
-test('audit dump with no files prints nothing and exits 0', () => {
+test('audit dump with no db prints nothing, exits 0 and creates no db', () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-audit-'))
   try {
     const result = runAuditDump(['dump'], directory)
     expect(result.status).toBe(0)
     expect(result.stdout).toBe('')
+    expect(existsSync(resolveDatabasePath(join(directory, 'config.json')))).toBe(false)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -367,22 +416,6 @@ test('audit with an unknown subcommand exits 2', () => {
     rmSync(directory, { recursive: true, force: true })
   }
 })
-
-function bigAuditLog(count: number): string {
-  return Array.from({ length: count }, (_, index) =>
-    JSON.stringify({
-      v: 1,
-      event: 'asked',
-      id: `id${index}`,
-      at: '2026-10-19T07:00:00.000Z',
-      text: `question ${index} ${'x'.repeat(100)}`,
-      options: ['Approve', 'Decline'],
-      timeoutOption: 'Decline',
-      timeoutSeconds: 300,
-      attachment: undefined,
-    }),
-  ).join('\n')
-}
 
 function runLogCli(args: readonly string[], directory: string) {
   return spawnSync(process.execPath, ['apps/cli/src/cli.ts', 'log', ...args], {
@@ -400,7 +433,10 @@ function runLogCli(args: readonly string[], directory: string) {
 test('log writes output larger than a pipe buffer whole, as json and as a table', () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-log-'))
   try {
-    writeFileSync(join(directory, 'audit.jsonl'), `${bigAuditLog(2500)}\n`)
+    seedQuestions(
+      directory,
+      Array.from({ length: 2500 }, (_, index) => `id${index}`),
+    )
     const json = runLogCli(['--since', '2000-01-01', '--json'], directory)
     expect(json.status).toBe(0)
     expect(json.stdout.length).toBeGreaterThan(65_536 * 3)
@@ -516,4 +552,16 @@ test('valid vote and retry flags pass validation and reach the direct send', asy
   const flags = ['-u', '1', '-u', '2', '--require', 'majority', '--retry', '3']
   expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
   expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
+})
+
+test('log prints the empty message and creates no db when the service never ran', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-log-'))
+  try {
+    const result = runLogCli([], directory)
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('No questions logged.\n')
+    expect(existsSync(resolveDatabasePath(join(directory, 'config.json')))).toBe(false)
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })

@@ -93,9 +93,8 @@ export type Target = {
   readonly forgetSeedOwner: (record: InstallRecord) => Promise<void>
   readonly isRunning: (record: InstallRecord) => Promise<boolean>
   /**
-   * Raw contents of the seed bot's audit.jsonl.1 then audit.jsonl (the ones next to the config
-   * before an upgrade made the registry); '' when neither exists. Throws when it can't read them or
-   * the registry is corrupt.
+   * The seed bot's questions as jsonl, read from the db next to the config; '' when there's no db
+   * yet (it isn't created). Throws when the db is corrupt.
    */
   readonly readAuditLog: (record: InstallRecord) => Promise<string>
   /**

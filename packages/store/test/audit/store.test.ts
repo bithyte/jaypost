@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -10,10 +10,7 @@ import {
   parseAuditLog,
   pruneAuditLog,
   readAuditEntries,
-  readAuditFiles,
   readSeedAuditLog,
-  removeAuditFiles,
-  resolveAuditPath,
 } from '../../src/audit/index.ts'
 import { openDatabase, resolveDatabasePath } from '../../src/database/index.ts'
 
@@ -32,22 +29,16 @@ const REQUEST = {
 const CALLER = { key: 'k1', pairing: 'p1' }
 
 let directory: string
-let path: string
 const log = vi.fn()
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'tab-audit-'))
-  path = join(directory, 'audit.jsonl')
   log.mockReset()
 })
 
 function createDatabase(): DatabaseSync {
   return openDatabase(join(directory, 'jaypost.db'))
 }
-
-test('resolveAuditPath puts audit.jsonl next to the config', () => {
-  expect(resolveAuditPath('/etc/tab/config.json')).toBe('/etc/tab/audit.jsonl')
-})
 
 test('logs a settled question with its answer', () => {
   const database = createDatabase()
@@ -235,41 +226,4 @@ test('an invalid date does not throw and reports through log', () => {
   const audit = new AuditLog(createDatabase(), 'b1', { log })
   expect(() => audit.asked('a', REQUEST, new Date(Number.NaN))).not.toThrow()
   expect(log).toHaveBeenCalledTimes(1)
-})
-
-test('readAuditFiles returns .1 then current, empty string when neither exists', () => {
-  expect(readAuditFiles(path)).toBe('')
-  writeFileSync(path, 'new\n')
-  expect(readAuditFiles(path)).toBe('new\n')
-  writeFileSync(`${path}.1`, 'old\n')
-  expect(readAuditFiles(path)).toBe('old\nnew\n')
-})
-
-test('readAuditFiles adds a newline after a .1 that lacks one', () => {
-  writeFileSync(`${path}.1`, 'old')
-  writeFileSync(path, 'new\n')
-  expect(readAuditFiles(path)).toBe('old\nnew\n')
-})
-
-test('readAuditFiles throws a readable error for an unreadable file', () => {
-  if (process.getuid?.() === 0) {
-    return
-  }
-  mkdirSync(directory, { recursive: true })
-  writeFileSync(path, 'x\n')
-  chmodSync(path, 0o000)
-  expect(() => readAuditFiles(path)).toThrow(
-    new RegExp(
-      `^couldn't read the log ${JSON.stringify(path).replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')}: `,
-    ),
-  )
-})
-
-test('removeAuditFiles deletes both files and is fine when they are missing', () => {
-  expect(() => removeAuditFiles(path)).not.toThrow()
-  writeFileSync(path, 'a\n')
-  writeFileSync(`${path}.1`, 'b\n')
-  removeAuditFiles(path)
-  expect(existsSync(path)).toBe(false)
-  expect(existsSync(`${path}.1`)).toBe(false)
 })

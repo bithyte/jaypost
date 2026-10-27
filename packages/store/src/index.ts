@@ -1,5 +1,4 @@
 export {
-  AUDIT_FILE_NAME,
   AUDIT_RETENTION_MS,
   AuditLog,
   DEFAULT_LOG_LIMIT,
@@ -11,10 +10,7 @@ export {
   parseSince,
   pruneAuditLog,
   readAuditEntries,
-  readAuditFiles,
   readSeedAuditLog,
-  removeAuditFiles,
-  resolveAuditPath,
   selectAuditEntries,
 } from './audit/index.ts'
 export type { AuditEntry, AuditFilter, AuditReadResult, BotAuditEntry } from './audit/index.ts'
@@ -66,7 +62,6 @@ export {
   ADMIN_KEY_PREFIX,
   API_KEY_PREFIX,
   applySeed,
-  BOTS_DIRECTORY_NAME,
   claimCode,
   claimPairing,
   countBotRecords,
@@ -90,16 +85,12 @@ export {
   resetPairing,
   resolveAdminKey,
   resolveAdminKeyPath,
-  resolveBotFiles,
-  resolveRegistryPath,
-  resolveSeedAuditPath,
   revokeKey,
   updateKey,
   updatePairingQuiet,
   writeAdminKeyFile,
 } from './registry/index.ts'
 export type {
-  BotFiles,
   BotRecord,
   BotRecordCounts,
   ClaimCodeResult,
@@ -116,7 +107,7 @@ export type {
   SeedLoad,
   SeedRecord,
 } from './registry/index.ts'
-export { resolveStatePath, STATE_FILE_NAME, StateStore } from './state/index.ts'
+export { StateStore } from './state/index.ts'
 export {
   ensureLinger,
   isMissingFileError,

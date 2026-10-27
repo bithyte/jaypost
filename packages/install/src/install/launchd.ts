@@ -3,8 +3,7 @@ import { dirname, join } from 'node:path'
 import {
   isMissingFileError,
   MissingCommandError,
-  readAuditFiles,
-  resolveSeedAuditPath,
+  readSeedAuditLog,
   updateConfigFile,
 } from '@jaypost/store'
 import {
@@ -204,7 +203,7 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       })
     },
     async readAuditLog(record) {
-      return readAuditFiles(resolveSeedAuditPath(resolveConfigFile(record)))
+      return readSeedAuditLog(resolveConfigFile(record))
     },
     async readAdminKey(record) {
       return readAdminKeyFile(resolveConfigFile(record))

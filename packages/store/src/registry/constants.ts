@@ -2,12 +2,6 @@ import type { ClaimCodeResult, ClaimPairingResult } from './types.ts'
 
 export const REGISTRY_VERSION = 1
 
-/** Registry file name inside the config directory. */
-export const REGISTRY_FILE_NAME = 'registry.json'
-
-/** Directory inside the config directory holding one `<botId>/` directory per bot. */
-export const BOTS_DIRECTORY_NAME = 'bots'
-
 /** Admin key file name inside the config directory. */
 export const ADMIN_KEY_FILE_NAME = 'admin-key'
 

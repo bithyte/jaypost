@@ -1,5 +1,3 @@
-export const STATE_FILE_NAME = 'state.json'
-
 export const SELECT_SQL = {
   requests: 'SELECT id, provider, record FROM requests WHERE bot_id = ? ORDER BY rowid',
   notifications: 'SELECT id, provider, record FROM notifications WHERE bot_id = ? ORDER BY rowid',

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vite-plus/test'
 import { openDatabase } from '../../src/database/index.ts'
-import { resolveStatePath, StateStore } from '../../src/state/index.ts'
+import { StateStore } from '../../src/state/index.ts'
 
 const REQUEST = { id: 'r1', reference: { chatId: 1, messageId: 2 }, text: 'Deploy?' }
 const REQUEST_TWO = { id: 'r2', reference: { chatId: 1, messageId: 4 }, text: 'Ship?' }
@@ -26,10 +26,6 @@ function createStore(
 ): StateStore {
   return new StateStore(database, botId, provider, log)
 }
-
-test('resolves state.json next to the config', () => {
-  expect(resolveStatePath('/data/config.json')).toBe('/data/state.json')
-})
 
 test('loads nothing for a bot with no rows', () => {
   const log = vi.fn()

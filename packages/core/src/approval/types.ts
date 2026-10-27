@@ -119,7 +119,7 @@ export type ParseResult =
 
 /**
  * Opaque handle to a sent message; the core only hands it back to the messenger. Must be
- * JSON-serializable, since references are saved to the state file.
+ * JSON-serializable, since references are saved in the db.
  */
 export type MessageReference = unknown
 
@@ -131,7 +131,7 @@ export type MessageButtons = {
 
 /** Chat transport the service uses, so the approval logic stays independent of any provider. */
 export type Messenger = {
-  /** The returned reference must be JSON-serializable (it's saved to the state file). */
+  /** The returned reference must be JSON-serializable (it's saved in the db). */
   readonly sendRequest: (
     id: string,
     message: FormattedText,

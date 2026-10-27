@@ -10,7 +10,14 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, expect, test, vi } from 'vite-plus/test'
-import { MissingCommandError, NO_AUTH } from '@jaypost/store'
+import {
+  createEmptyRegistry,
+  MissingCommandError,
+  NO_AUTH,
+  openDatabase,
+  RegistryStore,
+  resolveDatabasePath,
+} from '@jaypost/store'
 import {
   createLaunchdTarget,
   findPlistExecWords,
@@ -321,8 +328,8 @@ test('restart throws on a non-zero exit', async () => {
 test('remove boots out and deletes the plist; purge deletes config, state and the binary copy, keeps logs', async () => {
   const { t, paths } = makeBinary()
   const rec = await t.install(base)
-  const stateFile = join(dirname(paths.configFile), 'state.json')
-  writeFileSync(stateFile, '{}')
+  const stateFile = resolveDatabasePath(paths.configFile)
+  writeFileSync(stateFile, 'db')
   writeFileSync(paths.launchdLogFile, 'log\n')
   calls = []
   await t.remove(rec, false)
@@ -341,22 +348,25 @@ test('remove boots out and deletes the plist; purge deletes config, state and th
   expect(existsSync(paths.launchdLogFile)).toBe(true)
 })
 
-test('purge also removes the registry, admin key and bot directories', async () => {
+test('purge also removes the db with its wal and shm, and the admin key', async () => {
   const { t, paths } = makeBinary()
   const rec = await t.install(base)
   const directory = dirname(paths.configFile)
-  writeFileSync(join(directory, 'registry.json'), '{}')
+  const databasePath = resolveDatabasePath(paths.configFile)
+  writeFileSync(databasePath, 'db')
+  writeFileSync(`${databasePath}-wal`, 'wal')
+  writeFileSync(`${databasePath}-shm`, 'shm')
   writeFileSync(join(directory, 'admin-key'), 'key\n')
-  mkdirSync(join(directory, 'bots', 'b1'), { recursive: true })
-  writeFileSync(join(directory, 'bots', 'b1', 'state.json'), '{}')
   bootoutCode = 3
   bootoutStderr = 'Boot-out failed: 3: No such process\n'
   const log = vi.spyOn(console, 'log').mockImplementation(() => {})
   await t.remove(rec, true)
   log.mockRestore()
   expect(
-    ['registry.json', 'admin-key', 'bots'].map((name) => existsSync(join(directory, name))),
-  ).toEqual([false, false, false])
+    [databasePath, `${databasePath}-wal`, `${databasePath}-shm`, join(directory, 'admin-key')].map(
+      (file) => existsSync(file),
+    ),
+  ).toEqual([false, false, false, false])
 })
 
 test('remove keeps the plist when bootout fails', async () => {
@@ -372,7 +382,21 @@ test('remove keeps the plist when bootout fails', async () => {
 test('readSecrets, clearOwner and readAuditLog use the recorded configFile', async () => {
   const recorded = join(tmp, 'recorded.json')
   writeFileSync(recorded, JSON.stringify({ botToken: 'rt', ownerId: 5 }))
-  writeFileSync(join(tmp, 'audit.jsonl'), 'new\n')
+  const database = openDatabase(resolveDatabasePath(recorded))
+  try {
+    new RegistryStore(database).save({
+      ...createEmptyRegistry(),
+      lastIds: { bot: 1, pairing: 1, key: 1 },
+      seed: { fingerprint: 'f', botId: 'b1', pairingId: 'p1', keyId: 'k1', isOpen: false },
+    })
+    database
+      .prepare(
+        "INSERT INTO questions (bot_id, id, asked_at, text, options, timeout_option, timeout_seconds) VALUES ('b1', 'mine', '2026-10-19T06:00:00.000Z', 'q', '[]', 'No', 1)",
+      )
+      .run()
+  } finally {
+    database.close()
+  }
   const { t } = make({ JAYPOST_CONFIG: join(tmp, 'other.json') })
   const rec = {
     target: 'launchd' as const,
@@ -388,7 +412,7 @@ test('readSecrets, clearOwner and readAuditLog use the recorded configFile', asy
   expect(JSON.parse(readFileSync(recorded, 'utf8'))).toEqual({
     botToken: 'rt',
   })
-  expect(await t.readAuditLog(rec)).toBe('new\n')
+  expect(JSON.parse(await t.readAuditLog(rec))).toMatchObject({ id: 'mine' })
 })
 
 test('available on darwin with a desktop session', async () => {

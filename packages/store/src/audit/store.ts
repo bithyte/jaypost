@@ -1,11 +1,9 @@
-import { existsSync, readFileSync, rmSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
 import type { DatabaseSync, SQLOutputValue } from 'node:sqlite'
 import type { AuditSink, MessageEnding, RequestCaller, SentRequest } from '@jaypost/core'
 import { openDatabase, resolveDatabasePath } from '../database/index.ts'
 import { RegistryStore } from '../registry/store.ts'
-import { isMissingFileError } from '../system/index.ts'
-import { AUDIT_FILE_NAME, AUDIT_FORMAT_VERSION, ROTATED_SUFFIX } from './constants.ts'
+import { AUDIT_FORMAT_VERSION } from './constants.ts'
 import type {
   AskedRecord,
   AuditEntry,
@@ -33,11 +31,6 @@ const SELECT_ALL_SQL = 'SELECT * FROM questions ORDER BY asked_at, rowid'
 const SELECT_BOT_SQL = 'SELECT * FROM questions WHERE bot_id = ? ORDER BY asked_at, rowid'
 
 const PRUNE_SQL = 'DELETE FROM questions WHERE asked_at < ?'
-
-/** audit.jsonl lives next to the config file. */
-export function resolveAuditPath(configPath: string): string {
-  return join(dirname(configPath), AUDIT_FILE_NAME)
-}
 
 /**
  * Keeps one bot's questions in the db: a row when asked, filled in when settled (the first
@@ -236,34 +229,5 @@ function callerFields(row: Row): { readonly key?: string; readonly pairing?: str
   return {
     ...(row.key_id === null ? {} : { key: String(row.key_id) }),
     ...(row.pairing_id === null ? {} : { pairing: String(row.pairing_id) }),
-  }
-}
-
-/**
- * The rotated log followed by the current one, `''` when neither exists. A rotated file that
- * lacks a final newline gets one so its last line doesn't merge with the next file's first.
- */
-export function readAuditFiles(path: string): string {
-  const rotated = readIfPresent(`${path}${ROTATED_SUFFIX}`)
-  const current = readIfPresent(path)
-  const separator = rotated === '' || rotated.endsWith('\n') ? '' : '\n'
-  return `${rotated}${separator}${current}`
-}
-
-/** Deletes the current and rotated logs; missing files are fine. */
-export function removeAuditFiles(path: string): void {
-  rmSync(path, { force: true })
-  rmSync(`${path}${ROTATED_SUFFIX}`, { force: true })
-}
-
-function readIfPresent(file: string): string {
-  try {
-    return readFileSync(file, 'utf8')
-  } catch (error) {
-    if (isMissingFileError(error)) {
-      return ''
-    }
-    const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`couldn't read the log ${JSON.stringify(file)}: ${message}`, { cause: error })
   }
 }
