@@ -1,18 +1,23 @@
 export {
   AUDIT_FILE_NAME,
+  AUDIT_RETENTION_MS,
   AuditLog,
   DEFAULT_LOG_LIMIT,
   formatAuditJsonLines,
+  formatAuditLines,
   formatAuditTable,
   MIN_AUDIT_VERSION,
   parseAuditLog,
   parseSince,
+  pruneAuditLog,
+  readAuditEntries,
   readAuditFiles,
+  readSeedAuditLog,
   removeAuditFiles,
   resolveAuditPath,
   selectAuditEntries,
 } from './audit/index.ts'
-export type { AuditEntry, AuditFilter, AuditReadResult } from './audit/index.ts'
+export type { AuditEntry, AuditFilter, AuditReadResult, BotAuditEntry } from './audit/index.ts'
 export {
   AUTHORIZATION_PATTERN,
   generateToken,

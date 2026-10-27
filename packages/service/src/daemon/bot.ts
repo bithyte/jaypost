@@ -1,4 +1,3 @@
-import { join } from 'node:path'
 import {
   ApprovalService,
   GuessLimit,
@@ -12,7 +11,7 @@ import {
   resolveVoters,
   runOwnerCommand,
 } from '@jaypost/core'
-import { AUDIT_FILE_NAME, AuditLog, LOCAL_PERSON, StateStore } from '@jaypost/store'
+import { AuditLog, LOCAL_PERSON, StateStore } from '@jaypost/store'
 import type { PairResult, RuntimeHandlers } from '@jaypost/core'
 import type { BotOptions, RunningBot } from './types.ts'
 
@@ -49,7 +48,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
   }
   const store = new StateStore(options.database, record.id, provider.name, log)
   const saved = store.load()
-  const audit = new AuditLog(join(options.directory, AUDIT_FILE_NAME), { log })
+  const audit = new AuditLog(options.database, record.id, { log })
   const service = new ApprovalService(runtime, undefined, undefined, { store, audit })
   const quietByPerson = new Map<string, QuietService>()
   const quietFor = (person: string): QuietService => {

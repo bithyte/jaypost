@@ -23,8 +23,8 @@ import {
   isPending,
   isSeedLine,
   listKeys,
+  formatAuditLines,
   parseAuditLog,
-  readAuditFiles,
   removeBot,
   removePairing,
   resetPairing,
@@ -457,7 +457,7 @@ export class Hub implements AdminApi {
     const entries: AuditEntry[] = []
     let skippedCount = 0
     for (const { id } of record === undefined ? this.#registry.bots : [record]) {
-      const raw = readAuditFiles(resolveBotFiles(this.#configPath, id).auditPath)
+      const raw = formatAuditLines(this.#database, id)
       const read = parseAuditLog(raw, now)
       skippedCount += read.skippedCount
       entries.push(...read.entries.map((entry) => this.#toAdminEntry(id, entry)))
@@ -703,7 +703,7 @@ export class Hub implements AdminApi {
 
   /** The key's questions in its bot's log; lines from before keys existed are the seed key's. */
   #readLog(keyId: string, botId: string, query: LogQuery): AuditReadResult {
-    const raw = readAuditFiles(resolveBotFiles(this.#configPath, botId).auditPath)
+    const raw = formatAuditLines(this.#database, botId)
     const { entries, skippedCount } = parseAuditLog(raw, this.#now())
     const isSeedKey = this.#registry.seed?.keyId === keyId
     const own = entries.filter(

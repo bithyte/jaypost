@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { OWNER_COMMANDS, QUIET_COMMANDS } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
@@ -9,6 +9,7 @@ import {
   addBot,
   createEmptyRegistry,
   createKey,
+  formatAuditLines,
   hashKey,
   loadSeed,
   openDatabase,
@@ -140,15 +141,18 @@ function createSilentProvider() {
   return { provider, silent }
 }
 
-function botFile(configPath: string, botId: string, name: string): string {
-  return join(dirname(configPath), 'bots', botId, name)
-}
-
-/** Writes `name` into bot 1's directory, as a previous run left it. */
-function writeBotFile(configPath: string, name: string, contents: string): void {
-  const path = botFile(configPath, 'b1', name)
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, contents)
+/** A question in bot 1's log with no key, as one asked before keys existed. */
+function writeSavedQuestion(configPath: string): void {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    database
+      .prepare(
+        "INSERT INTO questions (bot_id, id, asked_at, text, options, timeout_option, timeout_seconds) VALUES ('b1', 'old', '2026-10-01T10:00:00.000Z', 'Old?', '[\"Yes\"]', 'Yes', 60)",
+      )
+      .run()
+  } finally {
+    database.close()
+  }
 }
 
 /** Rows in bot 1's request and notification tables, as a previous run left them. */
@@ -227,11 +231,17 @@ function readState(configPath: string): { requests: unknown[] } {
 const readRegistry = (configPath: string): Registry =>
   withRegistryStore(configPath, (store) => store.load())
 
-const readAudit = (configPath: string) =>
-  readFileSync(botFile(configPath, 'b1', 'audit.jsonl'), 'utf8')
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line))
+const readAudit = (configPath: string, botId = 'b1') => {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    return formatAuditLines(database, botId)
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+  } finally {
+    database.close()
+  }
+}
 
 const call = (
   url: string,
@@ -416,17 +426,7 @@ test('an unpaired key gets 503 and its code from /status', async () => {
 test('GET /log only returns the caller key lines', async () => {
   const provider = createFakeProvider()
   const configPath = createConfigPath(provider)
-  const legacyLine = {
-    v: 1,
-    event: 'asked',
-    id: 'old',
-    at: '2026-10-01T10:00:00.000Z',
-    text: 'Old?',
-    options: ['Yes'],
-    timeoutOption: 'Yes',
-    timeoutSeconds: 60,
-  }
-  writeBotFile(configPath, 'audit.jsonl', `${JSON.stringify(legacyLine)}\n`)
+  writeSavedQuestion(configPath)
   const { url, runtime } = await start(provider, { configPath })
   const other = createKeyFor('k1')
   for (const token of [undefined, other.key]) {
@@ -532,7 +532,7 @@ test('a bot with rejected credentials shows failed in /status and the others kee
   expect(await getStatus(url, TOKEN)).toMatchObject({ key: 'k2', pairing: 'p2', state: 'running' })
   expect((await post(url, '/request/async', REQUEST, TOKEN)).status).toBe(202)
   expect(runtime.sent).toHaveLength(1)
-  expect(existsSync(join(dirname(configPath), 'bots', 'b2'))).toBe(true)
+  expect(readAudit(configPath, 'b2')).toHaveLength(1)
 })
 
 test('a fatal provider error restarts that bot after a delay', async () => {

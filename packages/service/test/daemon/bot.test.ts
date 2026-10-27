@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -11,7 +11,7 @@ import type {
   QuietHours,
   QuietPatch,
 } from '@jaypost/core'
-import { LOCAL_PERSON, openDatabase } from '@jaypost/store'
+import { formatAuditLines, LOCAL_PERSON, openDatabase } from '@jaypost/store'
 import type { BotRecord } from '@jaypost/store'
 import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import type { FakeRuntime } from '@jaypost/testing'
@@ -426,7 +426,7 @@ test('state and audit go to the bot directory and log lines name the bot', async
   await vi.waitFor(() => expect(countRequests(database)).toBe(1))
   runtime.handlers?.answer(runtime.sent[0]?.id ?? '', 0)
   await asked
-  const events = readFileSync(join(directory, 'audit.jsonl'), 'utf8')
+  const events = formatAuditLines(database, 'b2')
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line).event)

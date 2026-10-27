@@ -1,23 +1,24 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { DatabaseSync } from 'node:sqlite'
 import { beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
+  AUDIT_RETENTION_MS,
   AuditLog,
+  formatAuditLines,
+  parseAuditLog,
+  pruneAuditLog,
+  readAuditEntries,
   readAuditFiles,
+  readSeedAuditLog,
   removeAuditFiles,
   resolveAuditPath,
 } from '../../src/audit/index.ts'
+import { openDatabase, resolveDatabasePath } from '../../src/database/index.ts'
 
 const AT = new Date('2026-10-18T21:41:07.312Z')
+const NOW = new Date('2026-10-18T22:00:00.000Z')
 const REQUEST = {
   message: { text: '[deploy]\n\nForce-push main?', spans: [] },
   question: 'Force-push main?',
@@ -28,6 +29,7 @@ const REQUEST = {
   timeoutSeconds: 300,
   attachment: undefined,
 }
+const CALLER = { key: 'k1', pairing: 'p1' }
 
 let directory: string
 let path: string
@@ -39,124 +41,198 @@ beforeEach(() => {
   log.mockReset()
 })
 
-const lines = (file: string) => readFileSync(file, 'utf8').split('\n').filter(Boolean)
+function createDatabase(): DatabaseSync {
+  return openDatabase(join(directory, 'jaypost.db'))
+}
 
 test('resolveAuditPath puts audit.jsonl next to the config', () => {
   expect(resolveAuditPath('/etc/tab/config.json')).toBe('/etc/tab/audit.jsonl')
 })
 
-test('writes the asked and settled lines exactly', () => {
-  const audit = new AuditLog(path, { log })
-  audit.asked('5f0c', REQUEST, AT)
-  audit.settled(
-    '5f0c',
-    { kind: 'answered', answer: 'Approve' },
-    new Date('2026-10-18T21:41:52.004Z'),
-    undefined,
-  )
-  expect(readFileSync(path, 'utf8')).toBe(
-    '{"v":1,"event":"asked","id":"5f0c","at":"2026-10-18T21:41:07.312Z","project":"deploy","text":"Force-push main?","options":["Approve","Decline"],"timeoutOption":"Decline","timeoutSeconds":300}\n' +
-      '{"v":1,"event":"settled","id":"5f0c","at":"2026-10-18T21:41:52.004Z","outcome":"answered","answer":"Approve"}\n',
-  )
-})
-
-test('asked and settled lines carry key and pairing when the request has a caller', () => {
-  const audit = new AuditLog(path, { log })
-  const caller = { key: 'k1', pairing: 'p1' }
-  audit.asked('5f0c', { ...REQUEST, caller }, AT)
-  audit.settled('5f0c', { kind: 'answered', answer: 'Approve' }, AT, caller)
-  audit.asked('6a1d', REQUEST, AT)
-  audit.settled('6a1d', { kind: 'cancelled' }, AT, undefined)
-  const [keyedAsked, keyedSettled, plainAsked, plainSettled] = lines(path).map(
-    (line) => JSON.parse(line) as Record<string, unknown>,
-  )
-  expect(keyedAsked).toMatchObject({ event: 'asked', id: '5f0c', key: 'k1', pairing: 'p1' })
-  expect(keyedSettled).toMatchObject({ event: 'settled', id: '5f0c', key: 'k1', pairing: 'p1' })
-  for (const record of [plainAsked, plainSettled]) {
-    expect(record).toMatchObject({ id: '6a1d' })
-    expect(Object.hasOwn(record ?? {}, 'key')).toBe(false)
-    expect(Object.hasOwn(record ?? {}, 'pairing')).toBe(false)
-    expect(Object.hasOwn(record ?? {}, 'caller')).toBe(false)
-  }
-})
-
-test('omits project for a request without one and answer for cancelled', () => {
-  const audit = new AuditLog(path, { log })
-  const { project: _project, ...bare } = REQUEST
-  audit.asked('a', bare, AT)
-  audit.settled('a', { kind: 'cancelled' }, AT, undefined)
-  const [asked, settled] = lines(path).map((line) => JSON.parse(line))
-  expect(asked).not.toHaveProperty('project')
-  expect(settled).toEqual({
-    v: 1,
-    event: 'settled',
-    id: 'a',
-    at: AT.toISOString(),
-    outcome: 'cancelled',
+test('logs a settled question with its answer', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  const settledAt = new Date('2026-10-18T21:41:52.004Z')
+  audit.asked('5f0c', { ...REQUEST, caller: CALLER }, AT)
+  audit.settled('5f0c', { kind: 'answered', answer: 'Approve' }, settledAt, CALLER)
+  expect(readAuditEntries(database, NOW)).toEqual({
+    entries: [
+      {
+        botId: 'b1',
+        entry: {
+          id: '5f0c',
+          askedAt: AT.toISOString(),
+          project: 'deploy',
+          text: 'Force-push main?',
+          options: ['Approve', 'Decline'],
+          timeoutOption: 'Decline',
+          timeoutSeconds: 300,
+          status: 'answered',
+          answer: 'Approve',
+          settledAt: settledAt.toISOString(),
+          key: 'k1',
+          pairing: 'p1',
+        },
+      },
+    ],
+    skippedCount: 0,
   })
-})
-
-test('creates the directory and the file with mode 0600', () => {
-  const nested = join(directory, 'missing', 'audit.jsonl')
-  new AuditLog(nested, { log }).asked('a', REQUEST, AT)
-  expect(statSync(nested).mode & 0o777).toBe(0o600)
   expect(log).not.toHaveBeenCalled()
 })
 
-test('rotates to .1 when the next line would pass maxBytes, replacing an older .1', () => {
-  writeFileSync(`${path}.1`, 'stale\n')
-  const audit = new AuditLog(path, { log, maxBytes: 300 })
-  for (const id of ['a', 'b', 'c', 'd']) {
-    audit.settled(id, { kind: 'cancelled' }, AT, undefined)
-  }
-  const rotated = readFileSync(`${path}.1`, 'utf8')
-  expect(rotated).not.toContain('stale')
-  expect(rotated).toContain('"id":"a"')
-  const current = lines(path).map((line) => JSON.parse(line).id)
-  expect(current).toContain('d')
-  expect(current).not.toContain('a')
-  expect([...lines(`${path}.1`), ...lines(path)]).toHaveLength(4)
+test('marks an unsettled question pending, then interrupted after its timeout', () => {
+  const database = createDatabase()
+  new AuditLog(database, 'b1', { log }).asked('a', REQUEST, AT)
+  const statusAt = (now: Date) =>
+    readAuditEntries(database, now).entries.map(({ entry }) => entry.status)
+  expect(statusAt(new Date(AT.getTime() + 60_000))).toEqual(['pending'])
+  expect(statusAt(new Date(AT.getTime() + 301_000))).toEqual(['interrupted'])
 })
 
-test('takes the starting size from the existing file', () => {
-  writeFileSync(path, 'x'.repeat(249) + '\n')
-  new AuditLog(path, { log, maxBytes: 300 }).settled('a', { kind: 'cancelled' }, AT, undefined)
-  expect(readFileSync(`${path}.1`, 'utf8')).toBe('x'.repeat(249) + '\n')
-  expect(lines(path)).toHaveLength(1)
-})
-
-test('a line larger than maxBytes on an empty file is written without rotating', () => {
-  new AuditLog(path, { log, maxBytes: 10 }).asked('a', REQUEST, AT)
-  expect(existsSync(`${path}.1`)).toBe(false)
-  expect(lines(path)).toHaveLength(1)
-})
-
-test('a file deleted by hand is recreated and its line kept, even when a rotation is due', () => {
-  const audit = new AuditLog(path, { log, maxBytes: 250 })
+test('keeps the first settlement', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
   audit.asked('a', REQUEST, AT)
-  removeAuditFiles(path)
-  audit.settled('b', { kind: 'cancelled' }, AT, undefined)
-  audit.settled('c', { kind: 'cancelled' }, AT, undefined)
-  audit.settled('d', { kind: 'cancelled' }, AT, undefined)
-  expect(log).not.toHaveBeenCalled()
-  const ids = [...(existsSync(`${path}.1`) ? lines(`${path}.1`) : []), ...lines(path)].map(
-    (line) => JSON.parse(line).id,
-  )
-  expect(ids).toEqual(['b', 'c', 'd'])
+  audit.settled('a', { kind: 'answered', answer: 'Approve' }, AT, undefined)
+  audit.settled('a', { kind: 'cancelled' }, new Date(AT.getTime() + 1000), undefined)
+  const [only] = readAuditEntries(database, NOW).entries
+  expect(only?.entry).toMatchObject({ status: 'answered', answer: 'Approve' })
 })
 
-test('an unwritable path does not throw and reports through log', () => {
-  const file = join(directory, 'file')
-  writeFileSync(file, '')
-  const audit = new AuditLog(join(file, 'audit.jsonl'), { log })
-  expect(() => audit.asked('a', REQUEST, AT)).not.toThrow()
-  expect(log).toHaveBeenCalledWith(
-    expect.stringMatching(/^failed to write audit log .*audit\.jsonl: /),
+test('keeps the first asked row for an id', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  audit.asked('a', REQUEST, AT)
+  audit.asked('a', { ...REQUEST, question: 'Other?' }, AT)
+  expect(readAuditEntries(database, NOW).entries.map(({ entry }) => entry.text)).toEqual([
+    'Force-push main?',
+  ])
+})
+
+test('ignores a settlement with no asked question', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  expect(() => audit.settled('ghost', { kind: 'cancelled' }, AT, undefined)).not.toThrow()
+  expect(readAuditEntries(database, NOW)).toEqual({ entries: [], skippedCount: 0 })
+  expect(log).not.toHaveBeenCalled()
+})
+
+test('reads one bot or every bot, oldest first', () => {
+  const database = createDatabase()
+  const first = new AuditLog(database, 'b1', { log })
+  const second = new AuditLog(database, 'b2', { log })
+  first.asked('late', REQUEST, new Date('2026-10-18T21:50:00.000Z'))
+  second.asked('early', REQUEST, new Date('2026-10-18T21:40:00.000Z'))
+  second.asked('tie', REQUEST, new Date('2026-10-18T21:50:00.000Z'))
+  expect(
+    readAuditEntries(database, NOW).entries.map(({ botId, entry }) => [botId, entry.id]),
+  ).toEqual([
+    ['b2', 'early'],
+    ['b1', 'late'],
+    ['b2', 'tie'],
+  ])
+  expect(readAuditEntries(database, NOW, 'b2').entries.map(({ entry }) => entry.id)).toEqual([
+    'early',
+    'tie',
+  ])
+  expect(readAuditEntries(database, NOW, 'gone')).toEqual({ entries: [], skippedCount: 0 })
+})
+
+test('counts a row whose options are not a string array as skipped', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  audit.asked('good', REQUEST, AT)
+  audit.asked('bad', REQUEST, AT)
+  database.prepare("UPDATE questions SET options = '{\"a\":1}' WHERE id = 'bad'").run()
+  const result = readAuditEntries(database, NOW)
+  expect(result.entries.map(({ entry }) => entry.id)).toEqual(['good'])
+  expect(result.skippedCount).toBe(1)
+})
+
+test('round-trips through the jsonl format', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  const { project: _project, ...bare } = REQUEST
+  audit.asked('a', { ...REQUEST, caller: CALLER }, AT)
+  audit.settled('a', { kind: 'answered', answer: 'Approve' }, new Date(AT.getTime() + 5000), CALLER)
+  audit.asked('b', REQUEST, new Date(AT.getTime() + 1000))
+  audit.asked('c', bare, new Date(AT.getTime() + 2000))
+  audit.settled('c', { kind: 'cancelled' }, new Date(AT.getTime() + 3000), undefined)
+  new AuditLog(database, 'b2', { log }).asked('other', REQUEST, AT)
+  const lines = formatAuditLines(database, 'b1')
+  expect(lines.endsWith('\n')).toBe(true)
+  expect(parseAuditLog(lines, NOW).entries).toEqual(
+    readAuditEntries(database, NOW, 'b1').entries.map(({ entry }) => entry),
   )
+  expect(parseAuditLog(lines, NOW).entries).toHaveLength(3)
+  expect(formatAuditLines(database, 'nobody')).toBe('')
+})
+
+test('prunes questions asked before the cutoff', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  audit.asked('old', REQUEST, new Date(NOW.getTime() - 31 * 86_400_000))
+  audit.asked('new', REQUEST, new Date(NOW.getTime() - 29 * 86_400_000))
+  expect(pruneAuditLog(database, new Date(NOW.getTime() - AUDIT_RETENTION_MS))).toBe(1)
+  expect(readAuditEntries(database, NOW).entries.map(({ entry }) => entry.id)).toEqual(['new'])
+})
+
+test("reads the seed bot's log next to the config", () => {
+  const configPath = join(directory, 'config.json')
+  const database = openDatabase(resolveDatabasePath(configPath))
+  database
+    .prepare(
+      "INSERT INTO bots (id, provider, settings, created_at) VALUES ('seedbot', 'telegram', '{}', '2026-10-01T00:00:00.000Z'), ('other', 'telegram', '{}', '2026-10-01T00:00:00.000Z')",
+    )
+    .run()
+  database
+    .prepare(
+      "INSERT INTO pairings (id, bot_id, created_at) VALUES ('p', 'seedbot', '2026-10-01T00:00:00.000Z')",
+    )
+    .run()
+  database
+    .prepare(
+      "INSERT INTO keys (id, pairing_id, created_at) VALUES ('k', 'p', '2026-10-01T00:00:00.000Z')",
+    )
+    .run()
+  database
+    .prepare(
+      "INSERT INTO seed (only, fingerprint, bot_id, pairing_id, key_id, is_open) VALUES (1, 'f', 'seedbot', 'p', 'k', 0)",
+    )
+    .run()
+  new AuditLog(database, 'seedbot', { log }).asked('mine', REQUEST, AT)
+  new AuditLog(database, 'other', { log }).asked('theirs', REQUEST, AT)
+  const expected = formatAuditLines(database, 'seedbot')
+  database.close()
+  const raw = readSeedAuditLog(configPath)
+  expect(raw).toBe(expected)
+  expect(raw).toContain('"id":"mine"')
+  expect(raw).not.toContain('theirs')
+})
+
+test('reads nothing and creates no db when the service never ran', () => {
+  const configPath = join(directory, 'config.json')
+  expect(readSeedAuditLog(configPath)).toBe('')
+  expect(existsSync(resolveDatabasePath(configPath))).toBe(false)
+})
+
+test('reads nothing from a db with no seed', () => {
+  const configPath = join(directory, 'config.json')
+  openDatabase(resolveDatabasePath(configPath)).close()
+  expect(readSeedAuditLog(configPath)).toBe('')
+})
+
+test('logs and keeps going when a write fails', () => {
+  const database = createDatabase()
+  const audit = new AuditLog(database, 'b1', { log })
+  database.close()
+  expect(() => audit.asked('a', REQUEST, AT)).not.toThrow()
+  expect(log).toHaveBeenCalledTimes(1)
+  expect(log).toHaveBeenCalledWith(expect.stringMatching(/^failed to write audit log: /))
 })
 
 test('an invalid date does not throw and reports through log', () => {
-  const audit = new AuditLog(path, { log })
+  const audit = new AuditLog(createDatabase(), 'b1', { log })
   expect(() => audit.asked('a', REQUEST, new Date(Number.NaN))).not.toThrow()
   expect(log).toHaveBeenCalledTimes(1)
 })

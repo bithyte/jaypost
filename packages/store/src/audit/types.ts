@@ -28,7 +28,6 @@ export type SettledRecord = {
 }
 
 export type AuditLogOptions = {
-  readonly maxBytes?: number
   readonly log?: (line: string) => void
 }
 
@@ -64,4 +63,10 @@ export type AuditFilter = {
   readonly key?: string
   readonly pairing?: string
   readonly bot?: string
+}
+
+/** One question with the bot that asked it. */
+export type BotAuditEntry = {
+  readonly botId: string
+  readonly entry: AuditEntry
 }

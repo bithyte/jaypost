@@ -294,6 +294,33 @@ test.skipIf(process.getuid?.() === 0)(
 
 type Started = { readonly port: number; readonly adminKey: string; readonly configPath: string }
 
+/** Puts the jsonl `log` lines into bot 1's question rows, as the service would have written them. */
+function saveQuestions(configPath: string, log: string): void {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    for (const line of log.split('\n').filter(Boolean)) {
+      const record = JSON.parse(line)
+      database
+        .prepare(
+          "INSERT INTO questions (bot_id, id, asked_at, project, text, options, timeout_option, timeout_seconds, key_id, pairing_id) VALUES ('b1', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .run(
+          record.id,
+          record.at,
+          record.project ?? null,
+          record.text,
+          JSON.stringify(record.options),
+          record.timeoutOption,
+          record.timeoutSeconds,
+          record.key ?? null,
+          record.pairing ?? null,
+        )
+    }
+  } finally {
+    database.close()
+  }
+}
+
 /** A real service whose bot 1 (fakepair) is paired to u1 with key 1, its log holding `log`. */
 async function start(log: string): Promise<Started> {
   const directory = join(tmp, 'service')
@@ -318,9 +345,7 @@ async function start(log: string): Promise<Started> {
   await running.started
   await running.server.listen({ port: 0, host: '127.0.0.1' })
   const { port } = running.server.server.address() as AddressInfo
-  const files = resolveBotFiles(configPath, 'b1')
-  mkdirSync(files.directory, { recursive: true })
-  writeFileSync(files.auditPath, log)
+  saveQuestions(configPath, log)
   const adminKey = readFileSync(resolveAdminKeyPath(configPath), 'utf8').trim()
   return { port, adminKey, configPath }
 }

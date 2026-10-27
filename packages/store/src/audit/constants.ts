@@ -26,3 +26,6 @@ export const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/g
 export const MIN_AUDIT_VERSION = '0.5.0'
 
 export const DEFAULT_LOG_LIMIT = 20
+
+/** How long questions stay in the db before pruning. */
+export const AUDIT_RETENTION_MS = 30 * 86_400_000
