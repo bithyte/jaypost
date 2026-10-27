@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { runVote } from '@jaypost/core'
+import { normalizeCode, runVote } from '@jaypost/core'
 import type {
   ApprovalRequest,
   Provider,
@@ -45,11 +45,14 @@ afterEach(async () => {
 
 type Quiet = { readonly quietHours?: QuietHours; readonly mutedUntil?: Date }
 
-/** An in-memory registry view: `claim` pairs the person, like the hub does after saving. */
+/**
+ * An in-memory registry view: `claim` reads `codes` at each attempt and pairs the person, like the
+ * hub does after saving.
+ */
 function createPeople(
   options: {
     readonly persons?: readonly string[]
-    readonly codes?: ReadonlyMap<string, string>
+    readonly codes?: Map<string, string>
     readonly claim?: (pairingId: string, person: string) => void
     readonly quiet?: ReadonlyMap<string, Quiet>
     readonly saveQuiet?: (person: string, patch: QuietPatch) => void
@@ -59,10 +62,20 @@ function createPeople(
   return {
     isPaired: (person) => persons.includes(person),
     list: () => persons,
-    pendingCodes: () => options.codes ?? new Map(),
-    claim: (pairingId, person) => {
+    claim: (text, person) => {
+      const codes = options.codes ?? new Map<string, string>()
+      if (codes.size === 0) {
+        return 'noCodes'
+      }
+      const found = [...codes].find(([, code]) => code === normalizeCode(text))
+      if (found === undefined) {
+        return 'wrong'
+      }
+      const [pairingId] = found
+      codes.delete(pairingId)
       persons.push(person)
       options.claim?.(pairingId, person)
+      return 'claimed'
     },
     quietHours: (person) => options.quiet?.get(person) ?? {},
     saveQuiet: options.saveQuiet ?? (() => undefined),
@@ -139,11 +152,15 @@ test('a pending code pairs a new person and the hub is told which pairing', asyn
   expect(runtime.handlers?.pair?.('u3', 'K7QM4XPD')).toBe('notPairing')
 })
 
-test('codes the hub adds at runtime can be redeemed', async () => {
+test('codes are read at each attempt, so ones added or dropped after start count', async () => {
   const claim = vi.fn()
-  const { running, runtime } = await start({ people: createPeople({ claim }) })
+  const codes = new Map<string, string>()
+  const { runtime } = await start({ people: createPeople({ codes, claim }) })
   expect(runtime.handlers?.pair?.('u1', 'K7QM4XPD')).toBe('notPairing')
-  running.codes.add('p3', 'ABCD2345')
+  codes.set('p3', 'ABCD2345')
+  codes.set('p4', 'K7QM4XPD')
+  codes.delete('p4')
+  expect(runtime.handlers?.pair?.('u1', 'K7QM-4XPD')).toBe('wrong')
   expect(runtime.handlers?.pair?.('u1', 'abcd-2345')).toBe('paired')
   expect(claim).toHaveBeenCalledWith('p3', 'u1')
 })
@@ -374,7 +391,6 @@ test('describe and pairingInstructions show the provider without pairing state',
   })
   expect(running.bot.describe()).toEqual({ provider: 'fakepair', displayName: 'fake' })
   expect(running.bot.pairingInstructions?.('ABCD2345')).toBe('Say ABCD2345 to fake')
-  expect(running.codes.codeFor('p1')).toBe('K7QM4XPD')
 })
 
 test('state and audit go to the bot directory and log lines name the bot', async () => {

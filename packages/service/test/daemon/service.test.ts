@@ -518,9 +518,10 @@ test("a late code on an abandoned runtime can't take over a pairing already clai
   const restarted = provider.runtimes.at(-1)
   expect(restarted).not.toBe(runtime)
   expect(restarted?.handlers?.pair?.('u2', CODE)).toBe('paired')
-  // The old runtime's codes still hold p2's code; the hub must refuse its claim.
-  expect(runtime.handlers?.pair?.('u9', CODE)).toBe('paired')
-  expect(log).toHaveBeenCalledWith("[b1] ignored a claim of pairing p2, which isn't pending")
+  expect(log).toHaveBeenCalledWith('[b1] paired u2 on b1')
+  // The old runtime checks the code against the registry as it is now, so p2's code is spent.
+  expect(runtime.handlers?.pair?.('u9', CODE)).toBe('notPairing')
+  expect(log).not.toHaveBeenCalledWith('[b1] paired u9 on b1')
   expect(requireRunning().hub.registry.pairings).toMatchObject([
     { id: 'p1', person: 'u1' },
     { id: 'p2', person: 'u2' },

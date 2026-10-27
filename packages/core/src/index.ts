@@ -75,12 +75,12 @@ export type {
 export {
   formatCode,
   generateCode,
+  GuessLimit,
   isCodeShaped,
   normalizeCode,
   Pairing,
-  PairingCodes,
 } from './pairing/index.ts'
-export type { PairingClaim, PairResult } from './pairing/index.ts'
+export type { PairResult } from './pairing/index.ts'
 export {
   collectSettings,
   DEFAULT_PROVIDER,

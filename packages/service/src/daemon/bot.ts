@@ -1,11 +1,11 @@
 import { join } from 'node:path'
 import {
   ApprovalService,
+  GuessLimit,
   isCodeShaped,
   isPairingProvider,
   NotificationService,
   OWNER_COMMANDS,
-  PairingCodes,
   QUIET_COMMANDS,
   QuietService,
   resolveMaxAttachmentBytes,
@@ -29,9 +29,9 @@ function recipientFor(person: string): string | undefined {
 
 /**
  * Starts one bot for everyone paired on it: its provider runtime, questions, notifications, each
- * person's quiet hours, and pairing with the codes `people` has pending. State and audit files go
- * to `options.directory`; every log line starts with `[<bot id>]`. Throws an Error with the
- * provider's reason when credentials are rejected.
+ * person's quiet hours, and pairing with the codes `people` has pending at each attempt. State and
+ * audit files go to `options.directory`; every log line starts with `[<bot id>]`. Throws an Error
+ * with the provider's reason when credentials are rejected.
  */
 export async function startBot(options: BotOptions): Promise<RunningBot> {
   const { record, provider, people } = options
@@ -93,10 +93,7 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     })().catch(() => undefined)
     return recovery
   }
-  const codes = new PairingCodes()
-  for (const [pairingId, code] of people.pendingCodes()) {
-    codes.add(pairingId, code)
-  }
+  const guesses = new GuessLimit()
   const describe = () => ({
     provider: provider.name,
     displayName,
@@ -107,13 +104,21 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
     if (people.isPaired(senderId) && !isCodeShaped(text)) {
       return 'notPairing'
     }
-    const claim = codes.attempt(senderId, text)
-    if (claim.kind !== 'paired') {
-      return claim.kind
+    if (guesses.isBlocked(senderId)) {
+      return 'blocked'
     }
-    people.claim(claim.pairingId, senderId)
-    log(`paired ${senderId} on ${record.id}`)
-    return 'paired'
+    const claim = people.claim(text, senderId)
+    switch (claim) {
+      case 'noCodes':
+        return 'notPairing'
+      case 'wrong':
+        guesses.countWrong(senderId)
+        return 'wrong'
+      case 'claimed':
+      case 'merged':
+        log(`paired ${senderId} on ${record.id}`)
+        return 'paired'
+    }
   }
   const handlers: RuntimeHandlers = {
     answer: (id, optionIndex, senderId) => {
@@ -160,7 +165,6 @@ export async function startBot(options: BotOptions): Promise<RunningBot> {
       ...(provider.maxOptionCount === undefined ? {} : { maxOptionCount: provider.maxOptionCount }),
       ...(notifications === undefined ? {} : { notifications }),
     },
-    codes,
     recover,
     forgetPerson: (person) => {
       quietByPerson.delete(person)

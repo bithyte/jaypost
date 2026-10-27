@@ -7,7 +7,6 @@ import {
   isPending,
   isSeedLine,
   listKeys,
-  listPendingCodes,
 } from '../../src/registry/index.ts'
 import type { Registry } from '../../src/registry/index.ts'
 
@@ -89,11 +88,6 @@ test('a pairing is pending with no person and a code', () => {
   expect(isPending(P2)).toBe(true)
   expect(isPending(P1)).toBe(false)
   expect(isPending({ id: 'p9', botId: 'b1', createdAt: CREATED })).toBe(false)
-})
-
-test('pending codes are listed per bot by pairing', () => {
-  expect(listPendingCodes(REGISTRY, 'b1')).toStrictEqual(new Map([['p2', 'CODE0002']]))
-  expect(listPendingCodes(REGISTRY, 'b2')).toStrictEqual(new Map())
 })
 
 test('a bot counts its pairings and their keys', () => {

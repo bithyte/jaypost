@@ -1,3 +1,3 @@
-export { isCodeShaped, PairingCodes } from './codes.ts'
+export { GuessLimit, isCodeShaped } from './codes.ts'
 export { formatCode, generateCode, normalizeCode, Pairing } from './pairing.ts'
-export type { PairingClaim, PairResult } from './types.ts'
+export type { PairResult } from './types.ts'

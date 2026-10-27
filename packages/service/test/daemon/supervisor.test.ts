@@ -1,5 +1,4 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
-import { PairingCodes } from '@jaypost/core'
 import { BotSupervisor } from '../../src/daemon/index.ts'
 import type { RunningBot } from '../../src/daemon/index.ts'
 import type { ApiBot } from '../../src/server/index.ts'
@@ -17,7 +16,6 @@ function createRunning(): FakeRunning {
   return {
     // The supervisor never looks inside the bot.
     bot: {} as ApiBot,
-    codes: new PairingCodes(),
     recover: async () => undefined,
     forgetPerson: () => undefined,
     stop: vi.fn(async () => undefined),

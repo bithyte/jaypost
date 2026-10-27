@@ -31,7 +31,6 @@ export {
   isPending,
   isSeedLine,
   listKeys,
-  listPendingCodes,
 } from './queries.ts'
 export { resolveAdminKeyPath, resolveBotFiles, resolveRegistryPath } from './paths.ts'
 export { registrySchema } from './schema.ts'

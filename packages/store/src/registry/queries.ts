@@ -37,16 +37,6 @@ export function findPairingOf(
   return registry.pairings.find((pairing) => pairing.botId === botId && pairing.person === person)
 }
 
-/** The code of each pending pairing on `botId`, by pairing id. Never throws. */
-export function listPendingCodes(registry: Registry, botId: string): ReadonlyMap<string, string> {
-  return new Map(
-    registry.pairings
-      .filter((pairing) => pairing.botId === botId)
-      .filter(isPending)
-      .map((pairing) => [pairing.id, pairing.code]),
-  )
-}
-
 /** How many pairings `botId` has, and how many keys those pairings have. Never throws. */
 export function countBotRecords(registry: Registry, botId: string): BotRecordCounts {
   const pairingIds = registry.pairings

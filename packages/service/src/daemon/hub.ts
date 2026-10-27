@@ -10,7 +10,7 @@ import type { CredentialCheck, Provider, QuietHours, QuietPatch } from '@jaypost
 import {
   addBot,
   AUTHORIZATION_PATTERN,
-  claimPairing,
+  claimCode,
   countBotRecords,
   createKey,
   createPairing,
@@ -22,7 +22,6 @@ import {
   isPending,
   isSeedLine,
   listKeys,
-  listPendingCodes,
   parseAuditLog,
   readAuditFiles,
   removeBot,
@@ -39,6 +38,7 @@ import type {
   AuditEntry,
   AuditReadResult,
   BotRecord,
+  ClaimCodeResult,
   KeyLookup,
   KeyTarget,
   PairingRecord,
@@ -358,7 +358,6 @@ export class Hub implements AdminApi {
       return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
     }
     this.#commit(result.registry)
-    this.#findRunning(pairing.botId)?.codes.remove(pairingId)
     this.#release(pairing, result.keyIds)
     return { removedKeys: [...result.keyIds] }
   }
@@ -487,9 +486,7 @@ export class Hub implements AdminApi {
     if (!isPending(pairing)) {
       return { pairing: shown }
     }
-    const running = this.#findRunning(pairing.botId)
-    running?.codes.add(pairing.id, pairing.code)
-    const instructions = running?.bot.pairingInstructions?.(pairing.code)
+    const instructions = this.#findRunning(pairing.botId)?.bot.pairingInstructions?.(pairing.code)
     return {
       pairing: shown,
       code: formatCode(pairing.code),
@@ -576,10 +573,6 @@ export class Hub implements AdminApi {
 
   /** Runs once the supervisor has accepted a started bot. */
   #prepareRunning(botId: string, running: RunningBot): void {
-    // Codes created while the bot was starting.
-    for (const [pairingId, code] of listPendingCodes(this.#registry, botId)) {
-      running.codes.add(pairingId, code)
-    }
     this.#logSeedCode(botId, running)
     if (this.#isRecovering) {
       void running.recover()
@@ -612,18 +605,16 @@ export class Hub implements AdminApi {
           ),
         ),
       ],
-      pendingCodes: () => listPendingCodes(this.#registry, botId),
-      claim: (pairingId, person) => this.#claim(botId, pairingId, person),
+      claim: (text, person) => this.#claim(botId, text, person),
       quietHours: (person) => toQuiet(findPairingOf(this.#registry, botId, person)),
       saveQuiet: (person, patch) => this.#saveQuiet(botId, person, patch),
     }
   }
 
-  #claim(botId: string, pairingId: string, person: string): void {
-    const result = claimPairing(this.#registry, botId, pairingId, person)
-    if (result.kind === 'notPending') {
-      this.#log(`[${botId}] ignored a claim of pairing ${pairingId}, which isn't pending`)
-      return
+  #claim(botId: string, text: string, person: string): ClaimCodeResult['kind'] {
+    const result = claimCode(this.#registry, botId, text, person)
+    if (result.kind === 'wrong' || result.kind === 'noCodes') {
+      return result.kind
     }
     this.#registry = result.registry
     try {
@@ -634,6 +625,7 @@ export class Hub implements AdminApi {
         `[${botId}] paired ${person} but couldn't save the registry: ${message}; it'll be lost on restart`,
       )
     }
+    return result.kind
   }
 
   #saveQuiet(botId: string, person: string, patch: QuietPatch): void {
