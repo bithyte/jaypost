@@ -411,6 +411,24 @@ test('install without ownerId keeps a stored owner', async () => {
   })
 })
 
+test("install without ownerId drops a stored owner the provider can't parse", async () => {
+  const { t, paths } = make()
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  // A Discord snowflake: not a safe integer, so Telegram rejects it.
+  writeFileSync(
+    paths.configFile,
+    JSON.stringify({ botToken: 'old', ownerId: '199255809480196096' }),
+  )
+  const printed: string[] = []
+  await t.install({ ...base, print: (text) => printed.push(text) })
+  expect(readConfigFile(paths.configFile)).toEqual({
+    provider: 'telegram',
+    botToken: 't',
+    port: 8787,
+  })
+  expect(printed).toContain("Dropped the saved owner id; it isn't a valid Telegram id.")
+})
+
 test("install drops another provider's keys", async () => {
   const { t, paths } = make()
   mkdirSync(dirname(paths.configFile), { recursive: true })
