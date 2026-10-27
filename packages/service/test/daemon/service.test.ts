@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,9 +11,10 @@ import {
   createKey,
   hashKey,
   loadSeed,
+  openDatabase,
   RegistryStore,
   resolveAdminKeyPath,
-  resolveRegistryPath,
+  resolveDatabasePath,
 } from '@jaypost/store'
 import type { Registry } from '@jaypost/store'
 import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
@@ -32,8 +33,6 @@ const CODE = 'K7QM4XPD'
 const REQUEST = { text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
 
 const EXPIRED_TEXT_PATTERN = /^Deploy\?\n\n⌛ Expired \(service restarted\), \d\d:\d\d$/
-
-const IS_ROOT = process.getuid?.() === 0
 
 type FakeProvider = Provider & { readonly runtimes: FakeRuntime[] }
 
@@ -141,23 +140,65 @@ function createSilentProvider() {
   return { provider, silent }
 }
 
-/** state.json as the pre-upgrade daemon left it, next to config.json. */
-function writeLegacyState(configPath: string, state: Record<string, unknown>): void {
-  writeFileSync(
-    join(dirname(configPath), 'state.json'),
+function botFile(configPath: string, botId: string, name: string): string {
+  return join(dirname(configPath), 'bots', botId, name)
+}
+
+/** Writes `name` into bot 1's directory, as a previous run left it. */
+function writeBotFile(configPath: string, name: string, contents: string): void {
+  const path = botFile(configPath, 'b1', name)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, contents)
+}
+
+/** bot 1's state.json as a previous run left it. */
+function writeSavedState(configPath: string, state: Record<string, unknown>): void {
+  writeBotFile(
+    configPath,
+    'state.json',
     JSON.stringify({ version: 1, provider: 'fake', requests: [], notifications: [], ...state }),
   )
 }
 
-function botFile(configPath: string, botId: string, name: string): string {
-  return join(dirname(configPath), 'bots', botId, name)
+/** Runs `use` on a store over the db next to `configPath`, closing the db after. */
+function withRegistryStore<T>(configPath: string, use: (store: RegistryStore) => T): T {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    return use(new RegistryStore(database))
+  } finally {
+    database.close()
+  }
+}
+
+const REFUSED_WRITES = ['bots', 'pairings', 'keys'].flatMap((table) =>
+  ['INSERT', 'UPDATE', 'DELETE'].map((event) => ({
+    table,
+    event,
+    name: `refuse_${table}_${event.toLowerCase()}`,
+  })),
+)
+
+/** Makes every bot, pairing and key write fail until the returned function runs. */
+function refuseRegistryWrites(configPath: string): () => void {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  for (const { table, event, name } of REFUSED_WRITES) {
+    database.exec(
+      `CREATE TRIGGER ${name} BEFORE ${event} ON ${table} BEGIN SELECT RAISE(ABORT, 'refused'); END`,
+    )
+  }
+  return () => {
+    for (const { name } of REFUSED_WRITES) {
+      database.exec(`DROP TRIGGER ${name}`)
+    }
+    database.close()
+  }
 }
 
 const readState = (configPath: string) =>
   JSON.parse(readFileSync(botFile(configPath, 'b1', 'state.json'), 'utf8'))
 
 const readRegistry = (configPath: string): Registry =>
-  new RegistryStore(resolveRegistryPath(configPath)).load()
+  withRegistryStore(configPath, (store) => store.load())
 
 const readAudit = (configPath: string) =>
   readFileSync(botFile(configPath, 'b1', 'audit.jsonl'), 'utf8')
@@ -225,10 +266,10 @@ test('an upgraded install keeps its token, owner and quiet hours as key 1 on bot
   expect(runtime.handlers?.command('quiet', '', 'u1')).toContain('23:00')
 })
 
-test('a request pending before the upgrade is expired after it', async () => {
+test('a request saved by the previous run is expired at start', async () => {
   const { provider, finalized, deleted } = createRecordingProvider()
   const configPath = createConfigPath(provider)
-  writeLegacyState(configPath, {
+  writeSavedState(configPath, {
     requests: [{ id: 'old', reference: { n: 99 }, text: 'Deploy?' }],
     notifications: [
       { id: 'due', reference: { n: 98 }, expiresAtMs: Date.now() - 1 },
@@ -247,7 +288,6 @@ test('a request pending before the upgrade is expired after it', async () => {
   expect(deleted).toEqual([{ n: 98 }])
   expect(runtime.handlers?.dismiss('later')).toBe(true)
   expect(readState(configPath).requests).toEqual([])
-  expect(existsSync(join(dirname(configPath), 'state.json'))).toBe(false)
 })
 
 test('two keys on one pairing share the person; a key on another pairing reaches its own', async () => {
@@ -359,7 +399,7 @@ test('GET /log only returns the caller key lines', async () => {
     timeoutOption: 'Yes',
     timeoutSeconds: 60,
   }
-  writeFileSync(join(dirname(configPath), 'audit.jsonl'), `${JSON.stringify(legacyLine)}\n`)
+  writeBotFile(configPath, 'audit.jsonl', `${JSON.stringify(legacyLine)}\n`)
   const { url, runtime } = await start(provider, { configPath })
   const other = createKeyFor('k1')
   for (const token of [undefined, other.key]) {
@@ -445,7 +485,7 @@ test('a bot with rejected credentials shows failed in /status and the others kee
   if (keyed.kind !== 'created') {
     throw new Error('not created')
   }
-  new RegistryStore(resolveRegistryPath(configPath)).save(keyed.registry)
+  withRegistryStore(configPath, (store) => store.save(keyed.registry))
   const log = vi.fn()
   const { url, runtime } = await start(provider, { configPath, log })
   expect(log).toHaveBeenCalledWith("[b1] couldn't start: fake said no; retrying in 5s")
@@ -588,22 +628,21 @@ test('revoking a key rejects its open questions with their timeout option', asyn
   expect(await (await kept).json()).toEqual({ answer: 'Approve', timedOut: false })
 })
 
-test.skipIf(IS_ROOT)('a registry write failure leaves memory unchanged', async () => {
+test('a registry write failure leaves memory unchanged', async () => {
   const provider = createFakeProvider()
   const configPath = createConfigPath(provider, { apiToken: TOKEN })
   const { url } = await start(provider, { configPath })
-  const registryPath = resolveRegistryPath(configPath)
-  const before = readFileSync(registryPath, 'utf8')
+  const before = readRegistry(configPath)
   const hub = requireRunning().hub
   const registry = hub.registry
-  chmodSync(dirname(configPath), 0o500)
+  const allowWrites = refuseRegistryWrites(configPath)
   try {
     expect(() => hub.createKey({ sameAsKey: 'k1' })).toThrow()
     expect(() => hub.revokeKey('k1')).toThrow()
   } finally {
-    chmodSync(dirname(configPath), 0o700)
+    allowWrites()
   }
-  expect(readFileSync(registryPath, 'utf8')).toBe(before)
+  expect(readRegistry(configPath)).toEqual(before)
   expect(hub.registry).toBe(registry)
   expect(await getStatus(url, TOKEN)).toMatchObject({ key: 'k1' })
   expect(hub.router.route(`Bearer ${TOKEN}`)).toMatchObject({ kind: 'key' })
@@ -707,26 +746,23 @@ test('the paired owner is who the daemon answers for and sends to', async () => 
   expect((await response).status).toBe(200)
 })
 
-test.skipIf(IS_ROOT)(
-  'a registry save failure on pairing is logged and pairing still completes',
-  async () => {
-    const log = vi.fn()
-    const { url, runtime, configPath } = await start(createPairingFakeProvider(), { log })
-    chmodSync(dirname(configPath), 0o500)
-    try {
-      expect(runtime.handlers?.pair?.('u1', CODE)).toBe('paired')
-    } finally {
-      chmodSync(dirname(configPath), 0o700)
-    }
-    expect(log).toHaveBeenCalledWith(
-      expect.stringMatching(
-        /^\[b1\] paired u1 but couldn't save the registry: .*; it'll be lost on restart$/,
-      ),
-    )
-    expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1' })
-    expect(readRegistry(configPath).pairings).toMatchObject([{ id: 'p1', code: CODE }])
-  },
-)
+test('a registry save failure on pairing is logged and pairing still completes', async () => {
+  const log = vi.fn()
+  const { url, runtime, configPath } = await start(createPairingFakeProvider(), { log })
+  const allowWrites = refuseRegistryWrites(configPath)
+  try {
+    expect(runtime.handlers?.pair?.('u1', CODE)).toBe('paired')
+  } finally {
+    allowWrites()
+  }
+  expect(log).toHaveBeenCalledWith(
+    expect.stringMatching(
+      /^\[b1\] paired u1 but couldn't save the registry: .*; it'll be lost on restart$/,
+    ),
+  )
+  expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1' })
+  expect(readRegistry(configPath).pairings).toMatchObject([{ id: 'p1', code: CODE }])
+})
 
 test('an owner setting without pairing support fails the bot, not the service', async () => {
   const provider = createFakeProvider({ settings: createPairingFakeProvider().settings })
@@ -817,15 +853,15 @@ test('/quiet off removes quietHours from the pairing', async () => {
   expect(readRegistry(configPath).pairings[0]).not.toHaveProperty('quietHours')
 })
 
-test.skipIf(IS_ROOT)("an unwritable registry still mutes and says it won't last", async () => {
+test("an unwritable registry still mutes and says it won't last", async () => {
   const { provider, silent } = createSilentProvider()
   const { url, runtime, configPath } = await start(provider)
-  chmodSync(dirname(configPath), 0o500)
+  const allowWrites = refuseRegistryWrites(configPath)
   let reply: string | undefined
   try {
     reply = runtime.handlers?.command('mute', '2h', undefined)
   } finally {
-    chmodSync(dirname(configPath), 0o700)
+    allowWrites()
   }
   expect(reply).toMatch(/Couldn't save this; it resets on restart\.$/)
   await post(url, '/notify', { text: 'x' })
@@ -871,7 +907,7 @@ test('a background question pending at stop is expired by the next start', async
 test('state from another provider is discarded', async () => {
   const { provider, finalized } = createRecordingProvider()
   const configPath = createConfigPath(provider)
-  writeLegacyState(configPath, {
+  writeSavedState(configPath, {
     provider: 'other',
     requests: [{ id: 'old', reference: { n: 99 }, text: 'Deploy?' }],
   })
@@ -887,7 +923,7 @@ test('state from another provider is discarded', async () => {
 test("an unwritable state file doesn't fail /request or /notify", async () => {
   const { provider } = createRecordingProvider()
   const configPath = createConfigPath(provider)
-  mkdirSync(join(dirname(configPath), 'state.json'))
+  mkdirSync(botFile(configPath, 'b1', 'state.json'), { recursive: true })
   const log = vi.fn()
   const { url, runtime } = await start(provider, { configPath, log })
   expect((await post(url, '/notify', { text: 'hi' })).status).toBe(200)
@@ -896,6 +932,37 @@ test("an unwritable state file doesn't fail /request or /notify", async () => {
   runtime.handlers?.answer(runtime.sent[0]?.id ?? '', 0)
   expect((await response).status).toBe(200)
   expect(log).toHaveBeenCalledWith(expect.stringContaining('failed to save state to'))
+})
+
+test('stop closes the db, which removes its wal file', async () => {
+  const { configPath } = await start(createFakeProvider())
+  const walPath = `${resolveDatabasePath(configPath)}-wal`
+  expect(existsSync(walPath)).toBe(true)
+  await stopRunning()
+  expect(existsSync(walPath)).toBe(false)
+})
+
+test('a start that fails on a corrupt registry closes the db and never quotes it', async () => {
+  const provider = createFakeProvider()
+  const configPath = createConfigPath(provider)
+  const databasePath = resolveDatabasePath(configPath)
+  const database = openDatabase(databasePath)
+  database
+    .prepare("INSERT INTO bots (id, provider, settings, created_at) VALUES ('b1', 'fake', ?, '')")
+    .run('{"fakeKey":"SECRET-1')
+  database.close()
+  const failed = startService({
+    version: TEST_VERSION,
+    configPath,
+    providers: [provider],
+    seed: loadSeed({ JAYPOST_CONFIG: configPath }, [provider]),
+    log: vi.fn(),
+  })
+  await expect(failed).rejects.toThrow(
+    `database ${JSON.stringify(databasePath)} has an invalid registry`,
+  )
+  await expect(failed).rejects.not.toThrow(/SECRET-1/)
+  expect(existsSync(`${databasePath}-wal`)).toBe(false)
 })
 
 test('the service puts the configured token on the api', async () => {

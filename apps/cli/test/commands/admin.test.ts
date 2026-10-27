@@ -6,11 +6,13 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   loadSeed,
+  openDatabase,
   RegistryStore,
   resolveAdminKeyPath,
-  resolveRegistryPath,
+  resolveDatabasePath,
   writeTokenFile,
 } from '@jaypost/store'
+import type { Registry } from '@jaypost/store'
 import { ADMIN_KEY_REJECTED_MESSAGE } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -61,6 +63,16 @@ afterEach(async () => {
 })
 
 type Started = { readonly port: number; readonly adminKey: string; readonly configPath: string }
+
+/** The registry in the db next to `configPath`, read over a connection of its own. */
+function readRegistry(configPath: string): Registry {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    return new RegistryStore(database).load()
+  } finally {
+    database.close()
+  }
+}
 
 /** A real service whose bot 1 (fakepair) is paired to u1 with key 1. */
 async function start(): Promise<Started> {
@@ -264,8 +276,7 @@ test('bot add writes the registry directly when the local service is down', asyn
   expect(await runBotAdd({ label: 'ci' }, deps)).toBe(0)
   expect(out).toEqual(['Added bot b1 (Fake).'])
   expect(err).toEqual(["The service isn't running; it starts the bot on its next start."])
-  const registryPath = resolveRegistryPath(configPath)
-  expect(new RegistryStore(registryPath).load().bots).toEqual([
+  expect(readRegistry(configPath).bots).toEqual([
     {
       id: 'b1',
       provider: 'fake',
@@ -274,7 +285,7 @@ test('bot add writes the registry directly when the local service is down', asyn
       createdAt: '2026-10-26T12:00:00.000Z',
     },
   ])
-  expect(statSync(registryPath).mode & 0o777).toBe(0o600)
+  expect(statSync(resolveDatabasePath(configPath)).mode & 0o777).toBe(0o600)
   expect([...out, ...err].join('\n')).not.toContain(NEW_BOT_TOKEN)
 })
 
@@ -286,7 +297,7 @@ test('bot add writes the registry when no admin key exists and nothing answers',
   expect(await runBotAdd({ json: true }, deps)).toBe(0)
   expect(deps.fetchStatus).toHaveBeenCalledWith(port, undefined)
   expect(JSON.parse(out.join('\n'))).toEqual({ bot: { id: 'b1', provider: 'fake' } })
-  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toHaveLength(1)
+  expect(readRegistry(configPath).bots).toHaveLength(1)
 })
 
 test('bot add without an admin key refuses the registry when the service starts meanwhile', async () => {
@@ -305,7 +316,7 @@ test('bot add without an admin key refuses the registry when the service starts 
     'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.',
   ])
   expect(fetchStatus).toHaveBeenCalledTimes(2)
-  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([])
+  expect(readRegistry(configPath).bots).toEqual([])
 })
 
 test('bot add with an admin key uses the api when the service starts meanwhile', async () => {
@@ -336,7 +347,7 @@ test('bot add with an admin key uses the api when the service starts meanwhile',
   expect(out).toEqual(['Added bot b2 (Fake, fake): running.'])
   await running?.stop()
   running = undefined
-  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([
+  expect(readRegistry(configPath).bots).toEqual([
     expect.objectContaining({ id: 'b1', settings: { fakeKey: SEED_BOT_TOKEN } }),
     expect.objectContaining({ id: 'b2', settings: { fakeKey: NEW_BOT_TOKEN } }),
   ])
@@ -355,7 +366,7 @@ test('bot add for a native install that never started this version writes its re
   })
   const deps = createDeps({ HOME: tmp }, { targets: targets({ systemd }) })
   expect(await runBotAdd({}, deps)).toBe(0)
-  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([
+  expect(readRegistry(configPath).bots).toEqual([
     expect.objectContaining({ id: 'b1', provider: 'fake' }),
   ])
 })
@@ -373,7 +384,7 @@ test('bot add refuses the registry while a config file waits to be seeded', asyn
   expect(err).toEqual([
     "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost bot add again.",
   ])
-  expect(new RegistryStore(resolveRegistryPath(configPath)).load().bots).toEqual([])
+  expect(readRegistry(configPath).bots).toEqual([])
 })
 
 test('bot add refuses credentials a stored bot already uses, without a server', async () => {
@@ -406,7 +417,7 @@ test('bot add goes through the admin API when the service answers', async () => 
   expect(await runBotAdd({ provider: 'fake', label: 'ci' }, deps)).toBe(0)
   expect(out).toEqual(['Added bot b2 (Fake, fake): running.'])
   expect([...out, ...err].join('\n')).not.toContain(NEW_BOT_TOKEN)
-  expect(new RegistryStore(resolveRegistryPath(started.configPath)).load().bots).toEqual([
+  expect(readRegistry(started.configPath).bots).toEqual([
     expect.objectContaining({ id: 'b1' }),
     expect.objectContaining({ id: 'b2', label: 'ci', settings: { fakeKey: NEW_BOT_TOKEN } }),
   ])

@@ -11,8 +11,9 @@ import {
   createEmptyRegistry,
   createPairing,
   loadSeed,
+  openDatabase,
   RegistryStore,
-  resolveRegistryPath,
+  resolveDatabasePath,
 } from '@jaypost/store'
 import type { Registry } from '@jaypost/store'
 
@@ -26,6 +27,16 @@ beforeEach(() => {
   env = { JAYPOST_CONFIG: file }
 })
 afterEach(() => vi.restoreAllMocks())
+
+/** Runs `use` on a store over the db next to the config file, closing the db after. */
+function withRegistryStore<T>(use: (store: RegistryStore) => T): T {
+  const database = openDatabase(resolveDatabasePath(file))
+  try {
+    return use(new RegistryStore(database))
+  } finally {
+    database.close()
+  }
+}
 
 /** Seeds bot 1, pairing 1 (u1) and key 1 from the config file, plus pairing 2 paired to u2. */
 function writeRegistry(): Registry {
@@ -42,12 +53,12 @@ function writeRegistry(): Registry {
   if (claimed.kind === 'notPending') {
     throw new Error('no pairing p2')
   }
-  new RegistryStore(resolveRegistryPath(file)).save(claimed.registry)
+  withRegistryStore((store) => store.save(claimed.registry))
   return claimed.registry
 }
 
 function readRegistry(): Registry {
-  return new RegistryStore(resolveRegistryPath(file)).load()
+  return withRegistryStore((store) => store.load())
 }
 
 test('get prints the owner id', () => {
@@ -110,12 +121,14 @@ test('owner get prints the seed pairing person from the registry', () => {
   writeRegistry()
   // A person paired through the service after the upgrade; config.json still has the old one.
   const registry = readRegistry()
-  new RegistryStore(resolveRegistryPath(file)).save({
-    ...registry,
-    pairings: registry.pairings.map((pairing) =>
-      pairing.id === 'p1' ? { ...pairing, person: 'u9' } : pairing,
-    ),
-  })
+  withRegistryStore((store) =>
+    store.save({
+      ...registry,
+      pairings: registry.pairings.map((pairing) =>
+        pairing.id === 'p1' ? { ...pairing, person: 'u9' } : pairing,
+      ),
+    }),
+  )
   const log = vi.spyOn(console, 'log').mockImplementation(() => {})
   expect(runOwner(['get'], env, PAIRING_PROVIDERS)).toBe(0)
   expect(log.mock.calls).toEqual([['u9']])
@@ -132,11 +145,17 @@ test('owner get prints nothing while the seed pairing waits for a code', () => {
 
 test('owner with a corrupt registry exits 1 without quoting the file', () => {
   writeFileSync(file, JSON.stringify({ provider: 'fakepair', fakeOwner: 'u1', fakeKey: 'k' }))
-  writeFileSync(resolveRegistryPath(file), '{"bots": "secret-bot-token"')
+  const database = openDatabase(resolveDatabasePath(file))
+  database
+    .prepare(
+      "INSERT INTO bots (id, provider, settings, created_at) VALUES ('b1', 'fakepair', ?, '')",
+    )
+    .run('{"fakeKey": "secret-bot-token"')
+  database.close()
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
   expect(runOwner(['clear'], env, PAIRING_PROVIDERS)).toBe(1)
   expect(error.mock.calls).toEqual([
-    [`registry file ${JSON.stringify(resolveRegistryPath(file))} contains invalid JSON`],
+    [`database ${JSON.stringify(resolveDatabasePath(file))} has an invalid registry`],
   ])
   expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({
     provider: 'fakepair',

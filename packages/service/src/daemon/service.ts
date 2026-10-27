@@ -6,11 +6,11 @@ import {
   ensureAdminKey,
   loadSeed,
   loadServiceConfig,
-  migrateLegacyBotFiles,
+  openDatabase,
   RegistryStore,
   resolveAdminKeyPath,
   resolveConfigPath,
-  resolveRegistryPath,
+  resolveDatabasePath,
 } from '@jaypost/store'
 import type { Registry, SeedLoad, ServiceConfig } from '@jaypost/store'
 import { SERVICE_PROVIDERS } from '@jaypost/providers'
@@ -21,7 +21,7 @@ import { Hub } from './hub.ts'
 export type ServiceOptions = {
   /** Shown in /openapi.yaml. */
   readonly version: string
-  /** registry.json, the admin key file and the bot directories live next to it. */
+  /** jaypost.db, the admin key file and the bot directories live next to it. */
   readonly configPath: string
   readonly providers: readonly Provider[]
   /** Bot 1, pairing 1 and key 1 as the env and config.json describe them, from `loadSeed`. */
@@ -43,15 +43,14 @@ export type RunningService = {
   readonly recover: () => Promise<void>
   /**
    * Freezes the saved state first (so pending requests stay saved for the next start), then closes
-   * the server and the provider runtimes; never rejects.
+   * the server and the provider runtimes, then the db; never rejects.
    */
   readonly stop: () => Promise<void>
 }
 
 /**
- * The stored registry with the seed applied. On an empty registry the pre-upgrade state and audit
- * files move into the seed bot's directory first. Saves only when something changed. Throws on a
- * corrupt registry, a missing setting with no bots stored, or a failed move or save.
+ * The stored registry with the seed applied. Saves only when something changed. Throws on a
+ * corrupt registry, a missing setting with no bots stored, or a failed save.
  */
 function loadSeededRegistry(
   store: RegistryStore,
@@ -69,10 +68,6 @@ function loadSeededRegistry(
   const pairs = isPairingProvider(seed.provider)
   const now = options.now ?? (() => new Date())
   const { registry } = applySeed(stored, seed.seed, pairs, generateCode, now())
-  // SeedResult.isNew only says the seed record is new; the move needs a registry with no bots.
-  if (stored.bots.length === 0 && registry !== stored && registry.seed !== undefined) {
-    migrateLegacyBotFiles(options.configPath, registry.seed.botId)
-  }
   if (registry !== stored) {
     store.save(registry)
   }
@@ -80,32 +75,39 @@ function loadSeededRegistry(
 }
 
 /**
- * Loads the registry next to `configPath`, applies the seed, makes sure there is an admin key, and
- * starts every stored bot behind an API that routes each call by its key, without waiting for the
- * bots. A bot that can't start is retried in the background and shows as failed in /status.
- * Throws on a corrupt registry, a missing setting with no bots stored, or an I/O error. Doesn't
- * listen.
+ * Opens jaypost.db next to `configPath`, loads the registry, applies the seed, makes sure there is
+ * an admin key, and starts every stored bot behind an API that routes each call by its key,
+ * without waiting for the bots. A bot that can't start is retried in the background and shows as
+ * failed in /status. Throws on an unusable db, a corrupt registry, a missing setting with no bots
+ * stored, or an I/O error, and closes the db first. Doesn't listen.
  */
 export async function startService(options: ServiceOptions): Promise<RunningService> {
   const { configPath } = options
   const log = options.log ?? console.error
   const generateCode = options.generateCode ?? generateDefaultCode
-  const store = new RegistryStore(resolveRegistryPath(configPath))
-  const registry = loadSeededRegistry(store, options, generateCode)
-  const adminKeyPath = resolveAdminKeyPath(configPath)
-  const adminKey = ensureAdminKey(adminKeyPath, log)
-  const hub = new Hub({
-    store,
-    registry,
-    providers: options.providers,
-    configPath,
-    adminKey,
-    adminKeyPath,
-    version: options.version,
-    generateCode,
-    log,
-    ...(options.now === undefined ? {} : { now: options.now }),
-  })
+  const database = openDatabase(resolveDatabasePath(configPath))
+  let hub: Hub
+  try {
+    const store = new RegistryStore(database)
+    const registry = loadSeededRegistry(store, options, generateCode)
+    const adminKeyPath = resolveAdminKeyPath(configPath)
+    const adminKey = ensureAdminKey(adminKeyPath, log)
+    hub = new Hub({
+      store,
+      registry,
+      providers: options.providers,
+      configPath,
+      adminKey,
+      adminKeyPath,
+      version: options.version,
+      generateCode,
+      log,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    })
+  } catch (error) {
+    database.close()
+    throw error
+  }
   hub.start()
   const server = createApiServer(hub.router, hub)
   return {
@@ -116,6 +118,10 @@ export async function startService(options: ServiceOptions): Promise<RunningServ
     // hub.stop() freezes every bot's state before the server starts closing.
     stop: async () => {
       await Promise.allSettled([hub.stop(), server.close()])
+      // A second stop finds the db closed already.
+      if (database.isOpen) {
+        database.close()
+      }
     },
   }
 }

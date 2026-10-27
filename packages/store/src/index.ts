@@ -79,8 +79,6 @@ export {
   loadSeed,
   listKeys,
   LOCAL_PERSON,
-  migrateLegacyBotFiles,
-  REGISTRY_FILE_NAME,
   RegistryStore,
   removeBot,
   removePairing,

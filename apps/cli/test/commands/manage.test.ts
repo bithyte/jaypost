@@ -8,10 +8,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   loadSeed,
   NO_CLIENT_TOKEN,
+  openDatabase,
   RegistryStore,
-  resolveRegistryPath,
+  resolveDatabasePath,
   writeTokenFile,
 } from '@jaypost/store'
+import type { Registry } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import {
   ADMIN_KEY_REJECTED_MESSAGE,
@@ -49,6 +51,16 @@ let paths: InstallPaths
 let order: string[]
 let out: string[]
 let recording = createRecordingProgress()
+
+/** The registry in the db next to `configPath`, read over a connection of its own. */
+function readRegistry(configPath: string): Registry {
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    return new RegistryStore(database).load()
+  } finally {
+    database.close()
+  }
+}
 
 function notes(): string[] {
   return recording.notes()
@@ -571,7 +583,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
       expect.objectContaining({ paired: false, code: 'PAIR-2222', key: 'k1', pairing: 'p1' }),
     ),
   ])
-  const registry = new RegistryStore(resolveRegistryPath(configPath)).load()
+  const registry = readRegistry(configPath)
   expect(registry.pairings).toEqual([
     { id: 'p1', botId: 'b1', code: 'PAIR2222', createdAt: expect.any(String) },
   ])

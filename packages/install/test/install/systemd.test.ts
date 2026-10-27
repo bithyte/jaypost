@@ -13,7 +13,15 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, expect, test, vi } from 'vite-plus/test'
-import { MissingCommandError, NO_AUTH, readConfigFile } from '@jaypost/store'
+import {
+  createEmptyRegistry,
+  MissingCommandError,
+  NO_AUTH,
+  openDatabase,
+  readConfigFile,
+  RegistryStore,
+  resolveDatabasePath,
+} from '@jaypost/store'
 import {
   resolveInstallPaths,
   createSystemdTarget,
@@ -360,17 +368,13 @@ test("readAuditLog reads the seed bot's files once the registry has a seed", asy
   writeFileSync(join(directory, 'audit.jsonl'), 'legacy\n')
   writeFileSync(join(directory, 'bots', 'b3', 'audit.jsonl.1'), 'old\n')
   writeFileSync(join(directory, 'bots', 'b3', 'audit.jsonl'), 'new\n')
-  writeFileSync(
-    join(directory, 'registry.json'),
-    JSON.stringify({
-      version: 1,
-      lastIds: { bot: 3, pairing: 1, key: 1 },
-      bots: [],
-      pairings: [],
-      keys: [],
-      seed: { fingerprint: 'f', botId: 'b3', pairingId: 'p1', keyId: 'k1', isOpen: false },
-    }),
-  )
+  const database = openDatabase(resolveDatabasePath(join(directory, 'config.json')))
+  new RegistryStore(database).save({
+    ...createEmptyRegistry(),
+    lastIds: { bot: 3, pairing: 1, key: 1 },
+    seed: { fingerprint: 'f', botId: 'b3', pairingId: 'p1', keyId: 'k1', isOpen: false },
+  })
+  database.close()
   const { t } = make()
   const rec = {
     target: 'systemd' as const,
@@ -384,8 +388,12 @@ test("readAuditLog reads the seed bot's files once the registry has a seed", asy
 test('readAuditLog with a corrupt registry throws without quoting it', async () => {
   const directory = join(tmp, 'recorded-dir')
   mkdirSync(directory)
-  const registry = join(directory, 'registry.json')
-  writeFileSync(registry, '{"bots": "secret-bot-token"')
+  const databasePath = resolveDatabasePath(join(directory, 'config.json'))
+  const database = openDatabase(databasePath)
+  database
+    .prepare("INSERT INTO bots (id, provider, settings, created_at) VALUES ('b1', 'fake', ?, '')")
+    .run('{"fakeKey": "secret-bot-token"')
+  database.close()
   const { t } = make()
   const rec = {
     target: 'systemd' as const,
@@ -394,8 +402,9 @@ test('readAuditLog with a corrupt registry throws without quoting it', async () 
     configFile: join(directory, 'config.json'),
   }
   await expect(t.readAuditLog(rec)).rejects.toThrow(
-    `registry file ${JSON.stringify(registry)} contains invalid JSON`,
+    `database ${JSON.stringify(databasePath)} has an invalid registry`,
   )
+  await expect(t.readAuditLog(rec)).rejects.not.toThrow(/secret-bot-token/)
 })
 
 test('install without ownerId keeps a stored owner', async () => {

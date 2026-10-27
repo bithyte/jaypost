@@ -5,7 +5,6 @@ export {
   API_KEY_PREFIX,
   BOTS_DIRECTORY_NAME,
   LOCAL_PERSON,
-  REGISTRY_FILE_NAME,
   REGISTRY_VERSION,
 } from './constants.ts'
 export { generateAdminKey, generateApiKey, hashKey } from './keys.ts'
@@ -37,7 +36,6 @@ export { registrySchema } from './schema.ts'
 export { loadSeed } from './seed.ts'
 export {
   ensureAdminKey,
-  migrateLegacyBotFiles,
   RegistryStore,
   resolveAdminKey,
   resolveSeedAuditPath,

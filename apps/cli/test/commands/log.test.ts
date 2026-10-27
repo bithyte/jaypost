@@ -1,18 +1,18 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   applySeed,
   createEmptyRegistry,
   loadSeed,
-  migrateLegacyBotFiles,
   NO_CLIENT_TOKEN,
+  openDatabase,
   RegistryStore,
   resolveAdminKeyPath,
   resolveBotFiles,
-  resolveRegistryPath,
+  resolveDatabasePath,
 } from '@jaypost/store'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -336,21 +336,27 @@ function installedOn(port: number, adminKey: string, log = '') {
 const TWO_KEYS_LOG =
   askedBy('a', '2026-10-19T06:00:00.000Z', 'k1') + askedBy('b', '2026-10-19T06:01:00.000Z', 'k2')
 
-test('audit dump prints bot 1 lines after the upgrade moved them', () => {
+test("audit dump prints the seed bot's lines", () => {
   const directory = join(tmp, 'data')
   mkdirSync(directory)
   const configPath = join(directory, 'config.json')
   writeFileSync(configPath, JSON.stringify({ provider: 'fakepair', fakeKey: 'k', fakeOwner: 'u1' }))
-  writeFileSync(join(directory, 'audit.jsonl'), asked('a', '2026-10-19T06:00:00.000Z'))
+  writeFileSync(join(directory, 'audit.jsonl'), asked('legacy', '2026-10-19T05:00:00.000Z'))
+  const { auditPath } = resolveBotFiles(configPath, 'b1')
+  mkdirSync(dirname(auditPath), { recursive: true })
+  writeFileSync(auditPath, asked('a', '2026-10-19T06:00:00.000Z'))
   const env = { JAYPOST_CONFIG: configPath }
   const loaded = loadSeed(env, PAIRING_PROVIDERS)
   if (loaded.kind !== 'seed') {
     throw new Error(loaded.message)
   }
   const seeded = applySeed(createEmptyRegistry(), loaded.seed, true, () => 'SEED1111', NOW)
-  new RegistryStore(resolveRegistryPath(configPath)).save(seeded.registry)
-  migrateLegacyBotFiles(configPath, 'b1')
-  expect(existsSync(join(directory, 'audit.jsonl'))).toBe(false)
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    new RegistryStore(database).save(seeded.registry)
+  } finally {
+    database.close()
+  }
   const written: string[] = []
   expect(runAudit(['dump'], env, (text) => written.push(text))).toBe(0)
   expect(written).toEqual([asked('a', '2026-10-19T06:00:00.000Z')])
@@ -441,7 +447,13 @@ test('log with a corrupt registry and no install exits 1 without quoting it', as
   const directory = join(tmp, 'elsewhere')
   mkdirSync(directory)
   const configPath = join(directory, 'config.json')
-  writeFileSync(resolveRegistryPath(configPath), '{"bots": "secret-bot-token"')
+  const database = openDatabase(resolveDatabasePath(configPath))
+  database
+    .prepare(
+      "INSERT INTO bots (id, provider, settings, created_at) VALUES ('b1', 'fakepair', ?, '')",
+    )
+    .run('{"fakeKey": "secret-bot-token"')
+  database.close()
   const targets = {
     quadlet: fake('quadlet'),
     compose: fake('compose'),
@@ -452,6 +464,6 @@ test('log with a corrupt registry and no install exits 1 without quoting it', as
     1,
   )
   expect(err).toEqual([
-    `registry file ${JSON.stringify(resolveRegistryPath(configPath))} contains invalid JSON`,
+    `database ${JSON.stringify(resolveDatabasePath(configPath))} has an invalid registry`,
   ])
 })

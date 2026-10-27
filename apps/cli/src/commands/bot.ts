@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { findOwnerSetting, findProvider } from '@jaypost/core'
 import type { Provider, SettingValues } from '@jaypost/core'
-import { addBot, RegistryStore, resolveRegistryPath } from '@jaypost/store'
+import { addBot, openDatabase, RegistryStore, resolveDatabasePath } from '@jaypost/store'
 import type { AdminCaller } from '@jaypost/client'
 import type { AdminBot, BotsBody } from '@jaypost/protocol'
 import { openAdmin, openAdminCaller } from './admin-access.ts'
@@ -75,7 +75,7 @@ function refuseStopped(endpoint: LocalAdminEndpoint, deps: AdminDeps): AddRoute 
 }
 
 /**
- * Decides before asking for any setting: the API when the service answers, the registry file when
+ * Decides before asking for any setting: the API when the service answers, the registry in the db when
  * a local service that runs from this machine's files is down, else refused (reason printed).
  */
 async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<AddRoute> {
@@ -146,9 +146,9 @@ async function recheckStopped(route: RegistryRoute, deps: AdminDeps): Promise<Ad
 }
 
 /**
- * Adds the bot to the registry file next to `configPath`, for a service that isn't running.
- * Refuses while the registry has no seed but a config file exists: the service would then seed
- * its first bot under a later id, so it has to start once first. Returns the exit code.
+ * Adds the bot to the registry in jaypost.db next to `configPath`, for a service that isn't
+ * running. Refuses while the registry has no seed but a config file exists: the service would then
+ * seed its first bot under a later id, so it has to start once first. Returns the exit code.
  */
 function addBotToRegistry(
   configPath: string,
@@ -157,7 +157,22 @@ function addBotToRegistry(
   args: BotAddArgs,
   deps: AdminDeps,
 ): number {
-  const store = new RegistryStore(resolveRegistryPath(configPath))
+  const database = openDatabase(resolveDatabasePath(configPath))
+  try {
+    return addBotToStore(new RegistryStore(database), configPath, provider, settings, args, deps)
+  } finally {
+    database.close()
+  }
+}
+
+function addBotToStore(
+  store: RegistryStore,
+  configPath: string,
+  provider: Provider,
+  settings: SettingValues,
+  args: BotAddArgs,
+  deps: AdminDeps,
+): number {
   const registry = store.load()
   if (registry.seed === undefined && existsSync(configPath)) {
     deps.printError(
@@ -186,7 +201,7 @@ function addBotToRegistry(
 /**
  * Asks for a provider and its settings (never the owner), checks them and adds the bot through
  * the admin API. When the local service is down and runs from this machine's files, writes the
- * registry file instead; a stopped container has to be started first. Returns 0, 1 on failure,
+ * registry in jaypost.db instead; a stopped container has to be started first. Returns 0, 1 on failure,
  * 130 on Ctrl-C. The bot token is never printed.
  */
 export function runBotAdd(args: BotAddArgs, deps: AdminDeps): Promise<number> {

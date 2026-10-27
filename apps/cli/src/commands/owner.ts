@@ -1,10 +1,11 @@
 import {
+  openDatabase,
   PROVIDER_ENV_VAR,
   readConfigFile,
   RegistryStore,
   resetPairing,
   resolveConfigPath,
-  resolveRegistryPath,
+  resolveDatabasePath,
   updateConfigFile,
 } from '@jaypost/store'
 import type { Registry } from '@jaypost/store'
@@ -40,13 +41,18 @@ export function runOwner(
     if (owner === undefined) {
       return 0
     }
-    const store = new RegistryStore(resolveRegistryPath(path))
-    const registry = store.load()
-    if (args[0] === 'get') {
-      printOwner(registry, owner.parse(file[owner.configKey]))
-      return 0
+    const database = openDatabase(resolveDatabasePath(path))
+    try {
+      const store = new RegistryStore(database)
+      const registry = store.load()
+      if (args[0] === 'get') {
+        printOwner(registry, owner.parse(file[owner.configKey]))
+        return 0
+      }
+      clearSeedPairing(store, registry)
+    } finally {
+      database.close()
     }
-    clearSeedPairing(store, registry)
     updateConfigFile(path, { [owner.configKey]: null })
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error))
