@@ -29,6 +29,13 @@ export {
   writeTokenFile,
 } from './auth/index.ts'
 export type { ApiAuth, ClientToken } from './auth/index.ts'
+export {
+  DATABASE_FILE_NAME,
+  openDatabase,
+  removeDatabaseFiles,
+  resolveDatabasePath,
+  SCHEMA_VERSION,
+} from './database/index.ts'
 export { URL_ENV_VAR } from './config/constants.ts'
 export {
   APPROVERS_ENV_VAR,
