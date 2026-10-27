@@ -144,7 +144,6 @@ test('logs and keeps going when a write fails', () => {
   expect(() => store.addRequest(REQUEST)).not.toThrow()
   expect(() => store.addRequest(REQUEST_TWO)).not.toThrow()
   expect(log).toHaveBeenCalledTimes(2)
-  expect(log).toHaveBeenCalledTimes(2)
 })
 
 test('logs and loads empty when the db cannot be read', () => {

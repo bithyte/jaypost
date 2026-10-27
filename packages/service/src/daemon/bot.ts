@@ -23,8 +23,8 @@ function recipientFor(person: string): string | undefined {
 /**
  * Starts one bot for everyone paired on it: its provider runtime, questions, notifications, each
  * person's quiet hours, and pairing with the codes `people` has pending at each attempt. State is
- * kept in `options.database` and so is its question log; every log line starts with `[<bot id>]`. Throws an Error
- * with the provider's reason when credentials are rejected.
+ * kept in `options.database` and so is its question log; every log line starts with `[<bot id>]`.
+ * Throws an Error with the provider's reason when credentials are rejected.
  */
 export async function startBot(options: BotOptions): Promise<RunningBot> {
   const { record, provider, people } = options

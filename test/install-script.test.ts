@@ -161,7 +161,7 @@ test('points to npx on an unsupported os', async () => {
   const result = await runScript(home, path, 'http://127.0.0.1:9')
   expect(result.status).toBe(1)
   expect(result.stderr).toBe(
-    'jaypost install: no binary for MINGW64_NT-10.0; use npx jaypost init instead (needs Node 24+)\n',
+    'jaypost install: no binary for MINGW64_NT-10.0; use npx jaypost init instead (needs Node 24.15+)\n',
   )
 })
 

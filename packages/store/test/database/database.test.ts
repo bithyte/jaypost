@@ -35,6 +35,15 @@ test('resolves jaypost.db next to the config', () => {
   expect(resolveDatabasePath('/data/config.json')).toBe('/data/jaypost.db')
 })
 
+test('sets the busy timeout before anything else can lock', () => {
+  const database = openDatabase(createPath())
+  try {
+    expect(database.prepare('PRAGMA busy_timeout').get()).toEqual({ timeout: 5000 })
+  } finally {
+    database.close()
+  }
+})
+
 test('creates the schema at version 1', () => {
   const database = openDatabase(createPath())
   try {

@@ -3,6 +3,7 @@ export const DATABASE_FILE_NAME = 'jaypost.db'
 export const SCHEMA_VERSION = 1
 
 export const BUSY_TIMEOUT_MS = 5_000
+export const WAL_ATTEMPT_COUNT = 3
 
 export const DATABASE_FILE_MODE = 0o600
 

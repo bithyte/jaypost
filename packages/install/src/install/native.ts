@@ -236,7 +236,8 @@ export function printPathHint(
 }
 
 /**
- * Deletes config, the admin key, the db (with its wal and shm files) and the binary copy; for an npm install prints how to remove the package.
+ * Deletes config, the admin key, the db (with its wal and shm files) and the binary copy; for an
+ * npm install prints how to remove the package.
  */
 export function purgeServiceFiles(
   record: InstallRecord,

@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { isDeepStrictEqual } from 'node:util'
+import { findDatabasePath } from '../database/index.ts'
 import { parseToken, readTokenFile, resolveClientSecret, writeTokenFile } from '../auth/token.ts'
 import type { ClientToken } from '../auth/types.ts'
 import { ADMIN_KEY_ENV_VAR, REGISTRY_VERSION } from './constants.ts'
@@ -97,20 +98,22 @@ export class RegistryStore {
   }
 
   #path(): string {
-    return this.#database.location() ?? ':memory:'
+    return findDatabasePath(this.#database) ?? this.#database.location() ?? ':memory:'
   }
 
   /** The registry's rows as an unchecked object; undefined when a JSON column doesn't parse. */
   #readRaw(): unknown {
     const database = this.#database
-    const counters = new Map(
-      database
-        .prepare('SELECT name, value FROM counters')
-        .all()
-        .map((row) => [row.name, row.value]),
-    )
-    const seedRow = database.prepare('SELECT * FROM seed WHERE only = 1').get()
+    // One read transaction, so a concurrent write from the service can't tear the snapshot.
+    database.exec('BEGIN')
     try {
+      const counters = new Map(
+        database
+          .prepare('SELECT name, value FROM counters')
+          .all()
+          .map((row) => [row.name, row.value]),
+      )
+      const seedRow = database.prepare('SELECT * FROM seed WHERE only = 1').get()
       return {
         version: REGISTRY_VERSION,
         lastIds: Object.fromEntries(COUNTER_NAMES.map((name) => [name, counters.get(name) ?? 0])),
@@ -124,6 +127,8 @@ export class RegistryStore {
         return undefined
       }
       throw error
+    } finally {
+      database.exec('COMMIT')
     }
   }
 }

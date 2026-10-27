@@ -314,7 +314,7 @@ function createAdminPaths() {
         operationId: 'removeBot',
         summary: 'Remove a bot with its pairings and keys',
         description:
-          'Stops the bot. Its open questions are answered with their timeout option. Its log files stay on disk.',
+          'Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its pairings, keys and saved state are deleted.',
         parameters: [idParameter('BotId')],
         responses: {
           '200': jsonResponse(
@@ -447,7 +447,7 @@ function createAdminPaths() {
         operationId: 'readAdminLog',
         summary: "Every bot's questions",
         description:
-          'Oldest first, each with its bot. `pairing` and `key` may name removed ones, so their history stays readable.',
+          'Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `pairing` and `key` may name removed ones, so their history stays readable.',
         saves: false,
         parameters: [
           filterParameter('bot', "Only this bot's questions."),

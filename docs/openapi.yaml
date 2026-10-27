@@ -359,7 +359,7 @@ paths:
         - adminKey: []
       operationId: removeBot
       summary: Remove a bot with its pairings and keys
-      description: Stops the bot. Its open questions are answered with their timeout option. Its log files stay on disk.
+      description: Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its pairings, keys and saved state are deleted.
       parameters:
         - $ref: "#/components/parameters/BotId"
       responses:

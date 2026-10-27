@@ -228,7 +228,7 @@ test('legacy, 0.4.0 and 0.9.0 installs are too old and nothing runs', async () =
     const targets = setup('', '1.0.0', recordVersion)
     expect(await runLog({}, deps(targets))).toBe(1)
     expect(err).toEqual([
-      `the installed service (${recordVersion}) doesn't keep a log; run jaypost init to upgrade`,
+      `the installed service (${recordVersion}) keeps its log where this CLI can't read it; run jaypost init to upgrade`,
     ])
     expect(targets.systemd.readAuditLog).not.toHaveBeenCalled()
   }

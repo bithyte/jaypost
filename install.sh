@@ -17,13 +17,13 @@ fail() {
 case "$(uname -s)" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
-  *) fail "no binary for $(uname -s); use npx jaypost init instead (needs Node 24+)" ;;
+  *) fail "no binary for $(uname -s); use npx jaypost init instead (needs Node 24.15+)" ;;
 esac
 
 case "$(uname -m)" in
   x86_64 | amd64) arch=x64 ;;
   aarch64 | arm64) arch=arm64 ;;
-  *) fail "no binary for $(uname -m); use npx jaypost init instead (needs Node 24+)" ;;
+  *) fail "no binary for $(uname -m); use npx jaypost init instead (needs Node 24.15+)" ;;
 esac
 
 # A shell running under Rosetta reports x86_64 on Apple silicon; the native binary is better

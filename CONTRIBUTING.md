@@ -1,6 +1,6 @@
 # Contributing
 
-You need Node 24+ and pnpm (any recent version; it switches itself to the one this repo pins).
+You need Node 24.15+ and pnpm (any recent version; it switches itself to the one this repo pins).
 
 ```
 pnpm install

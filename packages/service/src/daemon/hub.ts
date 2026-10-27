@@ -270,7 +270,8 @@ export class Hub implements AdminApi {
 
   /**
    * Removes the bot with its pairings and keys, then stops its runtime, rejecting every open
-   * question with its timeout option. Its files stay. Throws when the save fails.
+   * question with its timeout option. Its questions stay readable in the log until they're 30
+   * days old; its pairings, keys and saved state are deleted. Throws when the save fails.
    */
   async removeBot(botId: string): Promise<RemovedKeys | AdminFailure> {
     const result = removeBot(this.#registry, botId)
@@ -439,9 +440,10 @@ export class Hub implements AdminApi {
   }
 
   /**
-   * Every bot's questions, removed bots' included (or one bot's, stored or not), each with its bot, merged oldest first and then
-   * filtered. Lines from before keys existed are the seed key's. `pairing` and `key` may name
-   * removed ones, so their history stays readable. Throws when a log can't be read.
+   * Every bot's questions, removed bots' included (or one bot's, stored or not), each with its bot,
+   * merged oldest first and then filtered. Lines from before keys existed are the seed key's.
+   * `pairing` and `key` may name removed ones, so their history stays readable. Throws when a log
+   * can't be read.
    */
   readLog(query: AdminLogQuery): AuditReadResult | AdminFailure {
     const { entries, skippedCount } = readAuditEntries(this.#database, this.#now(), query.bot)

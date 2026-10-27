@@ -3,12 +3,15 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import {
   BUSY_TIMEOUT_MS,
+  WAL_ATTEMPT_COUNT,
   DATABASE_FILE_MODE,
   DATABASE_FILE_NAME,
   DATABASE_FILE_SUFFIXES,
   SCHEMA_SQL,
   SCHEMA_VERSION,
 } from './constants.ts'
+
+const openedPaths = new WeakMap<DatabaseSync, string>()
 
 /** Path of the database file: `jaypost.db` in the same directory as the config file. */
 export function resolveDatabasePath(configPath: string): string {
@@ -26,9 +29,10 @@ export function openDatabase(path: string): DatabaseSync {
   let database: DatabaseSync | undefined
   try {
     database = new DatabaseSync(path)
-    database.exec('PRAGMA journal_mode = WAL')
-    database.exec('PRAGMA foreign_keys = ON')
+    // First, so the WAL switch below waits on a racing opener instead of failing.
     database.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
+    enableWal(database)
+    database.exec('PRAGMA foreign_keys = ON')
     ensureSchema(database)
   } catch (error) {
     closeQuietly(database)
@@ -40,7 +44,16 @@ export function openDatabase(path: string): DatabaseSync {
     const reason = error instanceof Error ? error.message : String(error)
     throw new Error(`database ${JSON.stringify(path)} can't be opened: ${reason}`)
   }
+  openedPaths.set(database, path)
   return database
+}
+
+/**
+ * The path `openDatabase` was given for `database`, as the caller wrote it (location() resolves
+ * symlinks, so it can name another path). Undefined for handles opened elsewhere.
+ */
+export function findDatabasePath(database: DatabaseSync): string | undefined {
+  return openedPaths.get(database)
 }
 
 /** Deletes the database and its `-wal` and `-shm` files; missing files are fine. */
@@ -68,6 +81,21 @@ function createOwnerOnlyFile(path: string): void {
     fchmodSync(fd, DATABASE_FILE_MODE)
   } finally {
     closeSync(fd)
+  }
+}
+
+// Switching a fresh file to WAL can fail with SQLITE_BUSY right away (the busy handler isn't
+// consulted when two openers collide there), but the winner finishes the switch in moments.
+function enableWal(database: DatabaseSync): void {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      database.exec('PRAGMA journal_mode = WAL')
+      return
+    } catch (error) {
+      if (attempt === WAL_ATTEMPT_COUNT || !String(error).includes('locked')) {
+        throw error
+      }
+    }
   }
 }
 
