@@ -313,6 +313,78 @@ test('remote list on an empty book prints No remotes.', () => {
   }
 })
 
+test('jaypost key list is an unknown command', async () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  for (const command of [
+    ['key', 'list'],
+    ['bot', 'list'],
+    ['pairing', 'list'],
+    ['admin-key', 'rotate'],
+  ]) {
+    write.mockClear()
+    expect(await main(command)).toBe(2)
+    expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toMatch(
+      /unknown command/,
+    )
+  }
+})
+
+test('admin --help lists bot, key, pairing, rotate-key and log', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['admin', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
+  for (const command of ['bot', 'key', 'pairing', 'rotate-key', 'log']) {
+    expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
+  }
+  expect(help).toContain('-s, --service <name>')
+})
+
+test('jaypost admin key list -s x and jaypost admin -s x key list both reach the remote x', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-admin-'))
+  const other = await listenForRequests()
+  const x = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'), { recursive: true })
+  writeFileSync(
+    join(directory, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      remotes: [
+        {
+          name: 'other',
+          url: `http://127.0.0.1:${other.port}/`,
+          adminKey: `jpa_${'o'.repeat(43)}`,
+        },
+        { name: 'x', url: `http://127.0.0.1:${x.port}/`, adminKey: `jpa_${'x'.repeat(43)}` },
+      ],
+      bots: [],
+    }),
+  )
+  vi.stubEnv('HOME', directory)
+  vi.stubEnv('XDG_CONFIG_HOME', directory)
+  vi.stubEnv('JAYPOST_URL', '')
+  vi.stubEnv('JAYPOST_ADMIN_KEY', '')
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    await main(['admin', 'key', 'list', '-s', 'x'])
+    await main(['admin', '-s', 'x', 'key', 'list'])
+    await main(['admin', 'key', 'list', '--service', 'x'])
+  } finally {
+    other.close()
+    x.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+  expect(x.urls).toEqual(['/admin/keys', '/admin/keys', '/admin/keys'])
+  expect(other.urls).toEqual([])
+})
+
+test('admin key create rejects --save with --invite and --as without --save with 2', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await main(['admin', 'key', 'create', '--bot', 'b1', '--save', '--invite'])).toBe(2)
+  expect(await main(['admin', 'key', 'create', '--bot', 'b1', '--as', 'ops'])).toBe(2)
+})
+
 test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['log'], ['status']])(
   '%s -b with an unknown alias exits 1 and lists the known ones',
   (...command) => {

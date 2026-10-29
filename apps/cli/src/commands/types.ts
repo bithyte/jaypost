@@ -1,4 +1,4 @@
-import type { ClientToken, Exec } from '@jaypost/store'
+import type { Book, ClientToken, Exec } from '@jaypost/store'
 import type { AdminCaller, AttachmentSource, ResolvedBot, ServiceEndpoint } from '@jaypost/client'
 import type {
   MessageFormat,
@@ -361,12 +361,15 @@ export type AdminKeyLookup =
   | { readonly kind: 'missing'; readonly message: string }
 
 /**
- * Where the admin commands send their calls: `JAYPOST_URL` (its key from `JAYPOST_ADMIN_KEY`), or
- * the service on this machine (an install, or none with the config's port), or why neither works.
+ * Where the admin commands send their calls: a remote from the book or `JAYPOST_URL` (its key from
+ * `JAYPOST_ADMIN_KEY`), or the service on this machine (an install, or none with the config's
+ * port), or why none works.
  */
 export type AdminEndpoint =
   | {
       readonly kind: 'remote'
+      /** The book's name for the remote; undefined for `JAYPOST_URL`. */
+      readonly name: string | undefined
       readonly endpoint: ServiceEndpoint
       readonly adminKey: AdminKeyLookup
     }
@@ -405,6 +408,11 @@ export type OpenedAdmin =
     }
   | { readonly kind: 'failed'; readonly message: string }
 
+/** The contact book, or why it can't be read (the message names the file, never a value). */
+export type LoadedBook =
+  | { readonly kind: 'loaded'; readonly book: Book }
+  | { readonly kind: 'failed'; readonly message: string }
+
 /** Everything the admin commands touch outside themselves, injected for tests. */
 export type AdminDeps = {
   readonly env: NodeJS.ProcessEnv
@@ -422,6 +430,18 @@ export type AdminDeps = {
   /** Defaults to the current time; stamps a bot `bot add` writes straight to the registry. */
   readonly now?: () => Date
   readonly signal?: AbortSignal
+  /** The contact book: remotes, the local admin key, and where `key create --save` writes. */
+  readonly bookPath: string
+  /** The remote `-s` names; undefined picks the target as `openAdmin` describes. */
+  readonly service: string | undefined
+  /** True on a terminal; only then may a command ask before replacing a book entry. */
+  readonly isInteractive: boolean
+}
+
+/** What `admin log` needs on top of `AdminDeps`. */
+export type AdminLogDeps = AdminDeps & {
+  /** This CLI's version; an install recorded with it is read whatever its number. */
+  readonly version: string
 }
 
 /** Every admin command takes `--json`. */
@@ -435,13 +455,22 @@ export type BotAddArgs = AdminOutputArgs & {
 /** `bot remove` and `pairing remove`; `yes` skips the confirmation. */
 export type AdminRemoveArgs = AdminOutputArgs & { readonly id: string; readonly yes?: boolean }
 
-/** Exactly one of `bot`, `pairing` and `sameAs` names the pairing the key points to. */
+/**
+ * Exactly one of `bot`, `pairing` and `sameAs` names the pairing the key points to. At most one of
+ * `save` and `invite`; `as` only with `save`.
+ */
 export type KeyCreateArgs = AdminOutputArgs & {
   readonly bot?: string
   readonly pairing?: string
   readonly sameAs?: string
   readonly label?: string
   readonly externalId?: string
+  /** Also save the key to this machine's book as a bot. */
+  readonly save?: boolean
+  /** The alias `save` uses instead of the bot's label, display name or id. */
+  readonly as?: string
+  /** Print a `jaypost join` line for the person instead of the bare key; remotes only. */
+  readonly invite?: boolean
 }
 
 export type KeyListArgs = AdminOutputArgs & { readonly bot?: string; readonly pairing?: string }
@@ -458,3 +487,12 @@ export type AdminIdArgs = AdminOutputArgs & { readonly id: string }
 export type PairingCreateArgs = AdminOutputArgs & { readonly bot: string }
 
 export type PairingListArgs = AdminOutputArgs & { readonly bot?: string }
+
+/** Parsed `admin log` flags; no `bot`, `pairing` or `key` means every bot's questions. */
+export type AdminLogArgs = LogArgs & {
+  readonly bot?: string
+  readonly pairing?: string
+  readonly key?: string
+  /** Every bot's questions; the same as giving no filter flag. */
+  readonly all?: boolean
+}

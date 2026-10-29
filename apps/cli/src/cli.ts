@@ -32,6 +32,7 @@ import {
   defaultFetchStatus,
   runAdminKeyRotate,
   runAdminKeyShow,
+  runAdminLog,
   runBotAdd,
   runBotList,
   runBotRemove,
@@ -71,6 +72,7 @@ import { createProgress, formatOnRail, resolveProgressMode } from './progress/in
 import type { Progress } from './progress/index.ts'
 import type {
   AdminDeps,
+  AdminLogArgs,
   BookDeps,
   DirectSendDeps,
   InitArgs,
@@ -101,6 +103,8 @@ import { VERSION } from './constants.ts'
 const DIGITS_PATTERN = /^\d+$/
 
 const BOT_FLAGS = '-b, --bot <alias>'
+
+const JSON_HELP = 'print the answer as JSON'
 
 const BOT_DESCRIPTION =
   'contact book bot to use (default: JAYPOST_BOT, then JAYPOST_URL/JAYPOST_TOKEN, then the book default)'
@@ -646,8 +650,8 @@ function runUpdateCommand(isFinish: boolean): Promise<number> {
   )
 }
 
-/** What the admin commands use; prompts abort with `signal`. */
-function createAdminDeps(signal?: AbortSignal): AdminDeps {
+/** What the admin commands use, aimed at the `-s` remote; prompts abort with `signal`. */
+function createAdminDeps(service: string | undefined, signal?: AbortSignal): AdminDeps {
   const paths = resolveInstallPaths()
   return {
     env: process.env,
@@ -658,23 +662,33 @@ function createAdminDeps(signal?: AbortSignal): AdminDeps {
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
     fetchStatus: defaultFetchStatus,
+    bookPath: resolveBookPath(process.env),
+    service,
+    isInteractive: process.stdin.isTTY === true,
     ...(signal === undefined ? {} : { signal }),
   }
 }
 
 /** Runs an admin command that may prompt, so Ctrl-C ends the prompt with exit 130. */
-function runPromptingAdminCommand(run: (deps: AdminDeps) => Promise<number>): Promise<number> {
+function runPromptingAdminCommand(
+  service: string | undefined,
+  run: (deps: AdminDeps) => Promise<number>,
+): Promise<number> {
   return runWithSignals(
-    (controller) => run(createAdminDeps(controller.signal)),
+    (controller) => run(createAdminDeps(service, controller.signal)),
     SETUP_SIGNALS,
     SETUP_RERAISED,
   )
 }
 
-/** The bot, key, pairing and admin-key commands, which call the admin routes. */
-function addAdminCommands(program: Command, setCode: (code: number) => void): void {
-  const jsonHelp = 'print the answer as JSON'
-  const bot = program.command('bot').description("add, list and remove the service's bots")
+/** The `-s` remote of an `admin` subcommand, given before or after the subcommand. */
+function findService(command: Command): string | undefined {
+  return command.optsWithGlobals<{ readonly service?: string }>().service
+}
+
+/** The `admin bot` commands. */
+function addAdminBotCommands(admin: Command, setCode: (code: number) => void): void {
+  const bot = admin.command('bot').description("add, list and remove the service's bots")
   bot
     .command('add')
     .description('add a bot; asks for its settings')
@@ -684,33 +698,48 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
       ),
     )
     .option('--label <text>', 'a name for the bot')
-    .option('--json', jsonHelp)
+    .option('--json', JSON_HELP)
     .action(
-      async (options: {
-        readonly provider?: string
-        readonly label?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runPromptingAdminCommand((deps) => runBotAdd(options, deps)))
+      async (
+        options: { readonly provider?: string; readonly label?: string; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) => runBotAdd(options, deps)),
+        )
       },
     )
   bot
     .command('list')
     .description('show the bots with their state, pairings and keys')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly json?: boolean }) => {
-      setCode(await runBotList(options, createAdminDeps()))
+    .option('--json', JSON_HELP)
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runBotList(options, createAdminDeps(findService(command))))
     })
   bot
     .command('remove')
     .description('remove a bot with its pairings and keys')
     .argument('<id>', 'bot id, such as b2')
     .option('-y, --yes', "don't ask first")
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
-      setCode(await runPromptingAdminCommand((deps) => runBotRemove({ id, ...options }, deps)))
-    })
-  const key = program.command('key').description('create, list, label and revoke API keys')
+    .option('--json', JSON_HELP)
+    .action(
+      async (
+        id: string,
+        options: { readonly yes?: boolean; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runBotRemove({ id, ...options }, deps),
+          ),
+        )
+      },
+    )
+}
+
+/** The `admin key` commands. */
+function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): void {
+  const key = admin.command('key').description('create, list, label and revoke API keys')
   key
     .command('create')
     .description('create an API key and print it once')
@@ -719,17 +748,30 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
     .option('--same-as <key id>', 'for the pairing of this key')
     .option('--label <text>', 'a free-form label')
     .option('--external-id <id>', 'a free-form id from another system')
-    .option('--json', jsonHelp)
+    .option('--save', "also save the key to this machine's contacts")
+    .option('--as <alias>', "with --save, the contact's name (default: the bot's name)")
+    .option('--invite', 'print a jaypost join line to send instead of the key (remotes only)')
+    .option('--json', JSON_HELP)
     .action(
-      async (options: {
-        readonly bot?: string
-        readonly pairing?: string
-        readonly sameAs?: string
-        readonly label?: string
-        readonly externalId?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runKeyCreate(options, createAdminDeps()))
+      async (
+        options: {
+          readonly bot?: string
+          readonly pairing?: string
+          readonly sameAs?: string
+          readonly label?: string
+          readonly externalId?: string
+          readonly save?: boolean
+          readonly as?: string
+          readonly invite?: boolean
+          readonly json?: boolean
+        },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runKeyCreate(options, deps),
+          ),
+        )
       },
     )
   key
@@ -737,14 +779,13 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
     .description("show the keys (never the keys' values)")
     .option('--bot <id>', "only this bot's keys")
     .option('--pairing <id>', "only this pairing's keys")
-    .option('--json', jsonHelp)
+    .option('--json', JSON_HELP)
     .action(
-      async (options: {
-        readonly bot?: string
-        readonly pairing?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runKeyList(options, createAdminDeps()))
+      async (
+        options: { readonly bot?: string; readonly pairing?: string; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(await runKeyList(options, createAdminDeps(findService(command))))
       },
     )
   key
@@ -753,60 +794,117 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
     .argument('<id>', 'key id, such as k2')
     .option('--label <text>', 'the new label; "" clears it')
     .option('--external-id <id>', 'the new external id; "" clears it')
-    .option('--json', jsonHelp)
+    .option('--json', JSON_HELP)
     .action(
       async (
         id: string,
         options: { readonly label?: string; readonly externalId?: string; readonly json?: boolean },
+        command: Command,
       ) => {
-        setCode(await runKeyLabel({ id, ...options }, createAdminDeps()))
+        setCode(await runKeyLabel({ id, ...options }, createAdminDeps(findService(command))))
       },
     )
   key
     .command('revoke')
     .description('revoke a key; its pairing stays')
     .argument('<id>', 'key id, such as k2')
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly json?: boolean }) => {
-      setCode(await runKeyRevoke({ id, ...options }, createAdminDeps()))
+    .option('--json', JSON_HELP)
+    .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runKeyRevoke({ id, ...options }, createAdminDeps(findService(command))))
     })
-  const pairing = program
+}
+
+/** The `admin pairing` commands. */
+function addAdminPairingCommands(admin: Command, setCode: (code: number) => void): void {
+  const pairing = admin
     .command('pairing')
     .description('create, list and remove pairings between a bot and a person')
   pairing
     .command('create')
     .description('create a pairing with no key (an approver) and print its code')
     .requiredOption('--bot <id>', 'the bot to pair with')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly bot: string; readonly json?: boolean }) => {
-      setCode(await runPairingCreate(options, createAdminDeps()))
-    })
+    .option('--json', JSON_HELP)
+    .action(
+      async (options: { readonly bot: string; readonly json?: boolean }, command: Command) => {
+        setCode(await runPairingCreate(options, createAdminDeps(findService(command))))
+      },
+    )
   pairing
     .command('list')
     .description('show the pairings and the codes of pending ones')
     .option('--bot <id>', "only this bot's pairings")
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly bot?: string; readonly json?: boolean }) => {
-      setCode(await runPairingList(options, createAdminDeps()))
-    })
+    .option('--json', JSON_HELP)
+    .action(
+      async (options: { readonly bot?: string; readonly json?: boolean }, command: Command) => {
+        setCode(await runPairingList(options, createAdminDeps(findService(command))))
+      },
+    )
   pairing
     .command('remove')
     .description('remove a pairing and revoke its keys')
     .argument('<id>', 'pairing id, such as p2')
     .option('-y, --yes', "don't ask first")
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
-      setCode(await runPromptingAdminCommand((deps) => runPairingRemove({ id, ...options }, deps)))
+    .option('--json', JSON_HELP)
+    .action(
+      async (
+        id: string,
+        options: { readonly yes?: boolean; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runPairingRemove({ id, ...options }, deps),
+          ),
+        )
+      },
+    )
+}
+
+/**
+ * The `admin` group, which calls a service's admin routes: the remote `-s` names, else the env,
+ * the local install or the only remote. Also the hidden top-level `admin-key show`.
+ */
+function addAdminCommands(program: Command, setCode: (code: number) => void): void {
+  const admin = program
+    .command('admin')
+    .description("manage a service's bots, keys and pairings")
+    .option('-s, --service <name>', 'the remote to manage (default: the local service)')
+  addAdminBotCommands(admin, setCode)
+  addAdminKeyCommands(admin, setCode)
+  addAdminPairingCommands(admin, setCode)
+  admin
+    .command('rotate-key')
+    .description('replace the admin key, print the new one and save it to your contacts')
+    .option('--json', JSON_HELP)
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runAdminKeyRotate(options, createAdminDeps(findService(command))))
     })
-  const adminKey = program.command('admin-key').description('rotate the admin key')
-  adminKey
-    .command('rotate')
-    .description('replace the admin key and print the new one')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly json?: boolean }) => {
-      setCode(await runAdminKeyRotate(options, createAdminDeps()))
+  admin
+    .command('log')
+    .description("show every bot's questions (the service's whole log)")
+    .option(
+      '--since <when>',
+      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
+      parseSinceOption,
+    )
+    .option('--project <name>', 'only questions from this project', parseProjectOption)
+    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
+    .option('--bot <id>', "only this bot's questions")
+    .option('--pairing <id>', "only this pairing's questions")
+    .option('--key <id>', "only this key's questions")
+    .option('--all', "every bot's questions (the default)")
+    .option('--json', 'print one JSON entry per line')
+    .action(async (options: AdminLogArgs, command: Command) => {
+      setCode(
+        await runAdminLog(options, {
+          ...createAdminDeps(findService(command)),
+          print: (text) => writeAll(`${text}\n`),
+          version: VERSION,
+        }),
+      )
     })
   // Runs inside containers to print the admin key from the data volume.
+  const adminKey = program.command('admin-key', { hidden: true })
   adminKey.command('show', { hidden: true }).action(() => {
     setCode(
       runAdminKeyShow(

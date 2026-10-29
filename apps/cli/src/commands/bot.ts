@@ -69,7 +69,7 @@ function withoutOwner(provider: Provider, settings: SettingValues): SettingValue
 function refuseStopped(endpoint: LocalAdminEndpoint, deps: AdminDeps): AddRoute {
   const name = endpoint.install === undefined ? 'jaypost' : endpoint.install.target
   deps.printError(
-    `The ${name} service isn't running. Start it first, then run jaypost bot add again.`,
+    `The ${name} service isn't running. Start it first, then run jaypost admin bot add again.`,
   )
   return { kind: 'refused' }
 }
@@ -177,7 +177,7 @@ function addBotToStore(
   const registry = store.load()
   if (registry.seed === undefined && existsSync(configPath)) {
     deps.printError(
-      "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost bot add again.",
+      "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost admin bot add again.",
     )
     return 1
   }

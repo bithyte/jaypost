@@ -48,7 +48,7 @@ export const PAIRED_APPROVERS_HEADING =
 export const KEY_SHOWN_ONCE_NOTE = "This key isn't shown again; store it now."
 /** `bot add` without an admin key, when the service it meant to write behind came up meanwhile. */
 export const STARTED_MEANWHILE_MESSAGE =
-  'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.'
+  'The service started while the settings were asked, so nothing was written. Run jaypost admin bot add again.'
 
 /** The base URL of the service on this machine at `port`. */
 export function toLocalUrl(port: number): URL {

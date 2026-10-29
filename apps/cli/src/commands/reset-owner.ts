@@ -210,7 +210,8 @@ async function resetOwnerPairing(
     return found
   }
   // Opened only now: a service started a moment ago may have just written its admin key.
-  const opened = await openAdmin(deps)
+  // reset-owner only works on the local install, which `openAdmin` picks without -s.
+  const opened = await openAdmin({ ...deps, service: undefined })
   if (opened.kind !== 'opened') {
     return { kind: 'failed', message: opened.message }
   }

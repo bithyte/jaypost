@@ -7,12 +7,14 @@ import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   loadSeed,
   openDatabase,
+  readBook,
   RegistryStore,
   resolveAdminKeyPath,
   resolveDatabasePath,
   writeAdminKeyFile,
+  writeBook,
 } from '@jaypost/store'
-import type { Registry } from '@jaypost/store'
+import type { BookRemote, Registry } from '@jaypost/store'
 import { ADMIN_KEY_REJECTED_MESSAGE } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -45,6 +47,7 @@ const CODES = ['PAIR2222', 'PAIR3333', 'PAIR4444']
 const PROVIDERS = [createPairingFakeProvider(), createFakeProvider()] as const
 
 let tmp: string
+let bookPath: string
 let paths: InstallPaths
 let out: string[]
 let err: string[]
@@ -52,6 +55,7 @@ let running: RunningService | undefined
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'admin-cli-'))
+  bookPath = join(tmp, 'bots.json')
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   out = []
   err = []
@@ -164,8 +168,21 @@ function createDeps(env: NodeJS.ProcessEnv, over: Partial<AdminDeps> = {}): Admi
     printError: (text) => err.push(text),
     fetchStatus: vi.fn<FetchStatus>(async () => UNREACHABLE_STATUS),
     now: () => new Date('2026-10-26T12:00:00Z'),
+    bookPath,
+    service: undefined,
+    isInteractive: false,
     ...over,
   }
+}
+
+/** A book holding only `remotes`. */
+function writeRemotes(...remotes: readonly BookRemote[]): void {
+  writeBook(bookPath, { version: 1, remotes, bots: [] })
+}
+
+/** `started` as a remote named `name`. */
+function remoteOf(name: string, started: Started): BookRemote {
+  return { name, url: `http://127.0.0.1:${started.port}/`, adminKey: started.adminKey }
 }
 
 function countOccurrences(text: string, part: string): number {
@@ -313,7 +330,7 @@ test('bot add without an admin key refuses the registry when the service starts 
     .mockResolvedValue({ kind: 'unauthorized' })
   expect(await runBotAdd({}, createDeps(env, { fetchStatus }))).toBe(1)
   expect(err).toEqual([
-    'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.',
+    'The service started while the settings were asked, so nothing was written. Run jaypost admin bot add again.',
   ])
   expect(fetchStatus).toHaveBeenCalledTimes(2)
   expect(readRegistry(configPath).bots).toEqual([])
@@ -382,7 +399,7 @@ test('bot add refuses the registry while a config file waits to be seeded', asyn
   }
   expect(await runBotAdd({}, createDeps(env))).toBe(1)
   expect(err).toEqual([
-    "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost bot add again.",
+    "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost admin bot add again.",
   ])
   expect(readRegistry(configPath).bots).toEqual([])
 })
@@ -406,7 +423,7 @@ test('bot add for a stopped container install says to start it first', async () 
   const deps = createDeps({ HOME: tmp }, { targets: targets({ compose }), prompt })
   expect(await runBotAdd({}, deps)).toBe(1)
   expect(err).toEqual([
-    "The compose service isn't running. Start it first, then run jaypost bot add again.",
+    "The compose service isn't running. Start it first, then run jaypost admin bot add again.",
   ])
   expect(prompt.password).not.toHaveBeenCalled()
 })
@@ -651,4 +668,94 @@ test('admin-key show fails without the file or with an invalid one, never quotin
     [`no admin key in ${JSON.stringify(keyPath)} yet; start the service once so it writes one`],
     [`admin key file ${JSON.stringify(keyPath)} isn't a valid jaypost admin key`],
   ])
+})
+
+test('admin commands pick the remote named by -s', async () => {
+  const started = await start()
+  writeRemotes(
+    { name: 'other', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'o'.repeat(43)}` },
+    remoteOf('x', started),
+  )
+  const env = { HOME: tmp, JAYPOST_URL: 'http://127.0.0.1:1', JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runBotList({}, createDeps(env, { service: 'x' }))).toBe(0)
+  expect(out).toEqual([
+    [
+      'ID  PROVIDER  LABEL  ACCOUNT  STATE    PAIRINGS  KEYS',
+      'b1  fakepair  -      fake     running  1         1',
+    ].join('\n'),
+  ])
+  expect(await runBotList({}, createDeps(env, { service: 'nope' }))).toBe(1)
+  expect(err).toEqual(['no remote "nope"; known: other, x'])
+})
+
+test('admin -s with no remotes says how to add one', async () => {
+  expect(await runBotList({}, createDeps({ HOME: tmp }, { service: 'x' }))).toBe(1)
+  expect(err).toEqual(['no remote "x"; add one with "jaypost remote add"'])
+})
+
+test('admin without -s uses the local install and saves its admin key to the book', async () => {
+  const started = await start()
+  writeRemotes({ name: 'other', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'o'.repeat(43)}` })
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const quadlet = fakeTarget('quadlet', async () => started.adminKey)
+  const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
+  expect(await runBotList({}, deps)).toBe(0)
+  expect(readBook(bookPath).local).toEqual({
+    url: `http://127.0.0.1:${started.port}/`,
+    adminKey: started.adminKey,
+  })
+  expect(statSync(bookPath).mode & 0o777).toBe(0o600)
+  expect(await runBotList({}, deps)).toBe(0)
+  expect(quadlet.readAdminKey).toHaveBeenCalledTimes(1)
+  expect(err).toEqual([])
+})
+
+test('admin without -s and no install uses the only remote', async () => {
+  const started = await start()
+  writeRemotes(remoteOf('x', started))
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(0)
+  expect(err).toEqual([])
+})
+
+test('admin without -s and two remotes asks for -s', async () => {
+  writeRemotes(
+    { name: 'a', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'a'.repeat(43)}` },
+    { name: 'b', url: 'http://127.0.0.1:2/', adminKey: `jpa_${'b'.repeat(43)}` },
+  )
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
+  expect(err).toEqual(['several remotes; pick one with -s: a, b'])
+})
+
+test('admin with a corrupt book fails naming it and leaves it alone', async () => {
+  writeFileSync(bookPath, '{not json')
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
+  expect(err).toEqual([`contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`])
+  expect(readFileSync(bookPath, 'utf8')).toBe('{not json')
+})
+
+test('admin rotate-key writes the new key to the named remote', async () => {
+  const started = await start()
+  writeRemotes(remoteOf('x', started))
+  const deps = createDeps({ HOME: tmp }, { service: 'x' })
+  expect(await runAdminKeyRotate({}, deps)).toBe(0)
+  const saved = readBook(bookPath).remotes[0]?.adminKey
+  expect(saved).toMatch(/^jpa_/)
+  expect(saved).not.toBe(started.adminKey)
+  expect(out).toEqual([`New admin key: ${saved}`])
+  expect(err).toEqual(['The old admin key stopped working. Saved the new one in your contacts.'])
+  expect(await runBotList({}, deps)).toBe(0)
+})
+
+test('admin rotate-key on the local install writes the new key to the book', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const quadlet = fakeTarget('quadlet', async () => started.adminKey)
+  const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
+  expect(await runAdminKeyRotate({ json: true }, deps)).toBe(0)
+  const { adminKey } = JSON.parse(out.join('\n'))
+  expect(readBook(bookPath).local).toEqual({
+    url: `http://127.0.0.1:${started.port}/`,
+    adminKey,
+  })
+  expect(await runBotList({}, deps)).toBe(0)
 })

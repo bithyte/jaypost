@@ -4,7 +4,7 @@ export { runAudit } from './audit.ts'
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
 export { runKeyCreate, runKeyLabel, runKeyList, runKeyRevoke } from './key.ts'
-export { runLog } from './log.ts'
+export { runAdminLog, runLog } from './log.ts'
 export { runOwner } from './owner.ts'
 export { runPairApprover } from './pair-approver.ts'
 export { runPairingCreate, runPairingList, runPairingRemove } from './pairing.ts'
@@ -26,6 +26,8 @@ export { runFinishUpdate, runUpdate } from './update.ts'
 export type {
   AdminDeps,
   AdminIdArgs,
+  AdminLogArgs,
+  AdminLogDeps,
   AdminOutputArgs,
   AdminRemoveArgs,
   BookDeps,
