@@ -308,9 +308,17 @@ test('Client with bot sends that bot key as the bearer token', async () => {
   expect(seen.authorization).toBe(`Bearer ${SECOND}`)
 })
 
-test('Client with an unknown bot rejects the call without leaking', async () => {
+test('Client with an unknown bot fails by name and sends nothing', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  writeBook(resolveBookPath(process.env), {
+    version: 1,
+    remotes: [],
+    bots: [{ alias: 'pal', url: `http://127.0.0.1:${port}/`, key: SECOND }],
+  })
   const error = await new Client({ bot: 'ghost' }).notify({ text: 'x' }).catch((e: unknown) => e)
   expect(error).toBeInstanceOf(JaypostError)
+  expect(error).toHaveProperty('message', 'no bot "ghost" in your contacts; known: pal')
+  expect(seen.url).toBeUndefined()
 })
 
 test('Client rejects bot combined with url, host, port or token', () => {

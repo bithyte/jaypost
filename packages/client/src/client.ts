@@ -1,5 +1,4 @@
-import { DEFAULT_PORT, parseToken, resolveEnvToken } from '@jaypost/store'
-import { NO_CLIENT_TOKEN } from '@jaypost/store'
+import { DEFAULT_PORT, NO_CLIENT_TOKEN, parseToken, resolveEnvToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { Caller } from './caller.ts'
 import { findEnvEndpoint, parseEndpointUrl, toLocalEndpoint } from './endpoint.ts'
@@ -23,7 +22,8 @@ export class JaypostError extends Error {
 /**
  * Asks questions and sends notifications through a running jaypost service, local or remote.
  * Calls throw `JaypostError` when the token lookup finds an unusable token, `JAYPOST_URL` is
- * unusable or the contact book can't name a bot.
+ * unusable or the contact book can't name a bot. A `Client` with `bot` or no target options reads
+ * the book once, at construction, and keeps that entry and key.
  */
 export class Client {
   #caller: Caller

@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
@@ -98,4 +98,23 @@ test('resolveBot reports an unreadable book by its path, not its contents', () =
   expect(bot.token).toEqual({ kind: 'none' })
   expect(bot.alias).toBeUndefined()
   expect(JSON.stringify(bot)).toContain(path)
+})
+
+test.each([
+  ['truncated json', `{"version":1,"bots":[{"alias":"home","key":"${KEY}"`],
+  ['garbage', `not json ${KEY}`],
+  ['wrong version', JSON.stringify({ version: 2, remotes: [], bots: [], key: KEY })],
+  [
+    'bot missing url',
+    JSON.stringify({ version: 1, remotes: [], bots: [{ alias: 'home', key: KEY }] }),
+  ],
+])('resolveBot reports a corrupt book (%s) by its path without its contents', (_name, text) => {
+  const path = resolveBookPath(envFor())
+  mkdirSync(join(path, '..'), { recursive: true })
+  writeFileSync(path, text)
+  const bot = resolveBot(envFor(), 'home')
+  expect(bot.endpoint.kind).toBe('invalid')
+  expect(bot.token).toEqual({ kind: 'none' })
+  expect(JSON.stringify(bot)).toContain(path)
+  expect(JSON.stringify(bot)).not.toContain(KEY)
 })

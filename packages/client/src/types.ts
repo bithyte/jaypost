@@ -16,7 +16,9 @@ export type ClientOptions = {
   /** Shown as `[project]` on the first line of every message, unless a call sets its own. */
   readonly project?: string
   /**
-   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, looked up on every call. Throws a `RangeError` at construction if it isn't a valid token.
+   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, looked up on every call (with `url`, `host`
+   * or `port`). Throws a `RangeError` at construction if it isn't a valid token. Without `url`,
+   * `host`, `port` or `token`, the book entry and its key are fixed at construction instead.
    */
   readonly token?: string
   /**
