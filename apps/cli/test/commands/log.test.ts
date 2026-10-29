@@ -487,6 +487,16 @@ test('admin log from the files still applies --key', async () => {
   expect(printedIds()).toEqual(['g'])
 })
 
+test('admin log --bot fails when only the files can be read', async () => {
+  const targets = await stoppedInstall(askedBy('f', '2026-10-19T06:00:00.000Z', 'k1'))
+  expect(await runAdminLog({ bot: 'b1' }, adminDeps({ HOME: tmp }, { targets }))).toBe(1)
+  expect(err).toEqual([
+    "the service didn't answer; --bot needs the service running, so start it or leave --bot out",
+  ])
+  expect(out).toEqual([])
+  expect(targets.systemd.readAuditLog).not.toHaveBeenCalled()
+})
+
 test('admin log from the files reports a failing read', async () => {
   const targets = await stoppedInstall(new Error('boom'))
   expect(await runAdminLog({}, adminDeps({ HOME: tmp }, { targets }))).toBe(1)

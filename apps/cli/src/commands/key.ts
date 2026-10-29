@@ -28,6 +28,11 @@ function formatKeys(body: KeysBody): string {
 /** Whether a book alias may be written: free, replacing it was confirmed, or not. */
 type AliasClaim = 'free' | 'taken' | 'declined'
 
+/** The book and alias `--save` writes, or refused (reason printed) before any key is made. */
+type SavePlan =
+  | { readonly kind: 'ready'; readonly book: Book; readonly alias: string }
+  | { readonly kind: 'refused' }
+
 /** The pairing code and how to use it while the pairing waits; nothing once paired. */
 function formatPairingLines(created: CreatedKey): readonly string[] {
   return created.code === undefined
@@ -75,36 +80,71 @@ async function claimAlias(book: Book, alias: string, deps: AdminDeps): Promise<A
     : 'declined'
 }
 
+/** A lookup that found nothing, worded like the service's own unknown-id errors. */
+function toUnknown(kind: 'bot' | 'pairing' | 'key', id: string): AdminResult<never> {
+  return { kind: 'failed', reason: 'notFound', message: `unknown ${kind} "${id}"` }
+}
+
 /**
- * The alias `--save` gives a key: the label of its bot, else the bot's display name, else its id.
- * The bot is `--bot`, else the one the new key belongs to.
+ * The bot the new key will belong to: `--bot`, else the bot of `--pairing`, else the bot of the
+ * `--same-as` key. Asked before the key is made, so nothing is created for a refused alias.
+ */
+async function resolveTargetBot(
+  caller: AdminCaller,
+  args: KeyCreateArgs,
+): Promise<AdminResult<string>> {
+  if (args.bot !== undefined) {
+    return { kind: 'ok', value: args.bot }
+  }
+  if (args.pairing !== undefined) {
+    const { pairing } = args
+    const pairings = await caller.listPairings({})
+    if (pairings.kind === 'failed') {
+      return pairings
+    }
+    const found = pairings.value.pairings.find((each) => each.id === pairing)
+    return found === undefined ? toUnknown('pairing', pairing) : { kind: 'ok', value: found.bot }
+  }
+  const { sameAs } = args
+  if (sameAs === undefined) {
+    return {
+      kind: 'failed',
+      reason: 'unexpected',
+      message: 'give exactly one of --bot, --pairing and --same-as',
+    }
+  }
+  const keys = await caller.listKeys({})
+  if (keys.kind === 'failed') {
+    return keys
+  }
+  const found = keys.value.keys.find((each) => each.id === sameAs)
+  return found === undefined ? toUnknown('key', sameAs) : { kind: 'ok', value: found.bot }
+}
+
+/**
+ * The alias `--save` gives the new key: `--as`, else its bot's label, else the bot's display
+ * name, else its id.
  */
 async function resolveSaveAlias(
   caller: AdminCaller,
-  created: CreatedKey,
   args: KeyCreateArgs,
 ): Promise<AdminResult<string>> {
-  let botId = args.bot
-  if (botId === undefined) {
-    const keys = await caller.listKeys({})
-    if (keys.kind === 'failed') {
-      return keys
-    }
-    botId = keys.value.keys.find((key) => key.id === created.id)?.bot
-    if (botId === undefined) {
-      return {
-        kind: 'failed',
-        reason: 'unexpected',
-        message: `the service didn't list key ${created.id}, so it wasn't saved`,
-      }
-    }
+  if (args.as !== undefined) {
+    return { kind: 'ok', value: args.as }
+  }
+  const botId = await resolveTargetBot(caller, args)
+  if (botId.kind === 'failed') {
+    return botId
   }
   const bots = await caller.listBots()
   if (bots.kind === 'failed') {
     return bots
   }
-  const bot = bots.value.bots.find((each) => each.id === botId)
-  return { kind: 'ok', value: bot?.label ?? bot?.displayName ?? botId }
+  const bot = bots.value.bots.find((each) => each.id === botId.value)
+  if (bot === undefined) {
+    return toUnknown('bot', botId.value)
+  }
+  return { kind: 'ok', value: bot.label ?? bot.displayName ?? bot.id }
 }
 
 /** An empty string clears the field (null on the wire); absent keeps it. */
@@ -153,20 +193,10 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       deps.printError('invites need a remote; add one with "jaypost remote add" and use -s')
       return 1
     }
-    // Read before the key is made, so a corrupt book or a refused --as alias costs no key.
-    const loaded = args.save === true ? loadBook(deps.bookPath) : undefined
-    if (loaded?.kind === 'failed') {
-      deps.printError(loaded.message)
+    // Everything --save needs is settled before the key is made, so a refusal creates no key.
+    const save = args.save === true ? await prepareSave(opened.caller, args, deps) : undefined
+    if (save?.kind === 'refused') {
       return 1
-    }
-    if (loaded !== undefined && args.as !== undefined) {
-      const claim = await claimAlias(loaded.book, args.as, deps)
-      if (claim !== 'free') {
-        if (claim === 'declined') {
-          deps.printError('Cancelled.')
-        }
-        return 1
-      }
     }
     const result = await opened.caller.createKey({
       ...(args.bot === undefined ? {} : { bot: args.bot }),
@@ -189,10 +219,17 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       return 0
     }
     printCreatedKey(created, args, deps, () => formatCreatedKey(created))
-    if (loaded === undefined) {
+    if (save === undefined) {
       return 0
     }
-    return saveCreatedKey(opened.caller, created, url, loaded.book, args, deps)
+    writeBook(deps.bookPath, saveBot(save.book, { alias: save.alias, url, key: created.key }))
+    const saved = `Saved as "${save.alias}" in your contacts.`
+    if (args.json) {
+      deps.printError(saved)
+    } else {
+      deps.print(saved)
+    }
+    return 0
   })
 }
 
@@ -215,43 +252,31 @@ function printCreatedKey(
 }
 
 /**
- * Saves the key, already printed, to the book as a bot on `url`. A taken alias is replaced only
- * after a confirmation on a terminal (`--as` was confirmed before the key was made). Returns the
- * exit code.
+ * Reads the book and resolves the `--save` alias, checking it is free or, on a terminal, that
+ * replacing it is confirmed. `refused` once the reason is printed.
  */
-async function saveCreatedKey(
+async function prepareSave(
   caller: AdminCaller,
-  created: CreatedKey,
-  url: string,
-  book: Book,
   args: KeyCreateArgs,
   deps: AdminDeps,
-): Promise<number> {
-  let alias = args.as
-  if (alias === undefined) {
-    const resolved = await resolveSaveAlias(caller, created, args)
-    if (resolved.kind === 'failed') {
-      deps.printError(resolved.message)
-      return 1
-    }
-    alias = resolved.value
-    const claim = await claimAlias(book, alias, deps)
-    if (claim === 'taken') {
-      return 1
-    }
-    if (claim === 'declined') {
-      deps.printError('Not saved to your contacts.')
-      return 0
-    }
+): Promise<SavePlan> {
+  const loaded = loadBook(deps.bookPath)
+  if (loaded.kind === 'failed') {
+    deps.printError(loaded.message)
+    return { kind: 'refused' }
   }
-  writeBook(deps.bookPath, saveBot(book, { alias, url, key: created.key }))
-  const saved = `Saved as "${alias}" in your contacts.`
-  if (args.json) {
-    deps.printError(saved)
-  } else {
-    deps.print(saved)
+  const alias = await resolveSaveAlias(caller, args)
+  if (alias.kind === 'failed') {
+    deps.printError(alias.message)
+    return { kind: 'refused' }
   }
-  return 0
+  const claim = await claimAlias(loaded.book, alias.value, deps)
+  if (claim === 'declined') {
+    deps.printError('Cancelled.')
+  }
+  return claim === 'free'
+    ? { kind: 'ready', book: loaded.book, alias: alias.value }
+    : { kind: 'refused' }
 }
 
 /** Prints the keys, all or those of one bot or pairing; never a key itself. */

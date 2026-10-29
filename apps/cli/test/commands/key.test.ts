@@ -36,7 +36,10 @@ const BOTS = {
   ],
 }
 const KEYS = {
-  keys: [{ id: 'k2', pairing: 'p2', bot: 'b2', createdAt: '2026-10-29T00:00:00.000Z' }],
+  keys: [{ id: 'k1', pairing: 'p2', bot: 'b2', createdAt: '2026-10-29T00:00:00.000Z' }],
+}
+const PAIRINGS = {
+  pairings: [{ id: 'p2', bot: 'b2', person: 'u1', state: 'paired', keys: ['k1'] }],
 }
 const KEY_LINES = [
   `Key k2 (pairing p2): ${KEY}`,
@@ -74,6 +77,7 @@ beforeEach(async () => {
         'POST /admin/keys': CREATED,
         'GET /admin/keys': KEYS,
         'GET /admin/bots': BOTS,
+        'GET /admin/pairings': PAIRINGS,
       }
       response.end(JSON.stringify(routes[`${request.method} ${request.url}`] ?? {}))
     })
@@ -149,7 +153,28 @@ test("key create --save stores the key under the bot's label", async () => {
     remotes: [{ name: 'x', url, adminKey: ADMIN_KEY }],
     bots: [{ alias: 'Work', url, key: KEY }],
   })
-  expect(seen).toEqual(['POST /admin/keys', 'GET /admin/keys', 'GET /admin/bots'])
+  expect(seen).toEqual(['GET /admin/keys', 'GET /admin/bots', 'POST /admin/keys'])
+})
+
+test("key create --save --pairing finds the pairing's bot before making the key", async () => {
+  writeRemoteBook()
+  expect(await runKeyCreate({ pairing: 'p2', save: true }, createDeps())).toBe(0)
+  expect(out.at(-1)).toBe('Saved as "Work" in your contacts.')
+  expect(seen).toEqual(['GET /admin/pairings', 'GET /admin/bots', 'POST /admin/keys'])
+})
+
+test('key create --save for an unknown pairing fails before making a key', async () => {
+  const book = writeRemoteBook()
+  expect(await runKeyCreate({ pairing: 'p9', save: true }, createDeps())).toBe(1)
+  expect(err).toEqual(['unknown pairing "p9"'])
+  expect(seen).toEqual(['GET /admin/pairings'])
+  expect(readBook(bookPath)).toEqual(book)
+})
+
+test('key create --save keeps a label with spaces and unicode as the alias', async () => {
+  writeRemoteBook()
+  expect(await runKeyCreate({ bot: 'b2', save: true, as: 'Équipe ops 🚀' }, createDeps())).toBe(0)
+  expect(readBook(bookPath).bots).toEqual([{ alias: 'Équipe ops 🚀', url, key: KEY }])
 })
 
 test('key create --save --as uses the alias and keeps the default', async () => {
@@ -184,11 +209,23 @@ test('key create --save asks before replacing an alias on a terminal', async () 
   expect(readBook(bookPath).bots).toEqual([{ alias: 'Work', url, key: KEY }])
 })
 
-test('key create --save off a terminal with a taken label prints the key and saves nothing', async () => {
+test('key create --save off a terminal with a taken label makes no key and prints nothing', async () => {
   const book = writeRemoteBook([{ alias: 'work', url: 'http://127.0.0.1:1/' }])
   expect(await runKeyCreate({ bot: 'b2', save: true }, createDeps())).toBe(1)
-  expect(out).toEqual([KEY_LINES])
+  expect(out).toEqual([])
   expect(err).toEqual(['a bot is already named "Work"; pick another with --as'])
+  expect(seen).toEqual(['GET /admin/bots'])
+  expect(readBook(bookPath)).toEqual(book)
+})
+
+test('key create --save declined on a terminal makes no key', async () => {
+  const book = writeRemoteBook([{ alias: 'Work', url: 'http://127.0.0.1:1/' }])
+  const confirm = vi.fn(async () => false)
+  const deps = createDeps({ isInteractive: true, prompt: createPrompts({ confirm }) })
+  expect(await runKeyCreate({ bot: 'b2', save: true }, deps)).toBe(1)
+  expect(err).toEqual(['Cancelled.'])
+  expect(out).toEqual([])
+  expect(seen).toEqual(['GET /admin/bots'])
   expect(readBook(bookPath)).toEqual(book)
 })
 

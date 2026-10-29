@@ -128,8 +128,7 @@ async function readAdminLog(filter: AdminLogFilter, deps: AdminLogDeps): Promise
       if (opened.endpoint.kind !== 'local') {
         return { kind: 'failed', message: opened.message }
       }
-      deps.printError(`${opened.message}; ${FROM_FILES_NOTE}`)
-      return readFromFiles(opened.endpoint, filter, deps)
+      return fallBackToFiles(opened.message, opened.endpoint, filter, deps)
     case 'opened': {
       const result = await opened.caller.readLog(filter)
       if (result.kind === 'ok') {
@@ -138,10 +137,29 @@ async function readAdminLog(filter: AdminLogFilter, deps: AdminLogDeps): Promise
       if (result.reason !== 'unreachable' || opened.endpoint.kind !== 'local') {
         return { kind: 'failed', message: result.message }
       }
-      deps.printError(`the service didn't answer; ${FROM_FILES_NOTE}`)
-      return readFromFiles(opened.endpoint, filter, deps)
+      return fallBackToFiles("the service didn't answer", opened.endpoint, filter, deps)
     }
   }
+}
+
+/**
+ * Says why the files are read (`reason`) and reads them. The files hold no bot ids, so `--bot`
+ * fails instead of matching nothing.
+ */
+function fallBackToFiles(
+  reason: string,
+  endpoint: LocalAdminEndpoint,
+  filter: AdminLogFilter,
+  deps: AdminLogDeps,
+): Promise<LogRead> {
+  if (filter.bot !== undefined) {
+    return Promise.resolve({
+      kind: 'failed',
+      message: `${reason}; --bot needs the service running, so start it or leave --bot out`,
+    })
+  }
+  deps.printError(`${reason}; ${FROM_FILES_NOTE}`)
+  return readFromFiles(endpoint, filter, deps)
 }
 
 /**
