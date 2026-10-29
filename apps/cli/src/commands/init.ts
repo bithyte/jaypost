@@ -10,7 +10,7 @@ import {
   writeTokenFile,
 } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
-import { describeUnauthorized, toLocalEndpoint } from '@jaypost/client'
+import { describeUnauthorized } from '@jaypost/client'
 import {
   detectTargets,
   findDefaultTarget,
@@ -25,7 +25,7 @@ import { runStep } from '../progress/index.ts'
 import { findOwnerSetting, findProvider, listSecretValues } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
 import { isNativeInstall } from './admin-access.ts'
-import { TARGET_LABELS } from './constants.ts'
+import { TARGET_LABELS, toLocalUrl } from './constants.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact, resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type { InitArgs, InitDeps } from './types.ts'
@@ -277,7 +277,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   }
   // The token just chosen, never JAYPOST_TOKEN: a stale one in the shell would fail pairing.
   const result = await deps.wait({
-    url: toLocalEndpoint(port).url,
+    url: toLocalUrl(port),
     isRunning: () => target.isRunning(installed),
     logsHint: target.logsHint(installed),
     ...(deps.signal ? { signal: deps.signal } : {}),

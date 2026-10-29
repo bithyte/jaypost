@@ -720,7 +720,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       async (
         target: TargetName | undefined,
         options: {
-          readonly bot?: string
+          readonly port?: number
           readonly tarball?: string
           readonly provider?: string
           readonly token?: boolean

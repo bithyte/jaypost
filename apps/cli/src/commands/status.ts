@@ -53,7 +53,7 @@ export async function runStatus(deps: StatusDeps): Promise<number> {
   }
   const { token } = resolved
   if (token.kind === 'unusable') {
-    print('Pairing: unknown (no usable token)')
+    print(`Pairing: unknown (no usable token: ${token.message})`)
     return 1
   }
   const fetched = await deps.fetchStatus(url, token.kind === 'token' ? token.token : undefined)

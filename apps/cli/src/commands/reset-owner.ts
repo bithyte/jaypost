@@ -1,9 +1,4 @@
-import {
-  ADMIN_TOO_OLD_MESSAGE,
-  describeUnauthorized,
-  findEnvEndpoint,
-  toLocalEndpoint,
-} from '@jaypost/client'
+import { ADMIN_TOO_OLD_MESSAGE, describeUnauthorized, findEnvEndpoint } from '@jaypost/client'
 import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
@@ -12,7 +7,7 @@ import { resolveClientToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
 import { openAdmin } from './admin-access.ts'
-import { POLL_INTERVAL_MS, START_POLL_COUNT } from './constants.ts'
+import { POLL_INTERVAL_MS, START_POLL_COUNT, toLocalUrl } from './constants.ts'
 import { createAbortableSleep } from './pairing-wait.ts'
 import { PromptAborted } from './prompts.ts'
 import type { ResetOwnerDeps, StatusFetch, WaitResult } from './types.ts'
@@ -125,7 +120,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   let result: WaitResult
   try {
     result = await deps.wait({
-      url: toLocalEndpoint(record.port).url,
+      url: toLocalUrl(record.port),
       isRunning: () => target.isRunning(record),
       logsHint: target.logsHint(record),
       ...(token === undefined ? {} : { token }),
@@ -230,7 +225,7 @@ async function fetchStartedStatus(
 ): Promise<StatusFetch> {
   const sleep = deps.sleep ?? createAbortableSleep(deps.signal)
   for (let attempt = 1; ; attempt += 1) {
-    const fetched = await deps.fetchStatus(toLocalEndpoint(port).url, token)
+    const fetched = await deps.fetchStatus(toLocalUrl(port), token)
     if (deps.signal?.aborted) {
       throw new Error('interrupted')
     }

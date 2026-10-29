@@ -273,6 +273,71 @@ test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
   }
 })
 
+test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['log'], ['status']])(
+  '%s -b with an unknown alias exits 1 and lists the known ones',
+  (...command) => {
+    const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+    mkdirSync(join(directory, 'jaypost'), { recursive: true })
+    writeFileSync(
+      join(directory, 'jaypost', 'bots.json'),
+      JSON.stringify({
+        version: 1,
+        default: 'home',
+        remotes: [],
+        bots: [{ alias: 'home', url: 'http://127.0.0.1:1/' }],
+      }),
+    )
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [join(import.meta.dirname, '..', 'src', 'cli.ts'), ...command, '-b', 'nope'],
+        {
+          encoding: 'utf8',
+          input:
+            '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup","cwd":"/w"}',
+          timeout: 20_000,
+          env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
+        },
+      )
+      expect(result.status).toBe(1)
+      expect(result.stdout + result.stderr).toContain('no bot "nope" in your contacts; known: home')
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
+  },
+)
+
+test('hook -b with an unknown alias says so in the session start message and exits 0', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+  mkdirSync(join(directory, 'jaypost'), { recursive: true })
+  writeFileSync(
+    join(directory, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      default: 'home',
+      remotes: [],
+      bots: [{ alias: 'home', url: 'http://127.0.0.1:1/' }],
+    }),
+  )
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'hook', '-b', 'nope'],
+      {
+        encoding: 'utf8',
+        input: '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup","cwd":"/w"}',
+        timeout: 20_000,
+        env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
+      },
+    )
+    // A hook never fails the session; it reports through its system message instead.
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('no bot \\"nope\\" in your contacts; known: home')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('ping --port is an unknown option', () => {
   const result = spawnSync(
     process.execPath,

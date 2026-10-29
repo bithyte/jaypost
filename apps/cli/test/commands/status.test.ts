@@ -77,7 +77,7 @@ test('status prints the bot and pairing for a remote bot without install lines',
       token: KEY,
       source: 'book',
     }),
-    install: { ...installed(), target: { isRunning } as unknown as Target },
+    install: { record: RECORD, target: { isRunning } as unknown as Target },
     fetchStatus,
   })
   expect(await runStatus(deps)).toBe(0)
@@ -174,7 +174,7 @@ test('status with an unusable key returns 1 without calling the service', async 
     fetchStatus,
   })
   expect(await runStatus(deps)).toBe(1)
-  expect(out).toContain('Pairing: unknown (no usable token)')
+  expect(out).toContain('Pairing: unknown (no usable token: bad key here)')
   expect(fetchStatus).not.toHaveBeenCalled()
 })
 
