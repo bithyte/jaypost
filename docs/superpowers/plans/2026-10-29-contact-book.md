@@ -61,21 +61,21 @@
   ```
 - Produces (constants): `BOOK_FILE_NAME = 'bots.json'`, `BOOK_VERSION = 1`, `EMPTY_BOOK: Book` (`{ version: 1, remotes: [], bots: [] }`), `INVITE_PREFIX = 'jpi_'`, `INVITE_VERSION = 1`, `BOT_ENV_VAR = 'JAYPOST_BOT'`, `LOCAL_ALIAS = 'local'`.
 - Produces (functions):
-  - `readBook(path: string): Book` — missing file is `EMPTY_BOOK`; bad JSON or schema throws `contact book "<path>" isn't valid: <zod issue path>` (issue paths only, never values); other read errors rethrow.
+  - `readBook(path: string): Book`: missing file is `EMPTY_BOOK`; bad JSON or schema throws `contact book "<path>" isn't valid: <zod issue path>` (issue paths only, never values); other read errors rethrow.
   - `writeBook(path: string, book: Book): void`
-  - `toServiceUrl(raw: string): string | undefined` — http or https, no credentials, query or fragment; returns `new URL(raw).href`. Never throws.
+  - `toServiceUrl(raw: string): string | undefined`: http or https, no credentials, query or fragment; returns `new URL(raw).href`. Never throws.
   - `findBot(book: Book, alias: string): BookBot | undefined` (case-insensitive)
   - `findRemote(book: Book, name: string): BookRemote | undefined` (case-insensitive name, else exact `URL.host` match)
   - `findLocalSeedBot(book: Book): BookBot | undefined` (first bot whose `url` equals `book.local.url`)
-  - `saveBot(book: Book, bot: BookBot): Book` — replaces the case-insensitive alias match in place, else appends; sets `default` to `bot.alias` when the book has none.
-  - `removeBot(book: Book, alias: string): BookChange` — removing the default moves `default` to the first remaining bot, or omits it.
-  - `renameBot(book: Book, alias: string, newAlias: string): BookChange` — default follows; a different entry already named `newAlias` fails.
+  - `saveBot(book: Book, bot: BookBot): Book`: replaces the case-insensitive alias match in place, else appends; sets `default` to `bot.alias` when the book has none.
+  - `removeBot(book: Book, alias: string): BookChange`: removing the default moves `default` to the first remaining bot, or omits it.
+  - `renameBot(book: Book, alias: string, newAlias: string): BookChange`: default follows; a different entry already named `newAlias` fails.
   - `setDefaultBot(book: Book, alias: string): BookChange`
   - `saveRemote(book: Book, remote: BookRemote): Book` (replace by case-insensitive name, else append)
   - `removeRemote(book: Book, name: string): BookChange` (bots on that url stay)
-  - `setLocal(book: Book, local: BookLocal, seed: BookBot): Book` — sets `local`; if a bot with `url === seed.url` and the same `key` exists it's updated keeping its alias (so a renamed seed survives a reinstall), else `saveBot(book, seed)`.
-  - `removeLocal(book: Book): Book` — drops `local` and every bot with its url; default fixed as in `removeBot`.
-  - `encodeInvite(invite: Invite): string`, `decodeInvite(raw: string): Invite | undefined` — decode trims, strips a leading `jaypost join `, requires `INVITE_PREFIX`, `v === 1`, a valid `toServiceUrl` and a `parseToken`-valid key. Never throws.
+  - `setLocal(book: Book, local: BookLocal, seed: BookBot): Book`: sets `local`; if a bot with `url === seed.url` and the same `key` exists it's updated keeping its alias (so a renamed seed survives a reinstall), else `saveBot(book, seed)`.
+  - `removeLocal(book: Book): Book`: drops `local` and every bot with its url; default fixed as in `removeBot`.
+  - `encodeInvite(invite: Invite): string`, `decodeInvite(raw: string): Invite | undefined`: decode trims, strips a leading `jaypost join `, requires `INVITE_PREFIX`, `v === 1`, a valid `toServiceUrl` and a `parseToken`-valid key. Never throws.
 - Failure messages: `no bot "<alias>" in your contacts`, `a bot is already named "<alias>"`, `no remote "<name>"`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -134,10 +134,10 @@ git commit -m "feat: contact book file and its pure operations"
 **Interfaces:**
 - Consumes: Task 1's `Book`, `BookBot`, `findBot`, `BOT_ENV_VAR`.
 - Produces:
-  - `resolveJaypostDirectory(env?: NodeJS.ProcessEnv): string` — `$XDG_CONFIG_HOME/jaypost` or `~/.config/jaypost`, ignores `JAYPOST_CONFIG`.
+  - `resolveJaypostDirectory(env?: NodeJS.ProcessEnv): string`: `$XDG_CONFIG_HOME/jaypost` or `~/.config/jaypost`, ignores `JAYPOST_CONFIG`.
   - `resolveConfigPath` default becomes `<jaypost dir>/service/config.json`, so `resolveConfigDirectory` (and through it `InstallPaths.configDirectory`, `installFile`, `composeDirectory`, `quadletDirectory`) moves under `service/` with no other change.
-  - `resolveBookPath(env?: NodeJS.ProcessEnv): string` — `join(resolveJaypostDirectory(env), BOOK_FILE_NAME)`.
-  - `resolveEnvToken(env: NodeJS.ProcessEnv): ClientToken` — `JAYPOST_TOKEN` only, same messages as `resolveClientSecret`'s env branch.
+  - `resolveBookPath(env?: NodeJS.ProcessEnv): string`: `join(resolveJaypostDirectory(env), BOOK_FILE_NAME)`.
+  - `resolveEnvToken(env: NodeJS.ProcessEnv): ClientToken`: `JAYPOST_TOKEN` only, same messages as `resolveClientSecret`'s env branch.
   - `ClientToken`'s `source` widens to `'env' | 'file' | 'book'`.
   - ```ts
     export type BotTarget =
@@ -391,9 +391,9 @@ git commit -m "feat: service install, uninstall, start, stop and run write the c
 - Consumes: `readBook`, `writeBook`, `saveRemote`, `removeRemote`, `findRemote`, `toServiceUrl`, `parseToken`; `AdminCaller`, `describeEndpoint` from `@jaypost/client`; `formatTable` from `commands/admin.ts`.
 - Produces:
   - `BookDeps = { bookPath: string; prompt: Prompts; isInteractive: boolean; print; printError }` (shared by Tasks 7, 9, 10).
-  - `runRemoteAdd(args: { name: string; url: string; adminKey: string }, deps: BookDeps & { fetchTimeoutMs?: number }): Promise<number>` — bad url: `"<url>" isn't an http or https URL`; bad key: `that isn't a valid admin key` (no echo); checks with `new AdminCaller({ endpoint, adminKey }).listBots()`, failing with its message (unauthorized, unreachable); same name asks `Replace remote "<name>"?` on a TTY, fails with `a remote is already named "<name>"` otherwise. Prints `Added remote "<name>" (<describeEndpoint>).`
+  - `runRemoteAdd(args: { name: string; url: string; adminKey: string }, deps: BookDeps & { fetchTimeoutMs?: number }): Promise<number>`: bad url: `"<url>" isn't an http or https URL`; bad key: `that isn't a valid admin key` (no echo); checks with `new AdminCaller({ endpoint, adminKey }).listBots()`, failing with its message (unauthorized, unreachable); same name asks `Replace remote "<name>"?` on a TTY, fails with `a remote is already named "<name>"` otherwise. Prints `Added remote "<name>" (<describeEndpoint>).`
   - `runRemoteRemove(args: { name: string }, deps: BookDeps): Promise<number>`
-  - `runRemoteList(deps: BookDeps): Promise<number>` — `formatTable(['NAME', 'URL'], ...)`, `No remotes.` when empty, never the admin key.
+  - `runRemoteList(deps: BookDeps): Promise<number>`: `formatTable(['NAME', 'URL'], ...)`, `No remotes.` when empty, never the admin key.
 
 - [ ] **Step 1: Write the failing tests** (`node:http` fake answering `/admin/bots` 200 or 401)
 - `remote add checks the admin key and saves the remote`
@@ -486,9 +486,9 @@ git commit -m "feat: admin command group with -s, key create --save and --invite
 **Interfaces:**
 - Consumes: Task 1 operations, `BookDeps` (Task 7), `formatTable`, `describeEndpoint`.
 - Produces:
-  - `runBotsList(deps: BookDeps): Promise<number>` — `formatTable(['', 'ALIAS', 'SERVICE'], ...)` with `*` in the first column for the default; empty: `No bots. Run "jaypost service install" or "jaypost join".`
-  - `runBotsDefault(args: { alias: string }, deps)`, `runBotsRename(args: { alias: string; newAlias: string }, deps)` — print the `BookChange` failure message and return 1, else write and print `Default bot is now "<alias>".` / `Renamed "<old>" to "<new>".`
-  - `runBotsRemove(args: { alias: string; yes?: boolean }, deps)` — asks `Remove "<alias>" from your contacts?` unless `yes`; removing the default with others left: on a TTY `prompt.select` for the next default, else keep `removeBot`'s pick and print `Default bot is now "<alias>".`
+  - `runBotsList(deps: BookDeps): Promise<number>`: `formatTable(['', 'ALIAS', 'SERVICE'], ...)` with `*` in the first column for the default; empty: `No bots. Run "jaypost service install" or "jaypost join".`
+  - `runBotsDefault(args: { alias: string }, deps)`, `runBotsRename(args: { alias: string; newAlias: string }, deps)`: print the `BookChange` failure message and return 1, else write and print `Default bot is now "<alias>".` / `Renamed "<old>" to "<new>".`
+  - `runBotsRemove(args: { alias: string; yes?: boolean }, deps)`: asks `Remove "<alias>" from your contacts?` unless `yes`; removing the default with others left: on a TTY `prompt.select` for the next default, else keep `removeBot`'s pick and print `Default bot is now "<alias>".`
   - `jaypost bots` with no subcommand runs the list.
 
 - [ ] **Step 1: Write the failing tests**
