@@ -83,6 +83,7 @@ export {
   PORT_ENV_VAR,
   PROVIDER_ENV_VAR,
   readConfigFile,
+  resolveApiToken,
   RESERVED_CONFIG_KEYS,
   RESERVED_ENV_VARS,
   resolveBookPath,

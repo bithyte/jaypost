@@ -158,7 +158,7 @@ test('install writes unit, config 0600, enables', async () => {
   })
   expect(statSync(paths.configFile).mode & 0o777).toBe(0o600)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
-  expect(unit).toContain(`ExecStart="/usr/bin/node" "${rec.cliPath}" start`)
+  expect(unit).toContain(`ExecStart="/usr/bin/node" "${rec.cliPath}" service run`)
   expect(unit).toContain(`Environment="JAYPOST_CONFIG=${paths.configFile}"`)
   expect(rec).toMatchObject({
     target: 'systemd',
@@ -176,7 +176,7 @@ test('unit stays quoted with spaces in paths and config env', async () => {
   const { t, paths } = make({ JAYPOST_CONFIG: cfg }, self)
   await t.install(base)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
-  expect(unit).toContain(`ExecStart="/usr/bin/node" "${self}" start`)
+  expect(unit).toContain(`ExecStart="/usr/bin/node" "${self}" service run`)
   expect(unit).toContain(`Environment="JAYPOST_CONFIG=${cfg}"`)
   expect(readConfigFile(cfg).botToken).toBe('t')
 })
@@ -506,7 +506,7 @@ test('binary install copies itself to ~/.local/bin and runs it directly', async 
   expect(statSync(paths.binaryCopy).mode & 0o777).toBe(0o755)
   expect(readFileSync(paths.binaryCopy, 'utf8')).toBe(readFileSync(binaryPath, 'utf8'))
   const unit = readFileSync(paths.systemdUnit, 'utf8')
-  expect(unit).toContain(`ExecStart="${paths.binaryCopy}" start`)
+  expect(unit).toContain(`ExecStart="${paths.binaryCopy}" service run`)
   expect(unit).not.toContain('node')
   expect(calls.some(([c]) => c === 'npm')).toBe(false)
   expect(calls).toContainEqual(['systemctl', ['--user', 'enable', '--now', 'jaypost']])
@@ -544,7 +544,7 @@ test('binary unit stays quoted with spaces and $ in HOME', async () => {
   await t.install(base)
   const unit = readFileSync(paths.systemdUnit, 'utf8')
   const quoted = join(tmp, 'my $$home', '.local', 'bin', 'jaypost')
-  expect(unit).toContain(`ExecStart="${quoted}" start`)
+  expect(unit).toContain(`ExecStart="${quoted}" service run`)
   expect(readFileSync(join(home, '.local', 'bin', 'jaypost'), 'utf8')).toBe('binary v2')
 })
 
@@ -670,7 +670,7 @@ test('findUnitExecWords returns the ExecStart words without start', () => {
 
 test('findUnitExecWords undoes the quoting formatSystemdUnit applies', () => {
   const words = ['/a b/$HOME/50%/"q"\\x', '/c.js']
-  const unit = formatSystemdUnit({ exec: words, config: '/c.json' })
+  const unit = formatSystemdUnit({ exec: words, config: '/c.json', exposed: false })
   expect(findUnitExecWords(unit)).toEqual(words)
 })
 
@@ -708,4 +708,43 @@ test('readAdminKey with an invalid file never quotes it', async () => {
     `admin key file ${JSON.stringify(join(tmp, 'admin-key'))} isn't a valid jaypost admin key`,
   )
   await expect(reading).rejects.not.toThrow('not a key')
+})
+
+test('findUnitExecWords strips a trailing service run', () => {
+  expect(findUnitExecWords('ExecStart="/usr/bin/node" "/x/cli.js" service run\n')).toEqual([
+    '/usr/bin/node',
+    '/x/cli.js',
+  ])
+})
+
+test('start and stop call systemctl with the right words', async () => {
+  const { t } = make()
+  await t.start({} as never)
+  await t.stop({} as never)
+  expect(calls).toEqual([
+    ['systemctl', ['--user', 'start', 'jaypost']],
+    ['systemctl', ['--user', 'stop', 'jaypost']],
+  ])
+})
+
+test('exposed install sets JAYPOST_HOST, records it, and upgrade keeps it', async () => {
+  const { t, paths } = make()
+  const rec = await t.install({ ...base, exposed: true })
+  expect(rec.exposed).toBe(true)
+  expect(readFileSync(paths.systemdUnit, 'utf8')).toContain('Environment=JAYPOST_HOST=0.0.0.0')
+  const plain = await t.install(base)
+  expect('exposed' in plain).toBe(false)
+  expect(readFileSync(paths.systemdUnit, 'utf8')).not.toContain('JAYPOST_HOST')
+  const upgraded = await t.upgrade(base, rec)
+  expect(upgraded.exposed).toBe(true)
+  expect(readFileSync(paths.systemdUnit, 'utf8')).toContain('Environment=JAYPOST_HOST=0.0.0.0')
+})
+
+test('readApiToken reads apiToken from config.json', async () => {
+  const { t, paths } = make()
+  const rec = await t.install({ ...base, auth: { kind: 'token', token: TOKEN } })
+  expect(await t.readApiToken(rec)).toBe(TOKEN)
+  await t.install(base)
+  expect(await t.readApiToken(rec)).toBeUndefined()
+  expect(paths.configFile).toBe(rec.configFile)
 })

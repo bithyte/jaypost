@@ -9,6 +9,8 @@ export const DARWIN_TARGET_ORDER: readonly TargetName[] = [
   'compose',
   'systemd',
 ]
+/** Host an exposed install binds, on all interfaces over plain http. */
+export const EXPOSED_HOST = '0.0.0.0'
 /** Name of the systemd unit and container. */
 export const SERVICE_NAME = 'jaypost'
 /** npm package name, also the container's command. */

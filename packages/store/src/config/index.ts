@@ -16,5 +16,11 @@ export {
   resolveConfigPath,
   resolveJaypostDirectory,
 } from './paths.ts'
-export { loadConfig, loadServiceConfig, readConfigFile, updateConfigFile } from './store.ts'
+export {
+  loadConfig,
+  loadServiceConfig,
+  readConfigFile,
+  resolveApiToken,
+  updateConfigFile,
+} from './store.ts'
 export type { Config, ConfigPatch, FileConfig, ServiceConfig } from './types.ts'

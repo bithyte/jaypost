@@ -49,6 +49,8 @@ export type InstallOptions = {
   readonly auth: ApiAuth
   /** IANA zone written as `TZ` into container env files; systemd ignores it. */
   readonly timeZone?: string
+  /** Listen on all interfaces instead of loopback; plain http. */
+  readonly exposed?: boolean
   readonly tarball?: string
   readonly print: (text: string) => void
   /** Receives the build and npm install output as it arrives; when unset, builds inherit stdio. */
@@ -81,6 +83,15 @@ export type Target = {
     print?: (text: string) => void,
   ) => Promise<void>
   readonly restart: (record: InstallRecord) => Promise<void>
+  /** Starts the installed service; a no-op when it already runs. */
+  readonly start: (record: InstallRecord) => Promise<void>
+  /** Stops the service but keeps its files. */
+  readonly stop: (record: InstallRecord) => Promise<void>
+  /**
+   * The API token the service enforces, from the config file or the container's `.env`; undefined
+   * when there's none.
+   */
+  readonly readApiToken: (record: InstallRecord) => Promise<string | undefined>
   /**
    * Drops the owner from everything the service reads it from: the install's inputs and, for
    * containers, config.json and the registry in the data volume (through `jaypost owner clear`).
@@ -127,7 +138,7 @@ export type CliLocation =
   | { readonly kind: 'npm'; readonly selfPath: string; readonly nodePath: string }
   | { readonly kind: 'binary'; readonly binaryPath: string }
 
-/** What the service execs before `start`: the CLI path and the full command words. */
+/** What the service execs before `service run`: the CLI path and the full command words. */
 export type CliCommand = { readonly cliPath: string; readonly words: readonly string[] }
 
 /** A target name with its availability. */

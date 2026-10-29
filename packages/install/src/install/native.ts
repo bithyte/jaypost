@@ -14,6 +14,7 @@ import {
   readConfigFile,
   removeDatabaseFiles,
   resolveAdminKeyPath,
+  resolveApiToken,
   resolveDatabasePath,
   updateConfigFile,
 } from '@jaypost/store'
@@ -110,6 +111,11 @@ export function readConfigSecrets(path: string, providers: readonly Provider[]):
     provider: name,
     settings: collectSettings(provider, (setting) => config[setting.configKey]),
   }
+}
+
+/** The apiToken in a config file; undefined when the file or the token is missing. */
+export function readConfigApiToken(path: string): string | undefined {
+  return resolveApiToken({}, readConfigFile(path))
 }
 
 /** Why a standalone binary can't be copied to the binary path (a symlink there is npm's launcher), or undefined. */

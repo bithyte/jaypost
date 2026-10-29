@@ -272,6 +272,7 @@ function seedLaunchd(cliKind: 'npm' | 'binary', cliPath: string): void {
       exec: cliKind === 'npm' ? [NODE, cliPath] : [cliPath],
       config: join(tmp, 'config.json'),
       logFile: paths.launchdLogFile,
+      exposed: false,
     }),
   )
   writeInstall(paths.installFile, {

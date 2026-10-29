@@ -12,4 +12,6 @@ export const installRecordSchema = z.object({
   cliKind: z.enum(['npm', 'binary']).optional(),
   /** Absolute config.json path the systemd unit or launchd agent was installed with. */
   configFile: z.string().optional(),
+  /** Present (true) when the service listens on all interfaces; absent means loopback. */
+  exposed: z.boolean().optional(),
 })

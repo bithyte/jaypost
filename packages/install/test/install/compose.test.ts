@@ -458,3 +458,38 @@ test('readAdminKey refuses output that is not an admin key, without quoting it',
   await expect(reading).rejects.toThrow("the container didn't print a valid admin key")
   await expect(reading).rejects.not.toThrow('garbage')
 })
+
+test('start and stop call docker compose with the right words', async () => {
+  const { t, paths } = make()
+  await t.start(rec)
+  await t.stop(rec)
+  const file = join(paths.composeDirectory, 'compose.yaml')
+  expect(calls).toEqual([
+    ['docker', ['compose', '-f', file, 'start']],
+    ['docker', ['compose', '-f', file, 'stop']],
+  ])
+  fail = (_cmd, args) => args.includes('stop')
+  await expect(t.stop(rec)).rejects.toThrow('docker compose stop failed (exit 1)')
+})
+
+test('exposed install publishes on all interfaces and upgrade keeps it', async () => {
+  const { t, paths } = make()
+  const installed = await t.install({ ...base, exposed: true })
+  expect(installed.exposed).toBe(true)
+  expect(readFileSync(join(paths.composeDirectory, 'compose.yaml'), 'utf8')).toContain(
+    '- "8787:8787"',
+  )
+  const upgraded = await t.upgrade(base, installed)
+  expect(upgraded.exposed).toBe(true)
+  expect(readFileSync(join(paths.composeDirectory, 'compose.yaml'), 'utf8')).toContain(
+    '- "8787:8787"',
+  )
+})
+
+test('readApiToken reads JAYPOST_TOKEN from .env', async () => {
+  const { t } = make()
+  const token = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'
+  expect(await t.readApiToken(rec)).toBeUndefined()
+  await t.install({ ...base, auth: { kind: 'token', token } })
+  expect(await t.readApiToken(rec)).toBe(token)
+})

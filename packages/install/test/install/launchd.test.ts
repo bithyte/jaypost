@@ -172,6 +172,7 @@ test('install from the binary writes the plist, copies, clears quarantine and bo
       exec: [paths.binaryCopy],
       config: paths.configFile,
       logFile: paths.launchdLogFile,
+      exposed: false,
     }),
   )
   expect(readFileSync(paths.binaryCopy, 'utf8')).toBe('binary v2')
@@ -471,4 +472,46 @@ test('readAdminKey reads the admin key file next to the recorded configFile', as
       configFile: join(tmp, 'recorded.json'),
     }),
   ).toBe(key)
+})
+
+test('start bootstraps an unloaded agent and stop boots it out', async () => {
+  const { t } = make()
+  serviceCode = 113
+  await t.start({} as never)
+  await t.stop({} as never)
+  expect(launchctlCalls()).toEqual([
+    ['print', SERVICE],
+    ['enable', SERVICE],
+    ['bootstrap', 'gui/501', resolveInstallPaths({ HOME: tmp }).launchdPlist],
+    ['bootout', SERVICE],
+  ])
+})
+
+test('start leaves a loaded agent alone', async () => {
+  const { t } = make()
+  await t.start({} as never)
+  expect(launchctlCalls()).toEqual([['print', SERVICE]])
+})
+
+test('start and stop throw on a failure', async () => {
+  const { t } = make()
+  serviceCode = 113
+  bootstrapCode = 5
+  await expect(t.start({} as never)).rejects.toThrow('launchctl bootstrap failed (exit 5)')
+  bootoutCode = 5
+  bootoutStderr = 'boom'
+  await expect(t.stop({} as never)).rejects.toThrow('launchctl bootout failed (exit 5)')
+  bootoutStderr = 'No such process'
+  await t.stop({} as never)
+})
+
+test('exposed install writes JAYPOST_HOST into the plist and upgrade keeps it', async () => {
+  const { t, paths } = make()
+  const rec = await t.install({ ...base, exposed: true })
+  expect(rec.exposed).toBe(true)
+  expect(readFileSync(paths.launchdPlist, 'utf8')).toContain('<key>JAYPOST_HOST</key>')
+  const upgraded = await t.upgrade(base, rec)
+  expect(upgraded.exposed).toBe(true)
+  expect(readFileSync(paths.launchdPlist, 'utf8')).toContain('<key>JAYPOST_HOST</key>')
+  expect('exposed' in (await t.install(base))).toBe(false)
 })
