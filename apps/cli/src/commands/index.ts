@@ -4,6 +4,7 @@ export { runAudit } from './audit.ts'
 export { runBotsDefault, runBotsList, runBotsRemove, runBotsRename } from './bots.ts'
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
+export { runJoin } from './join.ts'
 export { runKeyCreate, runKeyLabel, runKeyList, runKeyRevoke } from './key.ts'
 export { runAdminLog, runLog } from './log.ts'
 export { runOwner } from './owner.ts'
@@ -24,6 +25,7 @@ export { writeAll } from './stdout.ts'
 export { runStatus } from './status.ts'
 export { runUninstall } from './uninstall.ts'
 export { runFinishUpdate, runUpdate } from './update.ts'
+export type { JoinDeps } from './join.ts'
 export type {
   AdminDeps,
   AdminIdArgs,

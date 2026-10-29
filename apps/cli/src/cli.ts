@@ -56,6 +56,7 @@ import {
   runBotsList,
   runBotsRemove,
   runBotsRename,
+  runJoin,
   runRemoteAdd,
   runRemoteList,
   runRemoteRemove,
@@ -994,6 +995,28 @@ export async function main(argv: readonly string[]): Promise<number> {
   addBotsCommands(program, (botsCode) => {
     code = botsCode
   })
+  program
+    .command('join')
+    .description('save a bot from an invite and wait for its pairing code')
+    .argument('<invite>', 'the invite (jpi_...) the service owner sent you')
+    .option('--as <alias>', 'save the bot under this alias')
+    .action(async (invite: string, options: { readonly as?: string }) => {
+      code = await runWithSignals(
+        (controller) =>
+          runJoin(
+            { invite, ...(options.as === undefined ? {} : { as: options.as }) },
+            {
+              ...createBookDeps(controller.signal),
+              fetchStatus: defaultFetchStatus,
+              wait: waitForPairing,
+              progress: createStderrProgress('plain'),
+              signal: controller.signal,
+            },
+          ),
+        SETUP_SIGNALS,
+        SETUP_RERAISED,
+      )
+    })
   program
     .command('setup-ci')
     .description('pair an owner for CI and print the env vars for direct mode')

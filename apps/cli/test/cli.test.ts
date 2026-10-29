@@ -295,6 +295,26 @@ test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
   }
 })
 
+test('join with a garbage invite exits 1 without echoing it', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-join-'))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'join', 'jpi_garbage-secret-text'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
+      },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain("that isn't a valid invite; ask for a new one")
+    expect(result.stderr).not.toContain('garbage-secret-text')
+    expect(result.stdout).not.toContain('garbage-secret-text')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('remote list on an empty book prints No remotes.', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-remote-'))
   try {
