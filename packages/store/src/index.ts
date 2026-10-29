@@ -31,6 +31,32 @@ export {
 } from './auth/index.ts'
 export type { ApiAuth, ClientToken } from './auth/index.ts'
 export {
+  BOOK_FILE_NAME,
+  BOOK_VERSION,
+  BOT_ENV_VAR,
+  decodeInvite,
+  EMPTY_BOOK,
+  encodeInvite,
+  findBot,
+  findLocalSeedBot,
+  findRemote,
+  INVITE_PREFIX,
+  INVITE_VERSION,
+  LOCAL_ALIAS,
+  readBook,
+  removeBot as removeBookBot,
+  removeLocal,
+  removeRemote,
+  renameBot,
+  saveBot,
+  saveRemote,
+  setDefaultBot,
+  setLocal,
+  toServiceUrl,
+  writeBook,
+} from './book/index.ts'
+export type { Book, BookBot, BookChange, BookLocal, BookRemote, Invite } from './book/index.ts'
+export {
   DATABASE_FILE_NAME,
   openDatabase,
   removeDatabaseFiles,
