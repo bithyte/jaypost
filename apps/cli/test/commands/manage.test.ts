@@ -120,7 +120,7 @@ const INVITE = JSON.stringify({
   pairing: { id: 'p1', bot: 'b1', state: 'pending', code: 'ABCD-EFGH', keys: ['k1'] },
   code: 'ABCD-EFGH',
 })
-const TOKEN_FILE = '/h/.config/jaypost/token'
+const TOKEN_FILE = '/h/.config/jaypost/service/token'
 
 function answered(status: StatusInfo) {
   return { kind: 'answered' as const, status }

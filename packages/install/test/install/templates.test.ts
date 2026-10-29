@@ -145,7 +145,7 @@ test('formatLaunchdPlist writes the agent plist', () => {
     formatLaunchdPlist({
       label: 'io.github.bithyte.jaypost',
       exec: ['/h/.local/bin/jaypost'],
-      config: '/h/.config/jaypost/config.json',
+      config: '/h/.config/jaypost/service/config.json',
       logFile: '/h/Library/Logs/jaypost/jaypost.log',
     }),
   ).toBe(`<?xml version="1.0" encoding="UTF-8"?>
@@ -162,7 +162,7 @@ test('formatLaunchdPlist writes the agent plist', () => {
   <key>EnvironmentVariables</key>
   <dict>
     <key>JAYPOST_CONFIG</key>
-    <string>/h/.config/jaypost/config.json</string>
+    <string>/h/.config/jaypost/service/config.json</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>

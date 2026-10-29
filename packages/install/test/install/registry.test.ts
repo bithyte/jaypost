@@ -231,4 +231,4 @@ test('leftover needs every required secret', () => {
 })
 
 test('resolveInstallPaths locates the token file next to the config', () =>
-  expect(resolveInstallPaths({ HOME: '/h' }).tokenFile).toBe('/h/.config/jaypost/token'))
+  expect(resolveInstallPaths({ HOME: '/h' }).tokenFile).toBe('/h/.config/jaypost/service/token'))

@@ -24,6 +24,7 @@ export {
   readTokenFile,
   removeTokenFile,
   resolveClientToken,
+  resolveEnvToken,
   resolveTokenFile,
   TOKEN_ENV_VAR,
   UNAUTHORIZED_ERROR,
@@ -44,6 +45,7 @@ export {
   INVITE_VERSION,
   LOCAL_ALIAS,
   readBook,
+  resolveBotTarget,
   removeBot as removeBookBot,
   removeLocal,
   removeRemote,
@@ -55,7 +57,15 @@ export {
   toServiceUrl,
   writeBook,
 } from './book/index.ts'
-export type { Book, BookBot, BookChange, BookLocal, BookRemote, Invite } from './book/index.ts'
+export type {
+  Book,
+  BookBot,
+  BookChange,
+  BotTarget,
+  BookLocal,
+  BookRemote,
+  Invite,
+} from './book/index.ts'
 export {
   DATABASE_FILE_NAME,
   openDatabase,
@@ -75,8 +85,10 @@ export {
   readConfigFile,
   RESERVED_CONFIG_KEYS,
   RESERVED_ENV_VARS,
+  resolveBookPath,
   resolveConfigDirectory,
   resolveConfigPath,
+  resolveJaypostDirectory,
   updateConfigFile,
 } from './config/index.ts'
 export type { Config, ServiceConfig } from './config/index.ts'

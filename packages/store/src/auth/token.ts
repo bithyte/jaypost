@@ -64,6 +64,18 @@ export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): C
   })
 }
 
+/** The client token from JAYPOST_TOKEN only, never a file. Same messages as `resolveClientToken`. */
+export function resolveEnvToken(env: NodeJS.ProcessEnv): ClientToken {
+  const raw = findEnvValue(env, TOKEN_ENV_VAR)
+  if (raw === undefined) {
+    return NO_CLIENT_TOKEN
+  }
+  const token = parseToken(raw)
+  return token === undefined
+    ? { kind: 'unusable', message: `${TOKEN_ENV_VAR} isn't a valid jaypost token` }
+    : { kind: 'token', token, source: 'env' }
+}
+
 /**
  * `resolveClientToken` for any secret with the token's shape: `names.envVar`, then `path`, else
  * none. Messages name the source with `names` and never quote the value. Never throws.

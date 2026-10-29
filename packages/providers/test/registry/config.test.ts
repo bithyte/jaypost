@@ -30,11 +30,11 @@ test('resolveConfigPath precedence: JAYPOST_CONFIG > XDG_CONFIG_HOME > HOME', ()
     resolveConfigPath({ JAYPOST_CONFIG: '/x/c.json', XDG_CONFIG_HOME: '/xdg', HOME: '/h' }),
   ).toBe('/x/c.json')
   expect(resolveConfigPath({ XDG_CONFIG_HOME: '/xdg', HOME: '/h' })).toBe(
-    '/xdg/jaypost/config.json',
+    '/xdg/jaypost/service/config.json',
   )
-  expect(resolveConfigPath({ HOME: '/h' })).toBe('/h/.config/jaypost/config.json')
+  expect(resolveConfigPath({ HOME: '/h' })).toBe('/h/.config/jaypost/service/config.json')
   expect(resolveConfigPath({ JAYPOST_CONFIG: '', XDG_CONFIG_HOME: '', HOME: '/h' })).toBe(
-    '/h/.config/jaypost/config.json',
+    '/h/.config/jaypost/service/config.json',
   )
 })
 
@@ -186,8 +186,10 @@ test('updateConfigFile does not copy env values into the file', () => {
 })
 
 test('configDir is the directory of the default config path', () => {
-  expect(resolveConfigDirectory({ XDG_CONFIG_HOME: '/xdg', HOME: '/h' })).toBe('/xdg/jaypost')
-  expect(resolveConfigDirectory({ HOME: '/h' })).toBe('/h/.config/jaypost')
+  expect(resolveConfigDirectory({ XDG_CONFIG_HOME: '/xdg', HOME: '/h' })).toBe(
+    '/xdg/jaypost/service',
+  )
+  expect(resolveConfigDirectory({ HOME: '/h' })).toBe('/h/.config/jaypost/service')
 })
 
 test.each(['0', '65536', '-1', 'abc', '80.5'])('invalid port %s throws', (p) => {

@@ -15,6 +15,7 @@ export {
   readTokenFile,
   removeTokenFile,
   resolveClientToken,
+  resolveEnvToken,
   resolveTokenFile,
   writeTokenFile,
 } from './token.ts'

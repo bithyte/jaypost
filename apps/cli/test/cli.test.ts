@@ -177,9 +177,9 @@ test('ping --port sends to that port, over the install and JAYPOST_PORT', async 
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
   const flagListener = await listenForRequests()
   const installListener = await listenForRequests()
-  mkdirSync(join(directory, 'jaypost'))
+  mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'install.json'),
+    join(directory, 'jaypost', 'service', 'install.json'),
     JSON.stringify({ target: 'systemd', port: installListener.port, version: VERSION }),
   )
   vi.stubEnv('XDG_CONFIG_HOME', directory)
@@ -200,9 +200,9 @@ test('ping --port sends to that port, over the install and JAYPOST_PORT', async 
 test('ping without --port uses the install port over JAYPOST_PORT', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
   const listener = await listenForRequests()
-  mkdirSync(join(directory, 'jaypost'))
+  mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'install.json'),
+    join(directory, 'jaypost', 'service', 'install.json'),
     JSON.stringify({ target: 'systemd', port: listener.port, version: VERSION }),
   )
   vi.stubEnv('XDG_CONFIG_HOME', directory)

@@ -10,6 +10,11 @@ export {
   SECRET_FILE_MODE,
   URL_ENV_VAR,
 } from './constants.ts'
-export { resolveConfigDirectory, resolveConfigPath } from './paths.ts'
+export {
+  resolveBookPath,
+  resolveConfigDirectory,
+  resolveConfigPath,
+  resolveJaypostDirectory,
+} from './paths.ts'
 export { loadConfig, loadServiceConfig, readConfigFile, updateConfigFile } from './store.ts'
 export type { Config, ConfigPatch, FileConfig, ServiceConfig } from './types.ts'

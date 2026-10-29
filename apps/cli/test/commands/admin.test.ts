@@ -265,7 +265,7 @@ test('a wrong admin key says the service rejected it', async () => {
 })
 
 test('bot add writes the registry directly when the local service is down', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
   writeTokenFile(resolveAdminKeyPath(configPath), `jpa_${'k'.repeat(43)}`)
   const env = {
     HOME: tmp,
@@ -290,7 +290,7 @@ test('bot add writes the registry directly when the local service is down', asyn
 })
 
 test('bot add writes the registry when no admin key exists and nothing answers', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
   const port = await freePort()
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
   const deps = createDeps(env)
@@ -301,7 +301,7 @@ test('bot add writes the registry when no admin key exists and nothing answers',
 })
 
 test('bot add without an admin key refuses the registry when the service starts meanwhile', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
   const env = {
     HOME: tmp,
     XDG_CONFIG_HOME: join(tmp, 'cfg'),
@@ -320,7 +320,7 @@ test('bot add without an admin key refuses the registry when the service starts 
 })
 
 test('bot add with an admin key uses the api when the service starts meanwhile', async () => {
-  const directory = join(tmp, 'cfg', 'jaypost')
+  const directory = join(tmp, 'cfg', 'jaypost', 'service')
   const configPath = join(directory, 'config.json')
   mkdirSync(directory, { recursive: true })
   const adminKey = `jpa_${'k'.repeat(43)}`
@@ -372,8 +372,8 @@ test('bot add for a native install that never started this version writes its re
 })
 
 test('bot add refuses the registry while a config file waits to be seeded', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
-  mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
+  mkdirSync(join(tmp, 'cfg', 'jaypost', 'service'), { recursive: true })
   writeFileSync(configPath, JSON.stringify({ provider: 'fake', fakeKey: SEED_BOT_TOKEN }))
   const env = {
     HOME: tmp,
@@ -496,7 +496,7 @@ test('with no install and no admin key file the hint says to start the service',
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') }
   expect(await runBotList({}, createDeps(env))).toBe(1)
   expect(err).toEqual([
-    `no admin key in ${JSON.stringify(join(tmp, 'cfg', 'jaypost', 'admin-key'))} yet; start the service once so it writes one`,
+    `no admin key in ${JSON.stringify(join(tmp, 'cfg', 'jaypost', 'service', 'admin-key'))} yet; start the service once so it writes one`,
   ])
 })
 

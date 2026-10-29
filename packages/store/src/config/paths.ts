@@ -1,5 +1,6 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { BOOK_FILE_NAME } from '../book/constants.ts'
 
 /** Env value, with an empty string counting as unset. */
 export function findEnvValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -7,18 +8,28 @@ export function findEnvValue(env: NodeJS.ProcessEnv, key: string): string | unde
   return value === undefined || value === '' ? undefined : value
 }
 
+/** The jaypost config root: $XDG_CONFIG_HOME/jaypost or ~/.config/jaypost; ignores $JAYPOST_CONFIG. */
+export function resolveJaypostDirectory(env: NodeJS.ProcessEnv = process.env): string {
+  const xdgConfigHome = findEnvValue(env, 'XDG_CONFIG_HOME')
+  const base = xdgConfigHome ?? join(findEnvValue(env, 'HOME') ?? homedir(), '.config')
+  return join(base, 'jaypost')
+}
+
+/** Path of the contact book, bots.json, in the jaypost config root; ignores $JAYPOST_CONFIG. */
+export function resolveBookPath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveJaypostDirectory(env), BOOK_FILE_NAME)
+}
+
 /**
- * Path of config.json: $JAYPOST_CONFIG, else under $XDG_CONFIG_HOME or ~/.config. Empty env
- * values count as unset.
+ * Path of config.json: $JAYPOST_CONFIG, else service/config.json under the jaypost config root.
+ * Empty env values count as unset.
  */
 export function resolveConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = findEnvValue(env, 'JAYPOST_CONFIG')
   if (explicit) {
     return explicit
   }
-  const xdgConfigHome = findEnvValue(env, 'XDG_CONFIG_HOME')
-  const base = xdgConfigHome ?? join(findEnvValue(env, 'HOME') ?? homedir(), '.config')
-  return join(base, 'jaypost', 'config.json')
+  return join(resolveJaypostDirectory(env), 'service', 'config.json')
 }
 
 /** Default config directory, ignoring $JAYPOST_CONFIG; install files live here. */

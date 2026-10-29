@@ -22,5 +22,7 @@ export {
   setLocal,
   toServiceUrl,
 } from './operations.ts'
+export { resolveBotTarget } from './target.ts'
+export type { BotTarget } from './target.ts'
 export { readBook, writeBook } from './store.ts'
 export type { Book, BookBot, BookChange, BookLocal, BookRemote, Invite } from './types.ts'

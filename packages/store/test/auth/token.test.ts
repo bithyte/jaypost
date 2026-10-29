@@ -16,6 +16,7 @@ import {
   readTokenFile,
   removeTokenFile,
   resolveClientToken,
+  resolveEnvToken,
   resolveTokenFile,
   writeTokenFile,
 } from '../../src/auth/index.ts'
@@ -70,8 +71,8 @@ test('resolveTokenFile uses the install directory and ignores JAYPOST_CONFIG', (
       HOME: '/h',
       JAYPOST_CONFIG: '/c/config.json',
     }),
-  ).toBe('/x/jaypost/token')
-  expect(resolveTokenFile({ HOME: '/h' })).toBe('/h/.config/jaypost/token')
+  ).toBe('/x/jaypost/service/token')
+  expect(resolveTokenFile({ HOME: '/h' })).toBe('/h/.config/jaypost/service/token')
 })
 
 test('writeTokenFile writes 0600 with a trailing newline through a new inode', () => {
@@ -138,4 +139,15 @@ test('an unreadable token file is unusable', () => {
   expect(result.message.startsWith(`token file ${JSON.stringify(file)} couldn't be read: `)).toBe(
     true,
   )
+})
+
+test('resolveEnvToken ignores files and reports a bad JAYPOST_TOKEN without quoting it', () => {
+  expect(resolveEnvToken({})).toEqual({ kind: 'none' })
+  expect(resolveEnvToken({ JAYPOST_TOKEN: TOKEN })).toEqual({
+    kind: 'token',
+    token: TOKEN,
+    source: 'env',
+  })
+  const bad = resolveEnvToken({ JAYPOST_TOKEN: 'secret value!' })
+  expect(bad).toEqual({ kind: 'unusable', message: "JAYPOST_TOKEN isn't a valid jaypost token" })
 })

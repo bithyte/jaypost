@@ -23,7 +23,7 @@ const TOKEN = 'A'.repeat(43)
 const FIRST = 'B'.repeat(43)
 const SECOND = 'C'.repeat(43)
 let directory = ''
-const tokenFile = (): string => join(directory, 'jaypost', 'token')
+const tokenFile = (): string => join(directory, 'jaypost', 'service', 'token')
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-client-'))

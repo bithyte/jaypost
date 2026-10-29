@@ -99,8 +99,8 @@ let directory = ''
 let tokenFile = ''
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-mcp-'))
-  mkdirSync(join(directory, 'jaypost'))
-  tokenFile = join(directory, 'jaypost', 'token')
+  mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
+  tokenFile = join(directory, 'jaypost', 'service', 'token')
 })
 afterEach(async () => {
   rmSync(directory, { recursive: true, force: true })
