@@ -1,6 +1,5 @@
 import { AdminCaller, describeEndpoint } from '@jaypost/client'
 import {
-  findRemote,
   parseToken,
   readBook,
   removeRemote,
@@ -43,7 +42,8 @@ export async function runRemoteAdd(
   if (book === undefined) {
     return 1
   }
-  if (findRemote(book, args.name) !== undefined) {
+  // By name only, as saveRemote matches; findRemote would also match another remote's host.
+  if (book.remotes.some((remote) => remote.name.toLowerCase() === args.name.toLowerCase())) {
     if (!deps.isInteractive) {
       deps.printError(`a remote is already named "${args.name}"`)
       return 1

@@ -17,7 +17,7 @@ import {
 import type { Book, Registry } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import {
-  ADMIN_KEY_REJECTED_MESSAGE,
+  LOCAL_KEY_REJECTED_MESSAGE,
   ADMIN_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
@@ -735,7 +735,7 @@ test('reset-owner reports a rejected admin key', async () => {
   expect(recording.events.slice(-3)).toEqual([
     'start:Clearing the owner',
     'fail:Clearing the owner',
-    `note:${ADMIN_KEY_REJECTED_MESSAGE}`,
+    `note:${LOCAL_KEY_REJECTED_MESSAGE}`,
   ])
   expect(notes().join('\n')).not.toContain(ADMIN_KEY)
   expect(order).toEqual([])

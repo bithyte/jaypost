@@ -105,3 +105,8 @@ test('toServiceUrl rejects credentials, query, fragment and non-http schemes', (
     expect(toServiceUrl(raw)).toBeUndefined()
   }
 })
+
+test('saveBot over the default with a different case moves the default to the new spelling', () => {
+  const book: Book = { ...EMPTY_BOOK, default: 'neveubot', bots: [{ ...BOT_A, alias: 'neveubot' }] }
+  expect(saveBot(book, BOT_A)).toEqual({ ...book, default: 'NeveuBot', bots: [BOT_A] })
+})

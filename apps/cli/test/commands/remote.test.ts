@@ -103,6 +103,15 @@ test('remote add of an existing name asks on a terminal and replaces on yes', as
   expect(readBook(bookPath).remotes[0]?.url).toBe(baseUrl)
 })
 
+test('remote add with a name equal to another remote host:port adds, not replaces', async () => {
+  const other = { name: 'home', url: baseUrl, adminKey: ADMIN_KEY }
+  writeBook(bookPath, { version: 1, remotes: [other], bots: [] })
+  const hostName = new URL(baseUrl).host
+  expect(await runRemoteAdd({ ...other, name: hostName }, deps())).toBe(0)
+  expect(errors).toEqual([])
+  expect(readBook(bookPath).remotes.map((remote) => remote.name)).toEqual(['home', hostName])
+})
+
 test('remote list shows names and urls but no admin key', async () => {
   expect(await runRemoteList(deps())).toBe(0)
   expect(out).toEqual(['No remotes.'])

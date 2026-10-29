@@ -1,18 +1,9 @@
-import {
-  DEFAULT_PORT,
-  NO_CLIENT_TOKEN,
-  parseToken,
-  resolveEnvToken,
-} from "@jaypost/store";
-import type { ClientToken } from "@jaypost/store";
-import { Caller } from "./caller.ts";
-import {
-  findEnvEndpoint,
-  parseEndpointUrl,
-  toLocalEndpoint,
-} from "./endpoint.ts";
-import { resolveBot } from "./target.ts";
-import type { VoteReport } from "@jaypost/core";
+import { DEFAULT_PORT, NO_CLIENT_TOKEN, parseToken, resolveEnvToken } from '@jaypost/store'
+import type { ClientToken } from '@jaypost/store'
+import { Caller } from './caller.ts'
+import { findEnvEndpoint, parseEndpointUrl, toLocalEndpoint } from './endpoint.ts'
+import { resolveBot } from './target.ts'
+import type { VoteReport } from '@jaypost/core'
 import type {
   Answer,
   AskRequest,
@@ -21,11 +12,11 @@ import type {
   ResolvedBot,
   ServiceEndpoint,
   VoteRequest,
-} from "./types.ts";
+} from './types.ts'
 
 /** Thrown by `Client` when the service is unreachable, rejects the input or can't send. */
 export class JaypostError extends Error {
-  override name = "JaypostError";
+  override name = 'JaypostError'
 }
 
 /**
@@ -35,37 +26,35 @@ export class JaypostError extends Error {
  * the book once, at construction, and keeps that entry and key.
  */
 export class Client {
-  #caller: Caller;
-  #project: string | undefined;
-  #token: string | undefined;
-  #bot: ResolvedBot | undefined;
+  #caller: Caller
+  #project: string | undefined
+  #token: string | undefined
+  #bot: ResolvedBot | undefined
 
   constructor(options: ClientOptions = {}) {
-    this.#project = options.project;
+    this.#project = options.project
     if (options.bot !== undefined && !isBotMode(options)) {
-      throw new RangeError(
-        "bot can't be combined with url, host, port or token",
-      );
+      throw new RangeError("bot can't be combined with url, host, port or token")
     }
     if (isBotMode(options)) {
-      this.#bot = resolveBot(process.env, options.bot);
+      this.#bot = resolveBot(process.env, options.bot)
       this.#caller = new Caller({
         endpoint: this.#bot.endpoint,
         readToken: () => this.#bot?.token ?? NO_CLIENT_TOKEN,
-      });
-      return;
+      })
+      return
     }
     if (options.token !== undefined) {
-      const token = parseToken(options.token);
+      const token = parseToken(options.token)
       if (token === undefined) {
-        throw new RangeError("token isn't a valid jaypost token");
+        throw new RangeError("token isn't a valid jaypost token")
       }
-      this.#token = token;
+      this.#token = token
     }
     this.#caller = new Caller({
       endpoint: toClientEndpoint(options),
       readToken: () => this.#readToken(),
-    });
+    })
   }
 
   /**
@@ -74,18 +63,18 @@ export class Client {
    * lookup), or the signal's reason if aborted.
    */
   async request(request: AskRequest): Promise<Answer> {
-    const signal = request.signal ?? new AbortController().signal;
-    const { signal: _signal, ...question } = request;
+    const signal = request.signal ?? new AbortController().signal
+    const { signal: _signal, ...question } = request
     const result = await this.#caller.ask(
       { ...question, ...this.#withProject(request.project) },
       { signal },
-    );
-    throwIfAborted(signal);
-    if (result.kind === "failed") {
-      throw new JaypostError(result.message);
+    )
+    throwIfAborted(signal)
+    if (result.kind === 'failed') {
+      throw new JaypostError(result.message)
     }
-    const { kind: _kind, ...answer } = result;
-    return answer;
+    const { kind: _kind, ...answer } = result
+    return answer
   }
 
   /**
@@ -93,48 +82,48 @@ export class Client {
    * `approved` says which. Throws like `request`.
    */
   async vote(request: VoteRequest): Promise<VoteReport> {
-    const signal = request.signal ?? new AbortController().signal;
-    const { signal: _signal, voters, require, ...question } = request;
+    const signal = request.signal ?? new AbortController().signal
+    const { signal: _signal, voters, require, ...question } = request
     const ballot = {
       ...(voters === undefined ? {} : { voters }),
       ...(require === undefined ? {} : { rule: require }),
-    };
+    }
     const result = await this.#caller.vote(
       { ...question, ...this.#withProject(request.project) },
       ballot,
       { signal },
-    );
-    throwIfAborted(signal);
-    if (result.kind === "failed") {
-      throw new JaypostError(result.message);
+    )
+    throwIfAborted(signal)
+    if (result.kind === 'failed') {
+      throw new JaypostError(result.message)
     }
-    return result.report;
+    return result.report
   }
 
   /** Resolves once Telegram accepts the message. Throws like `request`. */
   async notify(notification: Notification): Promise<void> {
-    const signal = notification.signal ?? new AbortController().signal;
-    const { signal: _signal, ...message } = notification;
+    const signal = notification.signal ?? new AbortController().signal
+    const { signal: _signal, ...message } = notification
     const result = await this.#caller.notify(
       { ...message, ...this.#withProject(notification.project) },
       { signal },
-    );
-    throwIfAborted(signal);
-    if (result.kind === "failed") {
-      throw new JaypostError(result.message);
+    )
+    throwIfAborted(signal)
+    if (result.kind === 'failed') {
+      throw new JaypostError(result.message)
     }
   }
 
   #withProject(project: string | undefined): { readonly project?: string } {
-    const resolved = project ?? this.#project;
-    return resolved === undefined ? {} : { project: resolved };
+    const resolved = project ?? this.#project
+    return resolved === undefined ? {} : { project: resolved }
   }
 
   #readToken(): ClientToken {
     if (this.#token !== undefined) {
-      return { kind: "token", token: this.#token, source: "env" };
+      return { kind: 'token', token: this.#token, source: 'env' }
     }
-    return resolveEnvToken(process.env);
+    return resolveEnvToken(process.env)
   }
 }
 
@@ -145,32 +134,30 @@ function isBotMode(options: ClientOptions): boolean {
     options.host === undefined &&
     options.port === undefined &&
     options.token === undefined
-  );
+  )
 }
 
 /** `url`, else `host` and `port`, else `JAYPOST_URL`, else the local default. */
 function toClientEndpoint(options: ClientOptions): ServiceEndpoint {
   if (options.url !== undefined) {
     if (options.host !== undefined || options.port !== undefined) {
-      throw new RangeError("url can't be combined with host or port");
+      throw new RangeError("url can't be combined with host or port")
     }
-    const url = parseEndpointUrl(options.url);
+    const url = parseEndpointUrl(options.url)
     if (url === undefined) {
-      throw new RangeError(
-        "url isn't an http or https URL without credentials, query or fragment",
-      );
+      throw new RangeError("url isn't an http or https URL without credentials, query or fragment")
     }
-    return { kind: "url", url };
+    return { kind: 'url', url }
   }
   if (options.host !== undefined || options.port !== undefined) {
-    return toLocalEndpoint(options.port ?? DEFAULT_PORT, options.host);
+    return toLocalEndpoint(options.port ?? DEFAULT_PORT, options.host)
   }
-  return findEnvEndpoint(process.env) ?? toLocalEndpoint(DEFAULT_PORT);
+  return findEnvEndpoint(process.env) ?? toLocalEndpoint(DEFAULT_PORT)
 }
 
 // An abort wins over whatever failure it caused.
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) {
-    throw signal.reason;
+    throw signal.reason
   }
 }

@@ -1,16 +1,10 @@
-import { findEnvValue, URL_ENV_VAR } from "@jaypost/store";
-import { HOST, INVALID_URL_MESSAGE } from "./constants.ts";
-import type { ServiceEndpoint } from "./types.ts";
+import { findEnvValue, URL_ENV_VAR } from '@jaypost/store'
+import { HOST, INVALID_URL_MESSAGE } from './constants.ts'
+import type { ServiceEndpoint } from './types.ts'
 
 /** The local service on `host:port` over plain HTTP. */
-export function toLocalEndpoint(
-  port: number,
-  host: string = HOST,
-): ServiceEndpoint {
-  return {
-    kind: "url",
-    url: new URL(`http://${host.includes(":") ? `[${host}]` : host}:${port}/`),
-  };
+export function toLocalEndpoint(port: number, host: string = HOST): ServiceEndpoint {
+  return { kind: 'url', url: new URL(`http://${host.includes(':') ? `[${host}]` : host}:${port}/`) }
 }
 
 /**
@@ -19,21 +13,16 @@ export function toLocalEndpoint(
  */
 export function parseEndpointUrl(raw: string): URL | undefined {
   if (!URL.canParse(raw)) {
-    return undefined;
+    return undefined
   }
-  const url = new URL(raw);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return undefined;
+  const url = new URL(raw)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return undefined
   }
-  if (
-    url.username !== "" ||
-    url.password !== "" ||
-    url.search !== "" ||
-    url.hash !== ""
-  ) {
-    return undefined;
+  if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
+    return undefined
   }
-  return url;
+  return url
 }
 
 /**
@@ -41,17 +30,15 @@ export function parseEndpointUrl(raw: string): URL | undefined {
  * local service. An unparsable value is `invalid`, with a message that never repeats the value,
  * since it could hold credentials. Never throws.
  */
-export function findEnvEndpoint(
-  env: NodeJS.ProcessEnv,
-): ServiceEndpoint | undefined {
-  const raw = findEnvValue(env, URL_ENV_VAR);
+export function findEnvEndpoint(env: NodeJS.ProcessEnv): ServiceEndpoint | undefined {
+  const raw = findEnvValue(env, URL_ENV_VAR)
   if (raw === undefined) {
-    return undefined;
+    return undefined
   }
-  const url = parseEndpointUrl(raw);
+  const url = parseEndpointUrl(raw)
   return url === undefined
-    ? { kind: "invalid", message: INVALID_URL_MESSAGE }
-    : { kind: "url", url };
+    ? { kind: 'invalid', message: INVALID_URL_MESSAGE }
+    : { kind: 'url', url }
 }
 
 /**
@@ -59,10 +46,10 @@ export function findEnvEndpoint(
  * URL without a trailing slash.
  */
 export function describeEndpoint(url: URL): string {
-  if (url.protocol === "http:" && url.pathname === "/") {
-    return url.host;
+  if (url.protocol === 'http:' && url.pathname === '/') {
+    return url.host
   }
-  return url.href.replace(/\/$/, "");
+  return url.href.replace(/\/$/, '')
 }
 
 /**
@@ -71,15 +58,13 @@ export function describeEndpoint(url: URL): string {
  */
 export function isLoopbackEndpoint(url: URL): boolean {
   return (
-    url.hostname === "localhost" ||
-    url.hostname === "[::1]" ||
-    /^127(\.\d+){3}$/.test(url.hostname)
-  );
+    url.hostname === 'localhost' || url.hostname === '[::1]' || /^127(\.\d+){3}$/.test(url.hostname)
+  )
 }
 
 /** The full URL of `path` (which starts with `/`) under the endpoint's base path. */
 export function resolveApiUrl(base: URL, path: string): URL {
   // Built from the origin: resolving against `base` would read a base path such as `//team` as
   // another host, and the token would go there.
-  return new URL(`${base.origin}${base.pathname.replace(/\/$/, "")}${path}`);
+  return new URL(`${base.origin}${base.pathname.replace(/\/$/, '')}${path}`)
 }

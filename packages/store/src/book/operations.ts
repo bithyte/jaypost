@@ -36,13 +36,17 @@ export function findLocalSeedBot(book: Book): BookBot | undefined {
   return local === undefined ? undefined : book.bots.find((bot) => bot.url === local.url)
 }
 
-/** Replaces the bot with the same alias (ignoring case) in place, else appends; fills a missing default. */
+/**
+ * Replaces the bot with the same alias (ignoring case) in place, else appends; fills a missing
+ * default, and moves the default to the new spelling when the replaced bot was the default.
+ */
 export function saveBot(book: Book, bot: BookBot): Book {
   const exists = book.bots.some((existing) => sameName(existing.alias, bot.alias))
   const bots = exists
     ? book.bots.map((existing) => (sameName(existing.alias, bot.alias) ? bot : existing))
     : [...book.bots, bot]
-  return { ...book, bots, default: book.default ?? bot.alias }
+  const replacesDefault = book.default !== undefined && sameName(book.default, bot.alias)
+  return { ...book, bots, default: replacesDefault ? bot.alias : (book.default ?? bot.alias) }
 }
 
 /** Removes a bot; removing the default moves it to the first remaining bot, or clears it. */

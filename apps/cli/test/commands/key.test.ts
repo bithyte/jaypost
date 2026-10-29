@@ -290,6 +290,18 @@ test('key create --invite against the local service fails', async () => {
   expect(out).toEqual([])
 })
 
+test('key create --invite against a loopback JAYPOST_URL fails', async () => {
+  const port = (server.address() as AddressInfo).port
+  const deps = createDeps({
+    env: { HOME: tmp, JAYPOST_URL: `http://127.0.0.1:${port}`, JAYPOST_ADMIN_KEY: ADMIN_KEY },
+    service: undefined,
+  })
+  expect(await runKeyCreate({ bot: 'b2', invite: true }, deps)).toBe(1)
+  expect(err).toEqual(['invites need a remote; add one with "jaypost remote add" and use -s'])
+  expect(seen).toEqual([])
+  expect(out).toEqual([])
+})
+
 test('key create takes at most one of --save and --invite, and --as only with --save', async () => {
   writeRemoteBook()
   expect(await runKeyCreate({ bot: 'b2', save: true, invite: true }, createDeps())).toBe(2)

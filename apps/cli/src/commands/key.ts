@@ -1,5 +1,6 @@
 import { encodeInvite, findBot, saveBot, writeBook } from '@jaypost/store'
 import type { Book } from '@jaypost/store'
+import { isLoopbackEndpoint } from '@jaypost/client'
 import type { AdminCaller, AdminResult } from '@jaypost/client'
 import type { CreatedKey, KeysBody } from '@jaypost/protocol'
 import { loadBook, openAdmin, openAdminCaller } from './admin-access.ts'
@@ -189,7 +190,13 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       deps.printError(endpoint.message)
       return 1
     }
-    if (args.invite === true && opened.endpoint.kind !== 'remote') {
+    // An env-mode JAYPOST_URL on this machine is the local service in disguise; a named remote is
+    // the user's choice (a tunnel, say) and stays allowed.
+    const isLocalInDisguise =
+      opened.endpoint.kind === 'remote' &&
+      opened.endpoint.name === undefined &&
+      isLoopbackEndpoint(endpoint.url)
+    if (args.invite === true && (opened.endpoint.kind !== 'remote' || isLocalInDisguise)) {
       deps.printError('invites need a remote; add one with "jaypost remote add" and use -s')
       return 1
     }
