@@ -6,7 +6,7 @@ import { NO_AUTH, readBook } from '@jaypost/store'
 import { TOKEN_REJECTED_MESSAGE } from '@jaypost/client'
 import { PromptAborted, runInit } from '../../src/commands/index.ts'
 import type { InitDeps } from '../../src/commands/index.ts'
-import { resolveInstallPaths, readInstall, writeInstall } from '@jaypost/install'
+import { createTargets, resolveInstallPaths, readInstall, writeInstall } from '@jaypost/install'
 import type { InstallPaths, Secrets, Target, TargetName } from '@jaypost/install'
 import type { CredentialCheck, Provider, SettingValues } from '@jaypost/core'
 import { telegramProvider } from '@jaypost/providers'
@@ -835,6 +835,43 @@ test('an invalid saved token is replaced without asking', async () => {
   expect(notes()).toContain('The saved API token was invalid; made a new one.')
   expect(wasAsked(d)).toBe(false)
   expect(notes().join('\n')).not.toContain('short-secret')
+})
+
+test('an invalid apiToken in a native install is replaced on service install', async () => {
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  writeFileSync(
+    paths.configFile,
+    JSON.stringify({ provider: 'telegram', botToken: 'n-tok', apiToken: 'short-secret' }),
+  )
+  writeInstall(paths.installFile, {
+    target: 'systemd',
+    port: 9000,
+    version: '1.0.0',
+    configFile: paths.configFile,
+  })
+  // The real systemd target, so the token is read from config.json as the service would.
+  const real = createTargets(
+    {
+      exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+      paths,
+      env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
+      user: 'me',
+      providers: [telegram()],
+      platform: 'linux',
+      uid: 501,
+    },
+    { kind: 'npm', selfPath: '/src/dist/cli.js', nodePath: '/usr/bin/node' },
+  )
+  const targets = systemdFirst()
+  targets.systemd.readApiToken = real.systemd.readApiToken
+  targets.systemd.readSecrets = real.systemd.readSecrets
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(0)
+  const token = installedToken(d.targets.quadlet)
+  expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
+  expect(notes()).toContain('The saved API token was invalid; made a new one.')
+  expect(notes().join('\n')).not.toContain('short-secret')
+  expect(notes().join('\n')).not.toContain('jaypost init')
 })
 
 test('a token that cannot be read fails the install', async () => {

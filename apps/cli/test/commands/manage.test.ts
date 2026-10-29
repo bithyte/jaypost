@@ -85,6 +85,9 @@ function fake(name: TargetName, running = true): Mutable<Target> {
     restart: vi.fn(async () => {
       order.push('restart')
     }),
+    start: vi.fn(async () => {
+      order.push('start')
+    }),
     clearOwner: vi.fn(async () => {
       order.push('clearOwner')
     }),
@@ -575,9 +578,6 @@ test('reset-owner resets the pairing /status names for the token', async () => {
 test('reset-owner starts a stopped service first and waits for /status', async () => {
   const { seen } = await seedResetStub()
   const target = fake('systemd', false)
-  target.restart = vi.fn(async () => {
-    order.push('restart')
-  })
   const fetchStatus = vi
     .fn<() => Promise<StatusFetch>>()
     .mockResolvedValueOnce(UNREACHABLE_STATUS)
@@ -586,15 +586,16 @@ test('reset-owner starts a stopped service first and waits for /status', async (
   const d = resetDeps({ targets: targets({ systemd: target }), fetchStatus })
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith('This unlinks your Telegram account. Continue?', false)
-  expect(order).toEqual(['restart', 'forgetSeedOwner'])
+  expect(order).toEqual(['start', 'forgetSeedOwner'])
+  expect(target.restart).not.toHaveBeenCalled()
   expect(fetchStatus).toHaveBeenCalledTimes(3)
   expect(d.sleep).toHaveBeenCalledTimes(2)
   expect(d.sleep).toHaveBeenCalledWith(POLL_INTERVAL_MS)
   expect(seen.map((request) => request.url)).toEqual(['POST /admin/pairings/p1/reset'])
   expect(recording.events).toEqual([
-    'plan:Restarting the service|Clearing the owner|Waiting for the service to start|Waiting for pairing',
-    'start:Restarting the service',
-    'succeed:Restarted the service',
+    'plan:Starting the service|Clearing the owner|Waiting for the service to start|Waiting for pairing',
+    'start:Starting the service',
+    'succeed:Started the service',
     'start:Clearing the owner',
     'succeed:Cleared the owner',
     'note:Paired. Try it: jaypost ping',
@@ -612,7 +613,7 @@ test('reset-owner gives up before the prompt when /status never answers', async 
   expect(recording.events).toEqual(["note:The service didn't answer. logs hint"])
 })
 
-test('reset-owner fails the step when a restarted service never answers', async () => {
+test('reset-owner fails the step when a started service never answers', async () => {
   const { seen } = await seedResetStub()
   const d = resetDeps({
     targets: targets({ systemd: fake('systemd', false) }),
@@ -620,7 +621,7 @@ test('reset-owner fails the step when a restarted service never answers', async 
   })
   expect(await runResetOwner(d)).toBe(1)
   expect(seen).toEqual([])
-  expect(order).toEqual(['restart'])
+  expect(order).toEqual(['start'])
   expect(recording.events.slice(-3)).toEqual([
     'start:Clearing the owner',
     'fail:Clearing the owner',
@@ -687,7 +688,7 @@ test('reset-owner wait exit codes', async () => {
 test('reset-owner failure prints generic error and returns 1', async () => {
   await seedResetStub()
   const target = fake('systemd', false)
-  target.restart = vi.fn(async () => {
+  target.start = vi.fn(async () => {
     throw new Error('secret-token-123')
   })
   const d = resetDeps({ targets: targets({ systemd: target }) })
@@ -700,13 +701,13 @@ test('reset-owner failure prints generic error and returns 1', async () => {
 test('reset-owner fails the running step before the failure note', async () => {
   await seedResetStub()
   const target = fake('systemd', false)
-  target.restart = vi.fn(async () => {
+  target.start = vi.fn(async () => {
     throw new Error('boom')
   })
   expect(await runResetOwner(resetDeps({ targets: targets({ systemd: target }) }))).toBe(1)
   expect(recording.events.slice(-3)).toEqual([
-    'start:Restarting the service',
-    'fail:Restarting the service',
+    'start:Starting the service',
+    'fail:Starting the service',
     'note:Reset failed. logs hint',
   ])
 })
@@ -778,7 +779,7 @@ test('reset-owner with an unusable token fails before resetting', async () => {
   expect(d.confirm).not.toHaveBeenCalled()
   expect(d.wait).not.toHaveBeenCalled()
   expect(seen).toEqual([])
-  expect(d.targets.systemd.restart).not.toHaveBeenCalled()
+  expect(d.targets.systemd.start).not.toHaveBeenCalled()
 })
 
 test('reset-owner sends the token to /status and the wait and explains unauthorized', async () => {
@@ -857,7 +858,7 @@ test('reset-owner keeps the owner when the admin call fails after a stopped serv
   const target = fake('systemd', false)
   const d = resetDeps({ targets: targets({ systemd: target }) })
   expect(await runResetOwner(d)).toBe(1)
-  expect(order).toEqual(['restart'])
+  expect(order).toEqual(['start'])
   expect(notes()).toEqual(['unknown pairing p1'])
 })
 

@@ -34,7 +34,7 @@ function resolveSeedToken(env: NodeJS.ProcessEnv, bookPath: string): ClientToken
 /**
  * Unlinks the paired owner without a restart: reads /status with key 1's token to learn its
  * pairing (and names it in the prompt), resets that pairing through the admin route, drops the
- * owner from the install's seed inputs and waits for a new pairing. A stopped service is restarted
+ * owner from the install's seed inputs and waits for a new pairing. A stopped service is started
  * after the prompt. Refuses while `JAYPOST_URL` is set: it only works on this machine's install.
  * Returns 0 on success or if the user declines, 1 on failure, not installed, `JAYPOST_URL` set or
  * a provider that doesn't pair, 130 on interrupt.
@@ -91,15 +91,16 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
       return 0
     }
     deps.progress.plan([
-      ...(isRunning ? [] : ['Restarting the service']),
+      ...(isRunning ? [] : ['Starting the service']),
       'Clearing the owner',
       'Waiting for the service to start',
       'Waiting for pairing',
     ])
     if (!isRunning) {
-      await runStep(deps.progress, 'Restarting the service', () => target.restart(record), {
+      // start, not restart: launchd can't kickstart an agent `service stop` unloaded.
+      await runStep(deps.progress, 'Starting the service', () => target.start(record), {
         ...stepOptions,
-        settle: (step) => step.succeed('Restarted the service'),
+        settle: (step) => step.succeed('Started the service'),
       })
     }
     outcome = await runStep(
@@ -208,7 +209,7 @@ async function resetOwnerPairing(
   if (found.kind === 'failed') {
     return found
   }
-  // Opened only now: a service restarted a moment ago may have just written its admin key.
+  // Opened only now: a service started a moment ago may have just written its admin key.
   const opened = await openAdmin(deps)
   if (opened.kind !== 'opened') {
     return { kind: 'failed', message: opened.message }

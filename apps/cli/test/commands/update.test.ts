@@ -10,6 +10,7 @@ import { runFinishUpdate, runUpdate } from '../../src/commands/index.ts'
 import type { UpdateDeps } from '../../src/commands/index.ts'
 import {
   createQuadletTarget,
+  createTargets,
   formatLaunchdPlist,
   readInstall,
   resolveInstallPaths,
@@ -541,6 +542,47 @@ test('update refuses an invalid token in the service without quoting it', async 
   expect(notes()).toEqual([
     'Update failed: the service\'s API token isn\'t valid; run "jaypost service install" to make a new one',
   ])
+})
+
+test('update refuses an invalid apiToken in a native install', async () => {
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  writeFileSync(
+    paths.configFile,
+    JSON.stringify({ provider: 'telegram', botToken: '1:abc', apiToken: 'short-secret' }),
+  )
+  writeInstall(paths.installFile, {
+    target: 'systemd',
+    port: 9000,
+    version: '0.4.0',
+    configFile: paths.configFile,
+  })
+  const { systemd } = createTargets(
+    {
+      exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+      paths,
+      env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
+      user: 'u',
+      providers: [telegramProvider],
+      platform: 'linux',
+      uid: 1000,
+    },
+    npmCli(NPM_CLI),
+  )
+  const d = deps({
+    version: '0.5.0',
+    targets: {
+      systemd,
+      quadlet: fake('quadlet'),
+      compose: fake('compose'),
+      launchd: fake('launchd'),
+    },
+  })
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(notes()).toEqual([
+    'Update failed: the service\'s API token isn\'t valid; run "jaypost service install" to make a new one',
+  ])
+  expect(JSON.parse(readFileSync(paths.configFile, 'utf8')).apiToken).toBe('short-secret')
+  expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
 })
 
 test('runFinishUpdate failure keeps install.json and exits 1', async () => {

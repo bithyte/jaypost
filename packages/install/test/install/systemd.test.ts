@@ -748,3 +748,16 @@ test('readApiToken reads apiToken from config.json', async () => {
   expect(await t.readApiToken(rec)).toBeUndefined()
   expect(paths.configFile).toBe(rec.configFile)
 })
+
+test('readApiToken returns an invalid apiToken as is, for the caller to judge', async () => {
+  const { t, paths } = make()
+  const rec = await t.install(base)
+  updateConfigFileForTest(paths.configFile, { apiToken: 'short-secret' })
+  expect(await t.readApiToken(rec)).toBe('short-secret')
+  updateConfigFileForTest(paths.configFile, { apiToken: '' })
+  expect(await t.readApiToken(rec)).toBeUndefined()
+})
+
+function updateConfigFileForTest(path: string, fields: Readonly<Record<string, string>>): void {
+  writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), ...fields }))
+}
