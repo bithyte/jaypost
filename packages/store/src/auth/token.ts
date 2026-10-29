@@ -13,6 +13,12 @@ import {
 } from './constants.ts'
 import type { ClientSecretNames, ClientToken } from './types.ts'
 
+const CLIENT_TOKEN_NAMES: ClientSecretNames = {
+  envVar: TOKEN_ENV_VAR,
+  fileName: 'token file',
+  valueName: 'jaypost token',
+}
+
 /** A new random token: 32 bytes as 43 base64url characters. */
 export function generateToken(): string {
   return randomBytes(TOKEN_BYTES).toString('base64url')
@@ -57,23 +63,12 @@ export function removeTokenFile(path: string): void {
  * and never the value. Never throws.
  */
 export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
-  return resolveClientSecret(env, tokenFile, {
-    envVar: TOKEN_ENV_VAR,
-    fileName: 'token file',
-    valueName: 'jaypost token',
-  })
+  return resolveClientSecret(env, tokenFile, CLIENT_TOKEN_NAMES)
 }
 
 /** The client token from JAYPOST_TOKEN only, never a file. Same messages as `resolveClientToken`. */
 export function resolveEnvToken(env: NodeJS.ProcessEnv): ClientToken {
-  const raw = findEnvValue(env, TOKEN_ENV_VAR)
-  if (raw === undefined) {
-    return NO_CLIENT_TOKEN
-  }
-  const token = parseToken(raw)
-  return token === undefined
-    ? { kind: 'unusable', message: `${TOKEN_ENV_VAR} isn't a valid jaypost token` }
-    : { kind: 'token', token, source: 'env' }
+  return resolveEnvSecret(env, CLIENT_TOKEN_NAMES) ?? NO_CLIENT_TOKEN
 }
 
 /**
@@ -85,12 +80,9 @@ export function resolveClientSecret(
   path: string,
   names: ClientSecretNames,
 ): ClientToken {
-  const fromEnv = findEnvValue(env, names.envVar)
+  const fromEnv = resolveEnvSecret(env, names)
   if (fromEnv !== undefined) {
-    const token = parseToken(fromEnv)
-    return token === undefined
-      ? { kind: 'unusable', message: `${names.envVar} isn't a valid ${names.valueName}` }
-      : { kind: 'token', token, source: 'env' }
+    return fromEnv
   }
   let raw: string | undefined
   try {
@@ -112,4 +104,18 @@ export function resolveClientSecret(
         message: `${names.fileName} ${JSON.stringify(path)} isn't a valid ${names.valueName}`,
       }
     : { kind: 'token', token, source: 'file' }
+}
+
+function resolveEnvSecret(
+  env: NodeJS.ProcessEnv,
+  names: ClientSecretNames,
+): ClientToken | undefined {
+  const raw = findEnvValue(env, names.envVar)
+  if (raw === undefined) {
+    return undefined
+  }
+  const token = parseToken(raw)
+  return token === undefined
+    ? { kind: 'unusable', message: `${names.envVar} isn't a valid ${names.valueName}` }
+    : { kind: 'token', token, source: 'env' }
 }

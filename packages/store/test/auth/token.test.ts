@@ -141,7 +141,7 @@ test('an unreadable token file is unusable', () => {
   )
 })
 
-test('resolveEnvToken ignores files and reports a bad JAYPOST_TOKEN without quoting it', () => {
+test('resolveEnvToken reads only JAYPOST_TOKEN and reports a bad one without quoting it', () => {
   expect(resolveEnvToken({})).toEqual({ kind: 'none' })
   expect(resolveEnvToken({ JAYPOST_TOKEN: TOKEN })).toEqual({
     kind: 'token',
@@ -150,4 +150,5 @@ test('resolveEnvToken ignores files and reports a bad JAYPOST_TOKEN without quot
   })
   const bad = resolveEnvToken({ JAYPOST_TOKEN: 'secret value!' })
   expect(bad).toEqual({ kind: 'unusable', message: "JAYPOST_TOKEN isn't a valid jaypost token" })
+  expect(JSON.stringify(bad)).not.toContain('secret value!')
 })
