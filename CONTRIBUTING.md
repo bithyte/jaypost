@@ -7,7 +7,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` runs the service from source and restarts it on every save. It first asks which chat app to use, with your last pick selected. Terminal needs nothing: questions print in that same terminal and you answer by typing an option number or a reply. Telegram or Discord asks for your bot's token once, reuses it after that, and the service prints a pairing code the first time. Use your own bot, not one a running install already uses. Then try it from a second terminal with `pnpm cli test --port 8788`; `pnpm cli` runs any CLI command from source. It keeps clear of a real install: it listens on port 8788 and keeps each chat app's config, state and question log in `.dev/<app>/`.
+`pnpm dev` runs the service from source and restarts it on every save. It first asks which chat app to use, with your last pick selected. Terminal needs nothing: questions print in that same terminal and you answer by typing an option number or a reply. Telegram or Discord asks for your bot's token once, reuses it after that, and the service prints a pairing code the first time. Use your own bot, not one a running install already uses. Then try it from a second terminal with `JAYPOST_URL=http://127.0.0.1:8788 pnpm cli ping`; `pnpm cli` runs any CLI command from source. It keeps clear of a real install: it listens on port 8788 and keeps each chat app's config, state and question log in `.dev/<app>/`.
 
 To skip the questions, `cp .env.example .env` and fill in `JAYPOST_BOT_TOKEN` (and `JAYPOST_PROVIDER=discord` for Discord). If `JAYPOST_CONFIG` is set, `pnpm dev` uses that file as is and never writes to it.
 

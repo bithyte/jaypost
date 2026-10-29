@@ -1,5 +1,5 @@
 import type { ClientToken, Exec } from '@jaypost/store'
-import type { AdminCaller, AttachmentSource, ServiceEndpoint } from '@jaypost/client'
+import type { AdminCaller, AttachmentSource, ResolvedBot, ServiceEndpoint } from '@jaypost/client'
 import type {
   MessageFormat,
   Provider,
@@ -59,11 +59,12 @@ export type StatusFetch =
   | { readonly kind: 'unreachable' }
 
 /** Signature of `defaultFetchStatus`, injectable for tests. */
-export type FetchStatus = (port: number, token: string | undefined) => Promise<StatusFetch>
+export type FetchStatus = (url: URL, token: string | undefined) => Promise<StatusFetch>
 
 /** Inputs to `waitForPairing`; the optional fields are test seams with real defaults. */
 export type WaitOptions = {
-  readonly port: number
+  /** The service's base URL; `toLocalEndpoint(port).url` for the one on this machine. */
+  readonly url: URL
   readonly isRunning: () => Promise<boolean>
   /** Appended to the message when the service stops while waiting. */
   readonly logsHint: string
@@ -139,41 +140,27 @@ export type ResetOwnerDeps = {
 
 /** Everything `runStatus` touches outside itself, injected for tests. */
 export type StatusDeps = {
-  readonly targets: Readonly<Record<TargetName, Target>>
-  readonly paths: InstallPaths
+  /** The bot `status` asks about; its key is sent to /status but never printed. */
+  readonly resolved: ResolvedBot
+  /** The install on this machine, if any; only shown when the bot is on this machine. */
+  readonly install: { readonly record: InstallRecord; readonly target: Target } | undefined
   readonly fetchStatus: FetchStatus
-  readonly token: ClientToken
-  /** Token file path, named in the `Token:` line when the token came from it. */
-  readonly tokenFile: string
   readonly print: (text: string) => void
 }
 
-/**
- * Parsed `log` flags; absent fields mean the user didn't pass them. `bot`, `pairing`, `key` and
- * `all` read through the service's API instead of the install's files.
- */
+/** Parsed `log` flags; absent fields mean the user didn't pass them. */
 export type LogArgs = {
   readonly since?: Date
   readonly project?: string
   readonly limit?: number
   readonly json?: boolean
-  readonly bot?: string
-  readonly pairing?: string
-  readonly key?: string
-  /** Every bot's log, not only the seed bot's. */
-  readonly all?: boolean
 }
 
 /** Everything `runLog` touches outside itself, injected for tests. */
 export type LogDeps = {
-  readonly targets: Readonly<Record<TargetName, Target>>
-  readonly paths: InstallPaths
-  readonly env: NodeJS.ProcessEnv
-  /** Sent to GET /log when no admin key resolves. */
+  /** The bot whose GET /log is read. */
+  readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
-  /** The running CLI's version, for the development exemption on the too-old check. */
-  readonly version: string
-  readonly now: () => Date
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
 }
@@ -265,7 +252,7 @@ export type SendDeps = {
 
 /** Everything `runPing` touches outside itself, injected for tests. */
 export type PingDeps = {
-  readonly port: number
+  readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
   readonly progress: Progress
   readonly providers: readonly Provider[]

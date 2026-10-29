@@ -7,16 +7,12 @@ import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
 import {
   APPROVERS_ENV_VAR,
-  DEFAULT_PORT,
   isPortFree,
   loadConfig,
-  loadServiceConfig,
   MODE_ENV_VAR,
   parseSince,
-  PORT_ENV_VAR,
   realExec,
-  resolveClientToken,
-  resolveConfigDirectory,
+  resolveJaypostDirectory,
   resolveTokenFile,
 } from '@jaypost/store'
 import {
@@ -29,7 +25,7 @@ import {
   VOTE_RULES,
 } from '@jaypost/core'
 import type { MessageFormat, VoteRule } from '@jaypost/core'
-import { DEFAULT_ATTACHMENT_NAME } from '@jaypost/client'
+import { DEFAULT_ATTACHMENT_NAME, resolveBot } from '@jaypost/client'
 import type { AttachmentSource } from '@jaypost/client'
 import {
   createClackPrompts,
@@ -86,26 +82,22 @@ import type { HookDeps } from '@jaypost/hook'
 import {
   createTargets,
   NPM_LATEST_URL,
-  readInstall,
+  findExistingInstall,
   RELEASES_API_URL,
   resolveInstallPaths,
   resolveTargetOrder,
 } from '@jaypost/install'
-import { resolveMcpEndpoint, resolveMcpPort, runMcp } from '@jaypost/mcp'
+import { resolveMcpPort, runMcp } from '@jaypost/mcp'
 import type { CliLocation, InstallPaths, Target, TargetName } from '@jaypost/install'
 import { PROVIDERS, SERVICE_PROVIDERS } from '@jaypost/providers'
 import { VERSION } from './constants.ts'
 
 const DIGITS_PATTERN = /^\d+$/
 
-function resolvePort(): number {
-  try {
-    return loadServiceConfig(process.env).port
-  } catch {
-    const port = Number(process.env[PORT_ENV_VAR])
-    return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT
-  }
-}
+const BOT_FLAGS = '-b, --bot <alias>'
+
+const BOT_DESCRIPTION =
+  'contact book bot to use (default: JAYPOST_BOT, then JAYPOST_URL/JAYPOST_TOKEN, then the book default)'
 
 function parsePort(rawPort: string): number {
   const port = DIGITS_PATTERN.test(rawPort) ? Number(rawPort) : NaN
@@ -218,13 +210,14 @@ function createAnswerPrint(progress: Progress): (text: string) => void {
 }
 
 function createSendDeps(
-  flagPort: number | undefined,
+  bot: string | undefined,
   signal: AbortSignal,
   progress: Progress,
 ): SendDeps {
+  const resolved = resolveBot(process.env, bot)
   return {
-    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     signal,
     print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
@@ -256,16 +249,17 @@ function requireSendMode(command: Command): Exclude<SendMode, { readonly kind: '
   return mode
 }
 
-function createHookDeps(flagPort: number | undefined, signal: AbortSignal): HookDeps {
+function createHookDeps(bot: string | undefined, signal: AbortSignal): HookDeps {
+  const resolved = resolveBot(process.env, bot)
   return {
-    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     signal,
     readInput: () => readHookInput(process.stdin, signal),
     print: (line) => console.log(line),
     printError: (line) => console.error(line),
     env: process.env,
-    stopDirectory: join(resolveConfigDirectory(process.env), STOP_DIRECTORY_NAME),
+    stopDirectory: join(resolveJaypostDirectory(process.env), STOP_DIRECTORY_NAME),
   }
 }
 
@@ -401,15 +395,15 @@ const SETUP_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 const SETUP_RERAISED = ['SIGTERM'] as const
 
-function runSendRequestWithSignals(args: SendRequestArgs, flagPort: number | undefined) {
+function runSendRequestWithSignals(args: SendRequestArgs, bot: string | undefined) {
   const progress = createStderrProgress()
   if (progress.mode !== 'live') {
     return runWithSignals((controller) =>
-      runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+      runSendRequest(args, createSendDeps(bot, controller.signal, progress)),
     )
   }
   return runWithSignals(
-    (controller) => runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+    (controller) => runSendRequest(args, createSendDeps(bot, controller.signal, progress)),
     LIVE_SIGNALS,
     ['SIGTERM', 'SIGHUP'],
   )
@@ -427,28 +421,26 @@ function runDirectSendRequestWithSignals(args: SendRequestArgs): Promise<number>
   )
 }
 
-function runStatusCommand(): Promise<number> {
-  const tokenFile = resolveTokenFile(process.env)
+function runStatusCommand(bot: string | undefined): Promise<number> {
   const paths = resolveInstallPaths()
+  const targets = createRealTargets(paths)
+  const existing = findExistingInstall(paths, targets)
   return runStatus({
-    targets: createRealTargets(paths),
-    paths,
+    resolved: resolveBot(process.env, bot),
+    install:
+      existing === undefined
+        ? undefined
+        : { record: existing.record, target: targets[existing.record.target] },
     fetchStatus: defaultFetchStatus,
-    token: resolveClientToken(process.env, tokenFile),
-    tokenFile,
     print: (text) => console.log(text),
   })
 }
 
-function runLogCommand(args: LogArgs): Promise<number> {
-  const paths = resolveInstallPaths()
+function runLogCommand(args: LogArgs, bot: string | undefined): Promise<number> {
+  const resolved = resolveBot(process.env, bot)
   return runLog(args, {
-    targets: createRealTargets(paths),
-    paths,
-    env: process.env,
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
-    version: VERSION,
-    now: () => new Date(),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     print: (text) => writeAll(`${text}\n`),
     printError: (text) => console.error(text),
   })
@@ -728,7 +720,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       async (
         target: TargetName | undefined,
         options: {
-          readonly port?: number
+          readonly bot?: string
           readonly tarball?: string
           readonly provider?: string
           readonly token?: boolean
@@ -776,9 +768,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     .action(() => runService(VERSION))
   program
     .command('status')
-    .description('show service and pairing state')
-    .action(async () => {
-      code = await runStatusCommand()
+    .description('show the bot and its pairing state')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      code = await runStatusCommand(options.bot)
     })
   program
     .command('log')
@@ -791,10 +784,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .option('--project <name>', 'only questions from this project', parseProjectOption)
     .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
     .option('--json', 'print one JSON entry per line')
-    .option('--bot <id>', "only this bot's questions; reads through the API")
-    .option('--pairing <id>', "only this pairing's questions; reads through the API")
-    .option('--key <id>', "only this key's questions; reads through the API")
-    .option('--all', "every bot's questions, not only the first bot's; reads through the API")
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .action(
       async (options: {
         readonly since?: Date
@@ -802,38 +792,29 @@ export async function main(argv: readonly string[]): Promise<number> {
         readonly limit?: number
         readonly json?: boolean
         readonly bot?: string
-        readonly pairing?: string
-        readonly key?: string
-        readonly all?: boolean
       }) => {
-        code = await runLogCommand({
-          ...(options.since === undefined ? {} : { since: options.since }),
-          ...(options.project === undefined ? {} : { project: options.project }),
-          ...(options.limit === undefined ? {} : { limit: options.limit }),
-          ...(options.json === undefined ? {} : { json: options.json }),
-          ...(options.bot === undefined ? {} : { bot: options.bot }),
-          ...(options.pairing === undefined ? {} : { pairing: options.pairing }),
-          ...(options.key === undefined ? {} : { key: options.key }),
-          ...(options.all === undefined ? {} : { all: options.all }),
-        })
+        code = await runLogCommand(
+          {
+            ...(options.since === undefined ? {} : { since: options.since }),
+            ...(options.project === undefined ? {} : { project: options.project }),
+            ...(options.limit === undefined ? {} : { limit: options.limit }),
+            ...(options.json === undefined ? {} : { json: options.json }),
+          },
+          options.bot,
+        )
       },
     )
   program
     .command('ping')
     .description('send a test message to check the service and pairing')
-    .option(
-      '--port <n>',
-      'API port (default: the install, then JAYPOST_PORT, then 8787)',
-      parsePort,
-    )
-    .action(async (options: { readonly port?: number }) => {
-      const port =
-        options.port ?? readInstall(resolveInstallPaths().installFile)?.port ?? resolvePort()
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
       const progress = createStderrProgress()
       const runLive = (controller: AbortController) =>
         runPing({
-          port,
-          token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+          endpoint: resolved.endpoint,
+          token: resolved.token,
           progress,
           providers: PROVIDERS,
           signal: controller.signal,
@@ -869,18 +850,13 @@ export async function main(argv: readonly string[]): Promise<number> {
   program
     .command('mcp')
     .description('run an MCP server on stdin/stdout for agents')
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
-    .action(async (options: { readonly port?: number }) => {
-      // Not resolvePort(): that reads config.json, which an agent's container may not have.
-      const tokenFile = resolveTokenFile(process.env)
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
       code = await runMcp({
         version: VERSION,
-        endpoint: resolveMcpEndpoint(options.port, process.env, resolveInstallPaths().installFile),
-        readToken: () => resolveClientToken(process.env, tokenFile),
+        endpoint: resolved.endpoint,
+        readToken: () => resolved.token,
       })
     })
   program
@@ -940,11 +916,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--attach-name <name>',
       'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .action(
       async (
         text: string,
@@ -961,7 +933,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly json?: boolean
           readonly attach?: string
           readonly attachName?: string
-          readonly port?: number
+          readonly bot?: string
         },
       ) => {
         const mode = requireSendMode(request)
@@ -1016,7 +988,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         code =
           mode.kind === 'direct'
             ? await runDirectSendRequestWithSignals(args)
-            : await runSendRequestWithSignals(args, options.port)
+            : await runSendRequestWithSignals(args, options.bot)
       },
     )
   const notify = program
@@ -1038,11 +1010,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--delete-after <seconds|timestamp>',
       'delete the message after this many seconds or at this ISO 8601 time (default 8h; ignored in direct mode)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .action(
       async (
         text: string,
@@ -1052,7 +1020,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly attach?: string
           readonly attachName?: string
           readonly deleteAfter?: string
-          readonly port?: number
+          readonly bot?: string
         },
       ) => {
         const mode = requireSendMode(notify)
@@ -1082,7 +1050,7 @@ export async function main(argv: readonly string[]): Promise<number> {
             : await runWithSignals((controller) =>
                 runSendNotify(
                   args,
-                  createSendDeps(options.port, controller.signal, createStderrProgress()),
+                  createSendDeps(options.bot, controller.signal, createStderrProgress()),
                 ),
               )
       },
@@ -1092,11 +1060,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .description(
       'answer Claude Code permission prompts, forward notifications and ask for the next prompt when Claude stops (reads a hook event on stdin)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .option('--project <name>', 'shown as [name] (default: the Claude Code project folder)')
     .option(
       '--timeout <seconds>',
@@ -1105,7 +1069,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .action(
       async (options: {
-        readonly port?: number
+        readonly bot?: string
         readonly project?: string
         readonly timeout?: number
       }) => {
@@ -1114,7 +1078,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
         }
         code = await runWithSignals(
-          (controller) => runHook(args, createHookDeps(options.port, controller.signal)),
+          (controller) => runHook(args, createHookDeps(options.bot, controller.signal)),
           ['SIGINT', 'SIGTERM'],
         )
       },

@@ -1,4 +1,9 @@
-import { ADMIN_TOO_OLD_MESSAGE, describeUnauthorized, findEnvEndpoint } from '@jaypost/client'
+import {
+  ADMIN_TOO_OLD_MESSAGE,
+  describeUnauthorized,
+  findEnvEndpoint,
+  toLocalEndpoint,
+} from '@jaypost/client'
 import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
@@ -120,7 +125,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   let result: WaitResult
   try {
     result = await deps.wait({
-      port: record.port,
+      url: toLocalEndpoint(record.port).url,
       isRunning: () => target.isRunning(record),
       logsHint: target.logsHint(record),
       ...(token === undefined ? {} : { token }),
@@ -225,7 +230,7 @@ async function fetchStartedStatus(
 ): Promise<StatusFetch> {
   const sleep = deps.sleep ?? createAbortableSleep(deps.signal)
   for (let attempt = 1; ; attempt += 1) {
-    const fetched = await deps.fetchStatus(port, token)
+    const fetched = await deps.fetchStatus(toLocalEndpoint(port).url, token)
     if (deps.signal?.aborted) {
       throw new Error('interrupted')
     }

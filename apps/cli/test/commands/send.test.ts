@@ -467,18 +467,15 @@ type Cli = {
 // Async spawn: the API server runs in this process, so a blocking spawnSync would deadlock.
 function runCli(args: readonly string[], port: number, stdin?: Readable | string): Promise<Cli> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['apps/cli/src/cli.ts', ...args, '--port', String(port)],
-      {
-        cwd: ROOT,
-        env: {
-          ...process.env,
-          XDG_CONFIG_HOME: createTempDirectory(),
-          JAYPOST_TOKEN: '',
-        },
+    const child = spawn(process.execPath, ['apps/cli/src/cli.ts', ...args], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: createTempDirectory(),
+        JAYPOST_URL: `http://127.0.0.1:${port}`,
+        JAYPOST_TOKEN: '',
       },
-    )
+    })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()))

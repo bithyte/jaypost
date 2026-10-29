@@ -169,9 +169,9 @@ async function freePort(): Promise<number> {
 }
 
 function spawnHook(port: number, input: string | undefined, env?: NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'hook', '--port', String(port)], {
+  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'hook'], {
     cwd: ROOT,
-    ...(env === undefined ? {} : { env }),
+    env: { ...(env ?? process.env), JAYPOST_URL: `http://127.0.0.1:${port}` },
   })
   const output = { stdout: '', stderr: '' }
   child.stdout.setEncoding('utf8')
@@ -817,7 +817,7 @@ test('session start with an unreachable remote url says to check it', async () =
   expect(out).toEqual([
     JSON.stringify({
       systemMessage:
-        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check JAYPOST_URL and that the service there is running.",
+        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check the bot with `jaypost bots` (`-b` or JAYPOST_BOT picks another) and that the service there is running.",
     }),
   ])
 })

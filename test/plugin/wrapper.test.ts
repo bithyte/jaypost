@@ -5,7 +5,6 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vite-plus/test'
-import { resolveInstallPaths, writeInstall } from '@jaypost/install'
 
 const ROOT = new URL('../..', import.meta.url).pathname
 const WRAPPER = join(ROOT, 'claude-plugin', 'bin', 'jaypost-plugin')
@@ -281,23 +280,25 @@ test('session start against the real cli reports a stopped service', async () =>
   )
   const configHome = join(sandbox.root, 'config')
   await mkdir(configHome)
-  const env = { HOME: sandbox.home, XDG_CONFIG_HOME: configHome }
-  const installedPort = await freePort()
-  let environmentPort = await freePort()
-  while (environmentPort === installedPort) {
-    environmentPort = await freePort()
-  }
-  const { installFile } = resolveInstallPaths(env)
-  await mkdir(join(installFile, '..'), { recursive: true })
-  writeInstall(installFile, { target: 'systemd', port: installedPort, version: '0.0.0' })
+  const botPort = await freePort()
+  await mkdir(join(configHome, 'jaypost'), { recursive: true })
+  await writeFile(
+    join(configHome, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      default: 'home',
+      remotes: [],
+      bots: [{ alias: 'home', url: `http://127.0.0.1:${botPort}/` }],
+    }),
+  )
   const result = run(
     'session-start',
     sandbox,
-    { XDG_CONFIG_HOME: configHome, PORT: String(environmentPort) },
+    { XDG_CONFIG_HOME: configHome },
     '{"session_id":"s1","hook_event_name":"SessionStart","source":"startup","cwd":"/work"}',
   )
   expect(result.status).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
-    systemMessage: `jaypost isn't running on 127.0.0.1:${installedPort}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`,
+    systemMessage: `jaypost isn't running on 127.0.0.1:${botPort}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`,
   })
 })

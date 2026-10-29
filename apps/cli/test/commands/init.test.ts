@@ -315,7 +315,9 @@ test('passes tarball and signal through', async () => {
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(
     expect.objectContaining({ tarball: '/x/y.tgz' }),
   )
-  expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ signal: ac.signal, port: 8787 }))
+  expect(d.wait).toHaveBeenCalledWith(
+    expect.objectContaining({ signal: ac.signal, url: new URL('http://127.0.0.1:8787/') }),
+  )
 })
 
 test('darwin offers launchd first and defaults to it', async () => {

@@ -10,7 +10,7 @@ import {
   writeTokenFile,
 } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
-import { describeUnauthorized } from '@jaypost/client'
+import { describeUnauthorized, toLocalEndpoint } from '@jaypost/client'
 import {
   detectTargets,
   findDefaultTarget,
@@ -277,7 +277,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   }
   // The token just chosen, never JAYPOST_TOKEN: a stale one in the shell would fail pairing.
   const result = await deps.wait({
-    port,
+    url: toLocalEndpoint(port).url,
     isRunning: () => target.isRunning(installed),
     logsHint: target.logsHint(installed),
     ...(deps.signal ? { signal: deps.signal } : {}),

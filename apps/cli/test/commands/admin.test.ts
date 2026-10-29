@@ -295,7 +295,7 @@ test('bot add writes the registry when no admin key exists and nothing answers',
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
   const deps = createDeps(env)
   expect(await runBotAdd({ json: true }, deps)).toBe(0)
-  expect(deps.fetchStatus).toHaveBeenCalledWith(port, undefined)
+  expect(deps.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), undefined)
   expect(JSON.parse(out.join('\n'))).toEqual({ bot: { id: 'b1', provider: 'fake' } })
   expect(readRegistry(configPath).bots).toHaveLength(1)
 })

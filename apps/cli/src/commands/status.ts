@@ -1,20 +1,9 @@
-import type { ClientToken } from '@jaypost/store'
-import { describeUnauthorized } from '@jaypost/client'
-import { findExistingInstall } from '@jaypost/install'
+import { describeEndpoint, describeUnauthorized, isLoopbackEndpoint } from '@jaypost/client'
 import type { StatusInfo } from '@jaypost/protocol'
 import { formatPairingText } from './pairing-text.ts'
 import type { StatusDeps } from './types.ts'
 
-function describeTokenSource(token: ClientToken, tokenFile: string): string {
-  switch (token.kind) {
-    case 'none':
-      return 'none'
-    case 'token':
-      return token.source === 'env' ? 'from JAYPOST_TOKEN' : `from ${tokenFile}`
-    case 'unusable':
-      return `unusable (${token.message})`
-  }
-}
+const NO_BOT_MESSAGE = 'no bot to send to'
 
 /** The key and pairing lines, and the bot's error when it failed; older services send neither. */
 function printKey(status: StatusInfo, print: (text: string) => void): void {
@@ -27,47 +16,54 @@ function printKey(status: StatusInfo, print: (text: string) => void): void {
 }
 
 /**
- * Prints install, running, key and pairing state. Returns 0 only when installed and running; 1
- * otherwise, including an unusable or rejected token.
+ * Prints the bot (alias or "env" and where it is), the install lines when it is the service on
+ * this machine, then the key and pairing from /status. Returns 0 only when /status answered; 1
+ * otherwise, including no bot, a service that isn't running, or an unusable or rejected key. The
+ * key itself is never printed.
  */
 export async function runStatus(deps: StatusDeps): Promise<number> {
-  const { print } = deps
-  const existing = findExistingInstall(deps.paths, deps.targets)
-  if (!existing) {
-    print('Not installed. Run "jaypost init".')
+  const { print, resolved, install } = deps
+  if (resolved.endpoint.kind === 'invalid') {
+    const isNoBot = install === undefined && resolved.endpoint.message.startsWith(NO_BOT_MESSAGE)
+    print(
+      isNoBot
+        ? 'No bot. Run "jaypost service install" or "jaypost join".'
+        : resolved.endpoint.message,
+    )
     return 1
   }
-  const { record } = existing
-  let running = false
-  try {
-    running = await deps.targets[record.target].isRunning(record)
-  } catch {
-    running = false
+  const { url } = resolved.endpoint
+  print(`Bot:     ${resolved.alias ?? 'env'} (${describeEndpoint(url)})`)
+  if (install !== undefined && isLoopbackEndpoint(url)) {
+    const { record, target } = install
+    let running = false
+    try {
+      running = await target.isRunning(record)
+    } catch {
+      running = false
+    }
+    print(`Target:  ${record.target}`)
+    print(`Version: ${record.version}`)
+    print(`Port:    ${record.port}`)
+    print(`Running: ${running ? 'yes' : 'no'}`)
+    if (!running) {
+      print(target.logsHint(record))
+      return 1
+    }
   }
-  print(`Target:  ${record.target}`)
-  print(`Version: ${record.version}`)
-  print(`Port:    ${record.port}`)
-  print(`Token:   ${describeTokenSource(deps.token, deps.tokenFile)}`)
-  print(`Running: ${running ? 'yes' : 'no'}`)
-  if (!running) {
-    print(deps.targets[record.target].logsHint(record))
-    return 1
-  }
-  if (deps.token.kind === 'unusable') {
+  const { token } = resolved
+  if (token.kind === 'unusable') {
     print('Pairing: unknown (no usable token)')
     return 1
   }
-  const fetched = await deps.fetchStatus(
-    record.port,
-    deps.token.kind === 'token' ? deps.token.token : undefined,
-  )
+  const fetched = await deps.fetchStatus(url, token.kind === 'token' ? token.token : undefined)
   switch (fetched.kind) {
     case 'unreachable':
       print('Pairing: unknown (the service did not answer on /status yet)')
-      return 0
+      return 1
     case 'unauthorized':
       print(`Pairing: unknown (the service rejected the token)
-${describeUnauthorized(deps.token.kind === 'token')}`)
+${describeUnauthorized(token.kind === 'token')}`)
       return 1
     case 'answered':
       printKey(fetched.status, print)

@@ -16,7 +16,7 @@ function answered(status: StatusInfo): StatusFetch {
 }
 
 const base = {
-  port: 1,
+  url: new URL('http://127.0.0.1:1/'),
   isRunning: async () => true,
   logsHint: 'L',
   sleep: async () => {},
@@ -145,7 +145,7 @@ test('abort interrupts a real sleep promptly', async () => {
   setTimeout(() => ac.abort(), 20)
   const t = Date.now()
   const r = await waitForPairing({
-    port: 1,
+    url: new URL('http://127.0.0.1:1/'),
     isRunning: async () => true,
     logsHint: 'L',
     signal: ac.signal,
@@ -202,7 +202,7 @@ async function pairViaHttp(
   try {
     const result = await waitForPairing({
       ...base,
-      port,
+      url: new URL(`http://127.0.0.1:${port}/`),
       fetchStatus: defaultFetchStatus,
       progress,
     })
@@ -211,6 +211,14 @@ async function pairViaHttp(
     server.close()
   }
 }
+
+test("waitForPairing polls the url it's given", async () => {
+  const fetchStatus = vi.fn(async () => answered({ paired: true, bot: 'b' }))
+  const url = new URL('https://relay.example.com/team/')
+  const { progress } = createRecordingProgress()
+  expect(await waitForPairing({ ...base, url, token: TOKEN, fetchStatus, progress })).toBe('paired')
+  expect(fetchStatus.mock.calls).toEqual([[url, TOKEN]])
+})
 
 test('waitForPairing accepts the old status shape', async () => {
   const { result, printed } = await pairViaHttp([
@@ -245,8 +253,10 @@ test('defaultFetchStatus sends the token and reads a 401 as unauthorized', async
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
   try {
-    expect(await defaultFetchStatus(port)).toEqual({ kind: 'unauthorized' })
-    expect(await defaultFetchStatus(port, TOKEN)).toEqual({
+    expect(await defaultFetchStatus(new URL(`http://127.0.0.1:${port}/`))).toEqual({
+      kind: 'unauthorized',
+    })
+    expect(await defaultFetchStatus(new URL(`http://127.0.0.1:${port}/`), TOKEN)).toEqual({
       kind: 'answered',
       status: { paired: true, bot: 'b' },
     })
@@ -263,7 +273,9 @@ test('defaultFetchStatus reads an unexpected body as unreachable', async () => {
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
   try {
-    expect(await defaultFetchStatus(port)).toEqual({ kind: 'unreachable' })
+    expect(await defaultFetchStatus(new URL(`http://127.0.0.1:${port}/`))).toEqual({
+      kind: 'unreachable',
+    })
   } finally {
     server.close()
   }
@@ -279,5 +291,5 @@ test('waitForPairing stops at once on unauthorized and passes its token', async 
     'start:Waiting for the service to start',
     'fail:Waiting for the service to start',
   ])
-  expect(fetchStatus.mock.calls).toEqual([[1, TOKEN]])
+  expect(fetchStatus.mock.calls).toEqual([[base.url, TOKEN]])
 })

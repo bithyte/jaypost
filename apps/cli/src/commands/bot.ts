@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { findOwnerSetting, findProvider } from '@jaypost/core'
 import type { Provider, SettingValues } from '@jaypost/core'
 import { addBot, openDatabase, RegistryStore, resolveDatabasePath } from '@jaypost/store'
+import { toLocalEndpoint } from '@jaypost/client'
 import type { AdminCaller } from '@jaypost/client'
 import type { AdminBot, BotsBody } from '@jaypost/protocol'
 import { openAdmin, openAdminCaller } from './admin-access.ts'
@@ -90,7 +91,7 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
       deps.printError(opened.message)
       return { kind: 'refused' }
     }
-    const status = await deps.fetchStatus(endpoint.port, undefined)
+    const status = await deps.fetchStatus(toLocalEndpoint(endpoint.port).url, undefined)
     if (status.kind !== 'unreachable') {
       deps.printError(opened.message)
       return { kind: 'refused' }
@@ -128,7 +129,7 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
  */
 async function recheckStopped(route: RegistryRoute, deps: AdminDeps): Promise<AddRoute> {
   if (route.caller === undefined) {
-    const status = await deps.fetchStatus(route.port, undefined)
+    const status = await deps.fetchStatus(toLocalEndpoint(route.port).url, undefined)
     if (status.kind === 'unreachable') {
       return route
     }

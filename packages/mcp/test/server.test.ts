@@ -23,7 +23,7 @@ import {
 import type { FastifyInstance } from 'fastify'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
 import { ApprovalService, MAX_ATTACHMENT_BYTES, NotificationService } from '@jaypost/core'
-import { NO_AUTH, writeTokenFile } from '@jaypost/store'
+import { NO_AUTH } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import {
   ATTACHMENT_TOO_OLD_MESSAGE,
@@ -96,11 +96,9 @@ const servers: FastifyInstance[] = []
 const stubs: Server[] = []
 const clients: Client[] = []
 let directory = ''
-let tokenFile = ''
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-mcp-'))
   mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
-  tokenFile = join(directory, 'jaypost', 'service', 'token')
 })
 afterEach(async () => {
   rmSync(directory, { recursive: true, force: true })
@@ -165,15 +163,38 @@ async function startApi(
   return { port, service, messenger, notifier }
 }
 
-async function connect(port: number, extraEnv: Record<string, string> = {}): Promise<Client> {
+/** A contact book at `directory` with one bot, `home`, which is also the default. */
+function writeBook(port: number, key: string | undefined): void {
+  writeFileSync(
+    join(directory, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      default: 'home',
+      remotes: [],
+      bots: [{ alias: 'home', url: `http://127.0.0.1:${port}/`, ...(key ? { key } : {}) }],
+    }),
+  )
+}
+
+/** Connects `jaypost mcp`; with `bot` it picks that contact instead of the env url at `port`. */
+async function connect(
+  port: number,
+  extraEnv: Record<string, string> = {},
+  bot?: string,
+): Promise<Client> {
   const client = new Client({ name: 'test', version: '0.0.0' })
   clients.push(client)
   await client.connect(
     new StdioClientTransport({
       command: process.execPath,
-      args: ['apps/cli/src/cli.ts', 'mcp', '--port', String(port)],
+      args: ['apps/cli/src/cli.ts', 'mcp', ...(bot === undefined ? [] : ['-b', bot])],
       cwd: ROOT,
-      env: { ...getDefaultEnvironment(), XDG_CONFIG_HOME: directory, ...extraEnv },
+      env: {
+        ...getDefaultEnvironment(),
+        XDG_CONFIG_HOME: directory,
+        ...(bot === undefined ? { JAYPOST_URL: `http://127.0.0.1:${port}` } : {}),
+        ...extraEnv,
+      },
       stderr: 'pipe',
     }),
   )
@@ -478,8 +499,9 @@ test('closing stdin cancels a pending ask', async () => {
 
 test('stdout carries only json-rpc', async () => {
   const { port } = await startApi()
-  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'mcp', '--port', String(port)], {
+  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'mcp'], {
     cwd: ROOT,
+    env: { ...process.env, JAYPOST_URL: `http://127.0.0.1:${port}` },
     stdio: ['pipe', 'pipe', 'ignore'],
   })
   let stdout = ''
@@ -509,10 +531,10 @@ test('stdout carries only json-rpc', async () => {
   }
 })
 
-test('tool calls send the token from the token file', async () => {
-  writeTokenFile(tokenFile, TOKEN)
+test('tool calls send the key of the contact book bot', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
-  const client = await connect(port)
+  writeBook(port, TOKEN)
+  const client = await connect(port, {}, 'home')
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     content: [{ type: 'text', text: 'sent' }],
   })
@@ -526,39 +548,25 @@ test('JAYPOST_TOKEN reaches the service', async () => {
   })
 })
 
-test('the token is read again on every call', async () => {
-  writeTokenFile(tokenFile, FIRST)
+test('a wrong book key is rejected', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: SECOND } })
-  const client = await connect(port)
+  writeBook(port, FIRST)
+  const client = await connect(port, {}, 'home')
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     isError: true,
     content: [{ type: 'text', text: TOKEN_REJECTED_MESSAGE }],
   })
-  writeTokenFile(tokenFile, SECOND)
-  expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
-    content: [{ type: 'text', text: 'sent' }],
-  })
 })
 
-test('an unusable token fails only the call that hit it', async () => {
-  writeTokenFile(tokenFile, 'short-secret')
+test('an unusable token fails the calls that hit it', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
-  const client = await connect(port)
+  const client = await connect(port, { JAYPOST_TOKEN: 'short-secret' })
   const unusable = {
     isError: true,
-    content: [
-      {
-        type: 'text',
-        text: `token file ${JSON.stringify(tokenFile)} isn't a valid jaypost token`,
-      },
-    ],
+    content: [{ type: 'text', text: "JAYPOST_TOKEN isn't a valid jaypost token" }],
   }
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual(unusable)
   expect(await client.callTool({ name: 'ask_user', arguments: ASK })).toEqual(unusable)
-  writeTokenFile(tokenFile, TOKEN)
-  expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
-    content: [{ type: 'text', text: 'sent' }],
-  })
 })
 
 const CODE_SPAN = { kind: 'code', offset: 11, length: 2 } as const

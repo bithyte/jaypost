@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -93,9 +93,19 @@ test('pair approver --provider nope exits 2', async () => {
   expect(stderr.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider')
 })
 
-test('mcp rejects a bad port with 2', async () => {
+test('--port is an unknown option on every client command but openapi', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['mcp', '--port', 'abc'])).toBe(2)
+  for (const command of [
+    ['ping'],
+    ['status'],
+    ['request', 'Deploy?', '-o', 'Yes', '-d', 'No'],
+    ['notify', 'hi'],
+    ['log'],
+    ['mcp'],
+    ['hook'],
+  ]) {
+    expect(await main([...command, '--port', '1'])).toBe(2)
+  }
 })
 
 test('request needs -o or --allow-text', async () => {
@@ -110,7 +120,7 @@ test('request --allow-text without -o reaches the service', async () => {
   // An invalid token makes send exit 1 before any network call; a usage error would be 2.
   vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   const ask = ['request', 'Which?', '--allow-text', '-d', 'main']
-  expect(await main([...ask, '--port', '1'])).toBe(1)
+  expect(await main(ask)).toBe(1)
 })
 
 test('request requires a default, and rejects a bad timeout', async () => {
@@ -134,10 +144,10 @@ test('request adds the default as the last button unless an option names it or -
     })
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const port = String((server.address() as AddressInfo).port)
+  vi.stubEnv('JAYPOST_URL', `http://127.0.0.1:${(server.address() as AddressInfo).port}`)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    const ask = ['request', 'Deploy?', '--port', port]
+    const ask = ['request', 'Deploy?']
     expect(await main([...ask, '-o', 'Approve', '-d', 'Decline'])).toBe(0)
     expect(await main([...ask, '-o', 'Decline', '-o', 'Approve', '--default', 'Decline'])).toBe(0)
     expect(await main([...ask, '-o', 'Approve', '--allow-text', '-d', 'Decline'])).toBe(0)
@@ -173,9 +183,9 @@ async function listenForRequests(): Promise<{
   }
 }
 
-test('ping --port sends to that port, over the install and JAYPOST_PORT', async () => {
+test('ping uses JAYPOST_URL in env mode, over the install', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
-  const flagListener = await listenForRequests()
+  const listener = await listenForRequests()
   const installListener = await listenForRequests()
   mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
   writeFileSync(
@@ -183,60 +193,94 @@ test('ping --port sends to that port, over the install and JAYPOST_PORT', async 
     JSON.stringify({ target: 'systemd', port: installListener.port, version: VERSION }),
   )
   vi.stubEnv('XDG_CONFIG_HOME', directory)
-  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
-  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.stubEnv('JAYPOST_URL', `http://127.0.0.1:${listener.port}`)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    expect(await main(['ping', '--port', String(flagListener.port)])).toBe(0)
+    expect(await main(['ping'])).toBe(0)
   } finally {
-    flagListener.close()
+    listener.close()
     installListener.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(flagListener.urls).toEqual(['/notify'])
+  expect(listener.urls).toEqual(['/notify'])
   expect(installListener.urls).toEqual([])
 })
 
-test('ping without --port uses the install port over JAYPOST_PORT', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
-  const listener = await listenForRequests()
-  mkdirSync(join(directory, 'jaypost', 'service'), { recursive: true })
+test('ping sends to the book default, and -b picks another bot', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+  const first = await listenForRequests()
+  const second = await listenForRequests()
+  mkdirSync(join(directory, 'jaypost'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'service', 'install.json'),
-    JSON.stringify({ target: 'systemd', port: listener.port, version: VERSION }),
+    join(directory, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      default: 'home',
+      remotes: [],
+      bots: [
+        { alias: 'home', url: `http://127.0.0.1:${first.port}/` },
+        { alias: 'work', url: `http://127.0.0.1:${second.port}/` },
+      ],
+    }),
   )
   vi.stubEnv('XDG_CONFIG_HOME', directory)
-  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
-  vi.stubEnv('JAYPOST_PORT', '1')
+  vi.stubEnv('JAYPOST_URL', '')
+  vi.stubEnv('JAYPOST_TOKEN', '')
+  vi.stubEnv('JAYPOST_PORT', '')
+  vi.stubEnv('JAYPOST_BOT', '')
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
     expect(await main(['ping'])).toBe(0)
+    expect(await main(['ping', '-b', 'work'])).toBe(0)
   } finally {
-    listener.close()
+    first.close()
+    second.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(listener.urls).toEqual(['/notify'])
+  expect(first.urls).toEqual(['/notify'])
+  expect(second.urls).toEqual(['/notify'])
 })
 
-test('ping without --port or an install uses JAYPOST_PORT', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-test-port-'))
-  const listener = await listenForRequests()
-  vi.stubEnv('XDG_CONFIG_HOME', directory)
-  vi.stubEnv('JAYPOST_CONFIG', join(directory, 'missing.json'))
-  vi.stubEnv('JAYPOST_PORT', String(listener.port))
-  vi.spyOn(console, 'log').mockImplementation(() => {})
+test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+  mkdirSync(join(directory, 'jaypost'), { recursive: true })
+  writeFileSync(
+    join(directory, 'jaypost', 'bots.json'),
+    JSON.stringify({
+      version: 1,
+      default: 'home',
+      remotes: [],
+      bots: [{ alias: 'home', url: 'http://127.0.0.1:1/' }],
+    }),
+  )
   try {
-    expect(await main(['ping'])).toBe(0)
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'ping', '-b', 'nope'],
+      {
+        encoding: 'utf8',
+        env: {
+          PATH: process.env.PATH,
+          HOME: directory,
+          XDG_CONFIG_HOME: directory,
+        },
+      },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('no bot "nope" in your contacts; known: home')
   } finally {
-    listener.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(listener.urls).toEqual(['/notify'])
 })
 
-test('ping rejects a bad port with 2', async () => {
-  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['ping', '--port', 'abc'])).toBe(2)
+test('ping --port is an unknown option', () => {
+  const result = spawnSync(
+    process.execPath,
+    [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'ping', '--port', '1'],
+    { encoding: 'utf8', env: { PATH: process.env.PATH } },
+  )
+  expect(result.status).toBe(2)
+  expect(result.stderr).toContain("unknown option '--port'")
 })
 
 test('notify requires text', async () => {
@@ -246,23 +290,20 @@ test('notify requires text', async () => {
 
 test('the old send request, send notify and test spellings still run', async () => {
   const listener = await listenForRequests()
-  const port = String(listener.port)
+  vi.stubEnv('JAYPOST_URL', `http://127.0.0.1:${listener.port}`)
   vi.spyOn(console, 'log').mockImplementation(() => {})
   try {
-    expect(
-      await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No', '--port', port]),
-    ).toBe(0)
-    expect(await main(['send', 'notify', 'hi', '--port', port])).toBe(0)
-    expect(await main(['test', '--port', port])).toBe(0)
+    expect(await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No'])).toBe(0)
+    expect(await main(['send', 'notify', 'hi'])).toBe(0)
+    expect(await main(['test'])).toBe(0)
   } finally {
     listener.close()
   }
   expect(listener.urls).toEqual(['/request', '/notify', '/notify'])
 })
 
-test('hook rejects a bad port, a bad timeout and positional arguments with 2', async () => {
+test('hook rejects a bad timeout and positional arguments with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['hook', '--port', 'abc'])).toBe(2)
   expect(await main(['hook', '--timeout', '0'])).toBe(2)
   expect(await main(['hook', 'extra'])).toBe(2)
 })
@@ -270,7 +311,7 @@ test('hook rejects a bad port, a bad timeout and positional arguments with 2', a
 test('send exits 1 with the message on an invalid JAYPOST_TOKEN', async () => {
   vi.stubEnv('JAYPOST_TOKEN', 'short-secret')
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await main(['notify', 'hi', '--port', '1'])).toBe(1)
+  expect(await main(['notify', 'hi'])).toBe(1)
   expect(error).toHaveBeenCalledWith("jaypost: JAYPOST_TOKEN isn't a valid jaypost token")
 })
 
@@ -417,40 +458,54 @@ test('audit with an unknown subcommand exits 2', () => {
   }
 })
 
-function runLogCli(args: readonly string[], directory: string) {
-  return spawnSync(process.execPath, ['apps/cli/src/cli.ts', 'log', ...args], {
-    env: {
-      ...process.env,
-      HOME: directory,
-      XDG_CONFIG_HOME: join(directory, 'xdg'),
-      JAYPOST_CONFIG: join(directory, 'config.json'),
-    },
-    maxBuffer: 16 * 1024 * 1024,
-    encoding: 'utf8',
+/** Runs the CLI as a child so its stdout can be read through a real pipe. */
+function runLogCli(
+  args: readonly string[],
+  url: string,
+): Promise<{ readonly status: number | null; readonly stdout: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'log', ...args], {
+      env: { ...process.env, JAYPOST_URL: url, JAYPOST_TOKEN: '' },
+    })
+    const chunks: Buffer[] = []
+    child.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
+    child.on('error', reject)
+    child.on('close', (status) => resolve({ status, stdout: Buffer.concat(chunks).toString() }))
   })
 }
 
-test('log writes output larger than a pipe buffer whole, as json and as a table', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-log-'))
+test('log writes output larger than a pipe buffer whole, as json and as a table', async () => {
+  const entries = Array.from({ length: 2500 }, (_, index) => ({
+    id: `id${index}`,
+    askedAt: '2026-10-19T07:00:00.000Z',
+    text: `question id${index} ${'x'.repeat(100)}`,
+    options: ['Approve', 'Decline'],
+    timeoutOption: 'Decline',
+    timeoutSeconds: 300,
+    status: 'pending',
+  }))
+  const server = createServer((request, response) => {
+    request.resume()
+    response.setHeader('content-type', 'application/json')
+    response.end(JSON.stringify({ entries, skippedCount: 0 }))
+  })
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   try {
-    seedQuestions(
-      directory,
-      Array.from({ length: 2500 }, (_, index) => `id${index}`),
-    )
-    const json = runLogCli(['--since', '2000-01-01', '--json'], directory)
+    const json = await runLogCli(['--since', '2000-01-01', '--json'], url)
     expect(json.status).toBe(0)
     expect(json.stdout.length).toBeGreaterThan(65_536 * 3)
     const lines = json.stdout.split('\n')
     expect(lines.at(-1)).toBe('')
     expect(lines).toHaveLength(2501)
     expect(JSON.parse(lines[2499] ?? '').id).toBe('id2499')
-    const table = runLogCli(['--since', '2000-01-01'], directory)
+    const table = await runLogCli(['--since', '2000-01-01'], url)
     expect(table.status).toBe(0)
     expect(table.stdout.length).toBeGreaterThan(65_536)
     expect(table.stdout.endsWith('\n')).toBe(true)
     expect(table.stdout.split('\n')).toHaveLength(2501)
   } finally {
-    rmSync(directory, { recursive: true, force: true })
+    server.close()
   }
 })
 
@@ -475,7 +530,7 @@ test('vote and retry flags reach the service without direct mode', async () => {
     ['--require', 'all'],
     ['--retry', '2'],
   ]) {
-    expect(await main([...REQUEST_ARGS, ...flags, '--port', '1'])).toBe(1)
+    expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
   }
 })
 
@@ -552,16 +607,4 @@ test('valid vote and retry flags pass validation and reach the direct send', asy
   const flags = ['-u', '1', '-u', '2', '--require', 'majority', '--retry', '3']
   expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
   expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
-})
-
-test('log prints the empty message and creates no db when the service never ran', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-log-'))
-  try {
-    const result = runLogCli([], directory)
-    expect(result.status).toBe(0)
-    expect(result.stdout).toBe('No questions logged.\n')
-    expect(existsSync(resolveDatabasePath(join(directory, 'config.json')))).toBe(false)
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
 })

@@ -20,6 +20,7 @@ import {
   ADMIN_TOO_OLD_MESSAGE,
   TOKEN_REJECTED_MESSAGE,
   TOKEN_REQUIRED_MESSAGE,
+  toLocalEndpoint,
 } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -27,7 +28,6 @@ import {
   defaultFetchStatus,
   resolveResetOwnerToken,
   runResetOwner,
-  runStatus,
   runUninstall,
 } from '../../src/commands/index.ts'
 import type { StatusFetch, WaitOptions } from '../../src/commands/index.ts'
@@ -145,81 +145,6 @@ function base(over = {}) {
   }
 }
 
-test('status not installed -> 1', async () => {
-  expect(await runStatus({ ...base(), fetchStatus: vi.fn() })).toBe(1)
-  expect(out.join('\n')).toContain('Not installed. Run "jaypost init".')
-})
-
-test('status running and paired -> 0', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () => answered({ paired: true, bot: 'b' }))
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  const s = out.join('\n')
-  expect(s).toContain('systemd')
-  expect(s).toContain('1.0.0')
-  expect(s).toContain('9000')
-  expect(s).toContain('yes')
-  expect(s).toContain('paired')
-  expect(fetchStatus).toHaveBeenCalledWith(9000, undefined)
-})
-
-test('status running, unpaired shows pairing line', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () =>
-    answered({
-      paired: false,
-      code: 'ABCD-EFGH',
-      bot: 'mybot',
-    }),
-  )
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out.join('\n')).toContain('/start ABCD-EFGH')
-})
-
-test('status prints old-shape pairing text', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () =>
-    answered({
-      paired: false,
-      code: 'ABCD-EFGH',
-      bot: 'mybot',
-    }),
-  )
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out.join('\n')).toContain(
-    'Pairing: not paired\nPairing code: ABCD-EFGH\nSend "/start ABCD-EFGH" to @mybot, or open https://t.me/mybot?start=ABCDEFGH',
-  )
-})
-
-test('status prints provider instructions as is', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () =>
-    answered({
-      paired: false,
-      provider: 'fake',
-      displayName: 'fake',
-      code: 'ABCD-EFGH',
-      instructions: 'Say ABCDEFGH to fake',
-    }),
-  )
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out.join('\n')).toContain(
-    'Pairing: not paired\nPairing code: ABCD-EFGH\nSay ABCDEFGH to fake',
-  )
-})
-
-test('status not running -> 1', async () => {
-  seed()
-  const t = targets({ systemd: fake('systemd', false) })
-  expect(
-    await runStatus({
-      ...base({ targets: t }),
-      fetchStatus: vi.fn(async () => UNREACHABLE_STATUS),
-    }),
-  ).toBe(1)
-  expect(out.join('\n')).toContain('no')
-})
-
 test('uninstall not installed -> 0', async () => {
   expect(await runUninstall(base())).toBe(0)
   expect(notes().join('\n')).toContain('Not installed')
@@ -317,7 +242,7 @@ async function startStub(status: number, body: string): Promise<{ port: number; 
 
 function pingDeps(port: number, token: ClientToken, print: (text: string) => void = () => {}) {
   return {
-    port,
+    endpoint: toLocalEndpoint(port),
     token,
     progress: createRecordingProgress('silent').progress,
     providers: PROVIDERS,
@@ -368,46 +293,6 @@ test('ping with the service down reports it', async () => {
   )
 })
 
-test('status prints where the token comes from, never its value', async () => {
-  seed()
-  const cases: [ClientToken, string, string | undefined][] = [
-    [NO_CLIENT_TOKEN, 'Token:   none', undefined],
-    [{ kind: 'token', token: TOKEN, source: 'env' }, 'Token:   from JAYPOST_TOKEN', TOKEN],
-    [{ kind: 'token', token: TOKEN, source: 'file' }, `Token:   from ${TOKEN_FILE}`, TOKEN],
-  ]
-  for (const [token, line, sent] of cases) {
-    out.length = 0
-    const fetchStatus = vi.fn(async () => answered({ paired: true, bot: 'b' }))
-    expect(await runStatus({ ...base({ token }), fetchStatus })).toBe(0)
-    const lines = out.join('\n').split('\n')
-    expect(lines[lines.findIndex((l) => l.startsWith('Port:')) + 1]).toBe(line)
-    expect(out.join('\n')).not.toContain(TOKEN)
-    expect(fetchStatus).toHaveBeenCalledWith(9000, sent)
-  }
-})
-
-test('status with an unusable token prints it and returns 1 without calling the service', async () => {
-  seed()
-  const fetchStatus = vi.fn()
-  const token: ClientToken = { kind: 'unusable', message: 'bad token here' }
-  expect(await runStatus({ ...base({ token }), fetchStatus })).toBe(1)
-  expect(out).toContain('Token:   unusable (bad token here)')
-  expect(out).toContain('Pairing: unknown (no usable token)')
-  expect(fetchStatus).not.toHaveBeenCalled()
-})
-
-test('status returns 1 when the service rejects the token', async () => {
-  seed()
-  const token: ClientToken = { kind: 'token', token: TOKEN, source: 'file' }
-  const fetchStatus = vi.fn(async () => UNAUTHORIZED_STATUS)
-  expect(await runStatus({ ...base({ token }), fetchStatus })).toBe(1)
-  const lines = out.join('\n')
-  expect(lines).toContain(
-    `Pairing: unknown (the service rejected the token)\n${TOKEN_REJECTED_MESSAGE}`,
-  )
-  expect(lines).not.toContain(TOKEN)
-})
-
 test('uninstall with purge shows one removing step', async () => {
   seed('compose')
   expect(await runUninstall(base())).toBe(0)
@@ -455,49 +340,6 @@ test('uninstall fails the removing step before the failure note', async () => {
     'fail:Removing the service and its data',
     'note:Uninstall failed. Check the service logs and try again.',
   ])
-})
-
-test('status shows the key and pairing ids', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () =>
-    answered({ paired: true, key: 'k1', pairing: 'p1', state: 'running' }),
-  )
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out).toEqual([
-    'Target:  systemd',
-    'Version: 1.0.0',
-    'Port:    9000',
-    'Token:   none',
-    'Running: yes',
-    'Key:     k1 (pairing p1)',
-    'Pairing: paired',
-  ])
-})
-
-test('status shows a failed bot with its error', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () =>
-    answered({
-      paired: true,
-      key: 'k1',
-      pairing: 'p1',
-      state: 'failed',
-      error: 'the bot token was rejected',
-    }),
-  )
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out.slice(-3)).toEqual([
-    'Key:     k1 (pairing p1)',
-    'Bot:     failed (the bot token was rejected)',
-    'Pairing: paired',
-  ])
-})
-
-test('status from an older service prints no key line', async () => {
-  seed()
-  const fetchStatus = vi.fn(async () => answered({ paired: true, bot: 'b' }))
-  expect(await runStatus({ ...base(), fetchStatus })).toBe(0)
-  expect(out.slice(-2)).toEqual(['Running: yes', 'Pairing: paired'])
 })
 
 /** An install whose port is a stub service answering the reset route with `status` and `body`. */
@@ -565,7 +407,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
   const target = real.systemd
   const seen: StatusFetch[] = []
   const wait = vi.fn(async (options: WaitOptions) => {
-    seen.push(await defaultFetchStatus(options.port, options.token))
+    seen.push(await defaultFetchStatus(options.url, options.token))
     return 'paired' as const
   })
   const d = {
@@ -625,11 +467,13 @@ test('reset-owner yes: resets the pairing with the admin key and waits, with no 
     false,
   )
   expect(d.fetchStatus).toHaveBeenCalledTimes(1)
-  expect(d.fetchStatus).toHaveBeenCalledWith(port, undefined)
+  expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), undefined)
   expect(seen).toEqual([
     { url: 'POST /admin/pairings/p1/reset', authorization: `Bearer ${ADMIN_KEY}` },
   ])
-  expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ port }))
+  expect(d.wait).toHaveBeenCalledWith(
+    expect.objectContaining({ url: new URL(`http://127.0.0.1:${port}/`) }),
+  )
   expect(order).toEqual(['forgetSeedOwner'])
   expect(d.targets.systemd.forgetSeedOwner).toHaveBeenCalledWith({
     target: 'systemd',
@@ -903,7 +747,7 @@ test('reset-owner sends the token to /status and the wait and explains unauthori
     wait: vi.fn(async () => 'unauthorized' as const),
   }
   expect(await runResetOwner(d)).toBe(1)
-  expect(d.fetchStatus).toHaveBeenCalledWith(port, TOKEN)
+  expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), TOKEN)
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
   expect(notes().join('\n')).toContain(TOKEN_REJECTED_MESSAGE)
   expect(notes().join('\n')).not.toContain(TOKEN)
