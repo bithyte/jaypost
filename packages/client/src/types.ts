@@ -16,10 +16,23 @@ export type ClientOptions = {
   /** Shown as `[project]` on the first line of every message, unless a call sets its own. */
   readonly project?: string
   /**
-   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`,
-   * looked up on every call. Throws a `RangeError` at construction if it isn't a valid token.
+   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, looked up on every call. Throws a `RangeError` at construction if it isn't a valid token.
    */
   readonly token?: string
+  /**
+   * A contact book alias: its url and key are used. Throws a `RangeError` at construction when
+   * combined with `url`, `host`, `port` or `token`. Without any of them, $JAYPOST_BOT, else env
+   * mode, else the book's default.
+   */
+  readonly bot?: string
+}
+
+/** What `resolveBot` found: where to send, with which token, and the book alias if any. */
+export type ResolvedBot = {
+  readonly endpoint: ServiceEndpoint
+  readonly token: ClientToken
+  /** The book alias, or undefined in env mode or on failure. */
+  readonly alias: string | undefined
 }
 
 /**

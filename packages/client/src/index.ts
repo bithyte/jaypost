@@ -26,6 +26,7 @@ export {
   TOKEN_REQUIRED_MESSAGE,
   VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
+export { resolveBot } from './target.ts'
 export { describeUnauthorized } from './http.ts'
 export type {
   AdminCallerOptions,
@@ -49,6 +50,7 @@ export type {
   Pending,
   Question,
   QuestionState,
+  ResolvedBot,
   ServiceEndpoint,
   VoteOutcome,
   VoteRequest,

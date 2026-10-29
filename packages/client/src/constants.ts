@@ -17,10 +17,10 @@ export const SEND_FAILED_MESSAGE = "couldn't send the message to the user"
 export const FETCH_GRACE_MS = 30_000
 /** Shown when the service answers 401 and no token was sent. */
 export const TOKEN_REQUIRED_MESSAGE =
-  'jaypost service needs a token; set JAYPOST_TOKEN to the contents of ~/.config/jaypost/token on the host'
+  'jaypost service needs a token; set JAYPOST_TOKEN to the service token, or add the bot to your contacts with jaypost join'
 /** Shown when the service answers 401 to a token that was sent. */
 export const TOKEN_REJECTED_MESSAGE =
-  'jaypost service rejected the token; check JAYPOST_TOKEN, or re-run jaypost init if the token file changed'
+  'jaypost service rejected the token; check JAYPOST_TOKEN or the bot key, or re-run jaypost init if the service token changed'
 /** Services before long timeouts capped /request at this many seconds. */
 export const LEGACY_MAX_TIMEOUT_SECONDS = 300
 /** Shown when a long /request timed out early, which only a service without long timeouts does. */
