@@ -90,7 +90,7 @@ A per-user LaunchAgent, no container. With the [standalone binary](#standalone-b
 - `~/.config/jaypost/service/config.json` (bot token, port, owner, `apiToken`) and `jaypost.db`, as for systemd
 - `~/Library/LaunchAgents/io.github.bithyte.jaypost.plist` with absolute paths to the command and the config file (`JAYPOST_CONFIG` is always set in the plist, and `install.json` records the same path)
 
-The agent runs only while you're logged in to the Mac, and launchd restarts it if it exits with a failure. `service install` needs a desktop session, so it won't offer launchd over SSH with nobody logged in.
+The agent runs only while you're logged in to the Mac, and launchd restarts it if it exits with a failure. `service install` needs a desktop session, so it won't offer launchd over SSH with nobody logged in. `jaypost service stop` unloads the agent, but it comes back at your next login (it has `RunAtLoad`) until you run `service uninstall`.
 
 Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
@@ -117,6 +117,8 @@ Re-running `service install` on an install without an API token asks whether to 
 The CLI regrouped its commands and keeps the client's keys in a contact book. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin`, and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
 
 There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `bots.json`. `jaypost update` doesn't write the book. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `jaypost update` or `service install` rewrites the unit.
+
+A container install from before this release isn't detected by `service install`; stop or remove the old container first, or the new install fails with "Port 8787 is in use".
 
 ## Coming from telegram-ask
 
