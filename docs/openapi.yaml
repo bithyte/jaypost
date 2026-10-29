@@ -1086,7 +1086,7 @@ components:
         - provider
         - settings
       additionalProperties: false
-      description: "`settings` by config key, as `init` asks for them, without the owner. `label` is at most 200 characters."
+      description: "`settings` by config key, as `service install` asks for them, without the owner. `label` is at most 200 characters."
     CreatePairingBody:
       type: object
       properties:

@@ -611,7 +611,7 @@ test('key list with no keys says so', async () => {
   expect(out).toEqual(['No keys.'])
 })
 
-test('admin-key rotate locally prints the new key, which the service saved', async () => {
+test('admin rotate-key locally prints the new key, which the service saved', async () => {
   const started = await start()
   const env = { HOME: tmp, JAYPOST_CONFIG: started.configPath, JAYPOST_PORT: String(started.port) }
   expect(await runAdminKeyRotate({}, createDeps(env))).toBe(0)
@@ -624,7 +624,7 @@ test('admin-key rotate locally prints the new key, which the service saved', asy
   expect(await runBotList({}, createDeps(env))).toBe(0)
 })
 
-test('admin-key rotate --json prints the new key and the old one stops working', async () => {
+test('admin rotate-key --json prints the new key and the old one stops working', async () => {
   const started = await start()
   expect(await runAdminKeyRotate({ json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({ adminKey: expect.stringMatching(/^jpa_/) })
@@ -634,7 +634,7 @@ test('admin-key rotate --json prints the new key and the old one stops working',
   expect(err).toEqual([ADMIN_KEY_REJECTED_MESSAGE])
 })
 
-test('admin-key rotate with JAYPOST_ADMIN_KEY set says to update it', async () => {
+test('admin rotate-key with JAYPOST_ADMIN_KEY set says to update it', async () => {
   const started = await start()
   expect(await runAdminKeyRotate({}, createDeps(remoteEnv(started)))).toBe(0)
   expect(err).toEqual([

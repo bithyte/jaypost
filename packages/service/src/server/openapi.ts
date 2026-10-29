@@ -845,7 +845,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
         },
         AddBotBody: {
           ...toComponentSchema(addBotBodySchema, 'input'),
-          description: `\`settings\` by config key, as \`init\` asks for them, without the owner. \`label\` is at most ${MAX_LABEL_LENGTH} characters.`,
+          description: `\`settings\` by config key, as \`service install\` asks for them, without the owner. \`label\` is at most ${MAX_LABEL_LENGTH} characters.`,
         },
         CreatePairingBody: toComponentSchema(createPairingBodySchema, 'input'),
         CreateKeyBody: {

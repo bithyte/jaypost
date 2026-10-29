@@ -1,6 +1,6 @@
 # Commands
 
-Commands that talk to a bot pick it from your [contact book](hosting.md#contacts): `-b ALIAS`, else `JAYPOST_BOT`, else the book's default bot. If `JAYPOST_URL` or `JAYPOST_TOKEN` is set, the book isn't read at all: the url comes from `JAYPOST_URL` (a base URL, `http` or `https`, whose path goes in front of every API path, such as `https://jaypost.example.com/team`; without it the local `JAYPOST_HOST` and `JAYPOST_PORT` apply, default 127.0.0.1:8787) and the key from `JAYPOST_TOKEN`. A book key is never sent to an env URL, and an env token is never sent to a book URL. There is no `--port` on these commands; the book entry carries the port.
+Commands that talk to a bot pick it from your [contact book](hosting.md#contacts): `-b ALIAS`, else `JAYPOST_BOT`, else env mode, else the book's default bot. Env mode is when `JAYPOST_URL` or `JAYPOST_TOKEN` is set (and neither `-b` nor `JAYPOST_BOT` is): the book isn't read at all, the url comes from `JAYPOST_URL` (a base URL, `http` or `https`, whose path goes in front of every API path, such as `https://jaypost.example.com/team`; without it the local `JAYPOST_HOST` and `JAYPOST_PORT` apply, default 127.0.0.1:8787) and the key from `JAYPOST_TOKEN`. A book key is never sent to an env URL, and an env token is never sent to a book URL. There is no `--port` on these commands; the book entry carries the port.
 
 ## Setup
 
@@ -141,7 +141,7 @@ Prints the questions the chosen bot's key asked and how they ended. `--since` ta
 
 ## Admin
 
-These call the admin routes and need the admin key. Every one takes `-s NAME`, a [remote](#jaypost-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it asks for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one takes `--json`. See [Hosting](hosting.md).
+These call the admin routes and need the admin key. Every one takes `-s NAME`, a [remote](#jaypost-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it exits with an error asking for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one takes `--json`. See [Hosting](hosting.md).
 
 ### `jaypost admin bot`
 
