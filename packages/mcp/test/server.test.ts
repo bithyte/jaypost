@@ -501,7 +501,7 @@ test('stdout carries only json-rpc', async () => {
   const { port } = await startApi()
   const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'mcp'], {
     cwd: ROOT,
-    env: { ...process.env, JAYPOST_URL: `http://127.0.0.1:${port}` },
+    env: { ...process.env, JAYPOST_URL: `http://127.0.0.1:${port}`, JAYPOST_BOT: '' },
     stdio: ['pipe', 'pipe', 'ignore'],
   })
   let stdout = ''

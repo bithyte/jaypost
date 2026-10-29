@@ -30,6 +30,7 @@ beforeEach(() => {
   vi.stubEnv('XDG_CONFIG_HOME', directory)
   vi.stubEnv('JAYPOST_TOKEN', '')
   vi.stubEnv('JAYPOST_URL', '')
+  vi.stubEnv('JAYPOST_BOT', '')
 })
 
 const servers: Server[] = []

@@ -171,7 +171,7 @@ async function freePort(): Promise<number> {
 function spawnHook(port: number, input: string | undefined, env?: NodeJS.ProcessEnv) {
   const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'hook'], {
     cwd: ROOT,
-    env: { ...(env ?? process.env), JAYPOST_URL: `http://127.0.0.1:${port}` },
+    env: { ...(env ?? process.env), JAYPOST_URL: `http://127.0.0.1:${port}`, JAYPOST_BOT: '' },
   })
   const output = { stdout: '', stderr: '' }
   child.stdout.setEncoding('utf8')

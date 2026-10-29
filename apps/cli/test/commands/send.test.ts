@@ -474,6 +474,7 @@ function runCli(args: readonly string[], port: number, stdin?: Readable | string
         XDG_CONFIG_HOME: createTempDirectory(),
         JAYPOST_URL: `http://127.0.0.1:${port}`,
         JAYPOST_TOKEN: '',
+        JAYPOST_BOT: '',
       },
     })
     let stdout = ''
