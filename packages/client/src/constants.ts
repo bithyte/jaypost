@@ -6,7 +6,7 @@ export const INVALID_URL_MESSAGE =
 /** Fixed copy for failures, shown to agents and scripts as is. */
 export const CANCELLED_MESSAGE = 'cancelled'
 export const TOO_OLD_MESSAGE =
-  'jaypost service is too old for notifications (run jaypost init to upgrade)'
+  'jaypost service is too old for notifications (run jaypost service install to upgrade)'
 export const NOT_SUPPORTED_MESSAGE = 'notifications not supported by this provider'
 export const NOT_PAIRED_MESSAGE = "jaypost isn't paired yet (run jaypost status)"
 /** The service's 503 error text for a key whose bot is starting or failed. */
@@ -20,24 +20,24 @@ export const TOKEN_REQUIRED_MESSAGE =
   'jaypost service needs a token; set JAYPOST_TOKEN to the service token, or add the bot to your contacts with jaypost join'
 /** Shown when the service answers 401 to a token that was sent. */
 export const TOKEN_REJECTED_MESSAGE =
-  'jaypost service rejected the token; check JAYPOST_TOKEN or the bot key, or re-run jaypost init if the service token changed'
+  'jaypost service rejected the token; check JAYPOST_TOKEN or the bot key, or run jaypost service install again if the service token changed'
 /** Services before long timeouts capped /request at this many seconds. */
 export const LEGACY_MAX_TIMEOUT_SECONDS = 300
 /** Shown when a long /request timed out early, which only a service without long timeouts does. */
 export const TIMEOUT_TOO_OLD_MESSAGE =
-  'jaypost service is too old for timeouts over 300 s (run jaypost init to upgrade)'
+  'jaypost service is too old for timeouts over 300 s (run jaypost service install to upgrade)'
 /** Shown when the service has no /request/async. */
 export const BACKGROUND_TOO_OLD_MESSAGE =
-  'jaypost service is too old for background questions (run jaypost init to upgrade)'
+  'jaypost service is too old for background questions (run jaypost service install to upgrade)'
 /** Shown when a question with `retry` timed out without the service saying it re-asked. */
 export const RETRY_TOO_OLD_MESSAGE =
-  'jaypost service is too old to re-ask after a timeout (run jaypost init to upgrade)'
+  'jaypost service is too old to re-ask after a timeout (run jaypost service install to upgrade)'
 /** Shown when the service has no GET /log. */
 export const LOG_TOO_OLD_MESSAGE =
-  'jaypost service is too old to read its log over the API (run jaypost init to upgrade)'
+  'jaypost service is too old to read its log over the API (run jaypost service install to upgrade)'
 /** Shown when the service has no /vote. */
 export const VOTE_TOO_OLD_MESSAGE =
-  'jaypost service is too old for votes (run jaypost init to upgrade)'
+  'jaypost service is too old for votes (run jaypost service install to upgrade)'
 /** Longest delay a Node timer takes (2^31 - 1 ms, about 24.8 days); longer ones fire at once. */
 export const MAX_TIMER_MS = 2_147_483_647
 /** Extra time a call with an attachment gets, for the upload and the service's send. */
@@ -46,7 +46,7 @@ export const ATTACHMENT_GRACE_MS = 120_000
 export const DEFAULT_ATTACHMENT_NAME = 'attachment.txt'
 /** Shown when the service's /status doesn't report an attachment limit. */
 export const ATTACHMENT_TOO_OLD_MESSAGE =
-  'jaypost service is too old for attachments (run jaypost init to upgrade)'
+  'jaypost service is too old for attachments (run jaypost service install to upgrade)'
 /** Shown when the provider can't send attachments. */
 export const ATTACHMENT_NOT_SUPPORTED_MESSAGE = 'attachments not supported by this provider'
 /** Shown when an admin route answers 401: the admin key was wrong or has been rotated. */
@@ -54,7 +54,7 @@ export const ADMIN_KEY_REJECTED_MESSAGE =
   'jaypost service rejected the admin key; check JAYPOST_ADMIN_KEY, or the admin key file if the key was rotated'
 /** Shown when the service has no admin routes. */
 export const ADMIN_TOO_OLD_MESSAGE =
-  'jaypost service is too old for admin commands (run jaypost init to upgrade)'
+  'jaypost service is too old for admin commands (run jaypost service install to upgrade)'
 /**
  * The `error` of jaypost's 404 for a route it doesn't have; compared ignoring case, which also
  * covers Fastify's default `Not Found`.

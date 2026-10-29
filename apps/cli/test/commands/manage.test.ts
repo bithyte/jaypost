@@ -670,7 +670,7 @@ test('reset-owner with an unknown provider returns 1 before prompting', async ()
   })
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(1)
-  expect(notes()).toEqual(['unknown provider "nope"; run `jaypost init`'])
+  expect(notes()).toEqual(['unknown provider "nope"; run `jaypost service install`'])
   expect(d.confirm).not.toHaveBeenCalled()
 })
 

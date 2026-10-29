@@ -138,7 +138,7 @@ const serviceEnv = await resolveServiceEnv()
 if (typeof serviceEnv === 'number') {
   process.exit(serviceEnv)
 }
-console.log(`try it from another terminal: pnpm cli test --port ${port}`)
+console.log(`try it from another terminal: JAYPOST_URL=http://127.0.0.1:${port} pnpm cli ping`)
 const child = spawn(process.execPath, ['--watch', 'apps/cli/src/cli.ts', 'service', 'run'], {
   cwd: root,
   stdio: 'inherit',

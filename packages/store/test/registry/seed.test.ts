@@ -176,14 +176,16 @@ test('the fingerprint changes with the token and bot token, not with the owner',
 test('a missing bot token is a missing seed, an invalid one throws', () => {
   expect(loadSeedFor({ provider: 'fake' })).toEqual({
     kind: 'missing',
-    message: 'missing bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    message:
+      'missing bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   })
   expect(loadSeedFor({ provider: 'fake', botToken: '' })).toEqual({
     kind: 'missing',
-    message: 'missing bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    message:
+      'missing bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   })
   expect(() => loadSeedFor({ provider: 'fake', botToken: 'bad secret' })).toThrow(
-    'invalid bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    'invalid bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   )
   expect(() => loadSeedFor({ provider: 'fake', botToken: 'bad secret' })).not.toThrow(/secret/)
 })

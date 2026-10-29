@@ -4,7 +4,7 @@ import { TERMINAL_MAX_TEXT_LENGTH } from './constants.ts'
 import { createTerminalRuntime } from './runtime.ts'
 
 /**
- * Asks in the service's own terminal, for local development (`pnpm dev`). Not offered by `init`;
+ * Asks in the service's own terminal, for local development (`pnpm dev`). Not offered by `service install`;
  * only `JAYPOST_PROVIDER=terminal` picks it.
  */
 export const terminalProvider: Provider = {

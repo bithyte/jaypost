@@ -28,7 +28,7 @@ Runs on your machine, talks only to you.
 You need Node 24.15+ and a bot token, from [@BotFather](https://t.me/BotFather) on Telegram or the [Discord developer portal](docs/pairing.md#discord-setup).
 
 ```
-npx jaypost init
+npx jaypost service install
 ```
 
 It asks for your chat app and token, installs a small background service and prints a pairing code. Send `/start ABCD-EFGH` to your bot on Telegram (on Discord, add the bot with the invite link it prints, then DM it the bare code) and you're paired. No Node? Use the [standalone binary](docs/install.md#standalone-binary).
@@ -38,6 +38,8 @@ Check it works:
 ```
 jaypost ping
 ```
+
+Someone else runs a bot for you? They send an invite, and `jaypost join jpi_...` adds it to your contacts (see [Pairing](docs/pairing.md#joining-someone-elses-bot)).
 
 Using Claude Code? Install the plugin and permission prompts go to your phone:
 
@@ -70,7 +72,7 @@ flowchart LR
     chat -- answer --> svc
 ```
 
-A small service on localhost holds each request open until you tap a button, reply, or the timeout fires, then returns your answer. It's single owner: one chat account, proven by the pairing code, and the API needs a token that `init` makes for you. See [Security](docs/security.md).
+A small service on localhost holds each request open until you tap a button, reply, or the timeout fires, then returns your answer. It's single owner: one chat account, proven by the pairing code, and the API needs a key that `service install` makes for you and saves in your contact book (`~/.config/jaypost/bots.json`). See [Security](docs/security.md).
 
 ## Docs
 
@@ -84,7 +86,7 @@ A small service on localhost holds each request open until you tap a button, rep
 - [CI](docs/ci.md): GitHub Action, direct mode, several approvers
 - [Bot commands](docs/bot.md): `/pending`, `/cancel`, `/history`, quiet hours
 - [Question log](docs/question-log.md): what was asked and how it ended
-- [Hosting](docs/hosting.md): one service, several bots and people, API keys, the admin key
+- [Hosting](docs/hosting.md): contacts and remotes, a VM or server, several bots and people, invites, API keys, the admin key
 - [Commands](docs/commands.md): every CLI command
 - [Security](docs/security.md)
 - [Contributing](CONTRIBUTING.md)

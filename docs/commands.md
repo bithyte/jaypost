@@ -1,21 +1,74 @@
 # Commands
 
-Commands that talk to the service pick its port from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. `send`, `hook` and `mcp` call `JAYPOST_URL` instead when it's set and `--port` isn't: a base URL, `http` or `https`, whose path (if any) goes in front of every API path, such as `https://jaypost.example.com/team`. Credentials go in `JAYPOST_TOKEN`, not the URL.
+Commands that talk to a bot pick it from your [contact book](hosting.md#contacts): `-b ALIAS`, else `JAYPOST_BOT`, else the book's default bot. If `JAYPOST_URL` or `JAYPOST_TOKEN` is set, the book isn't read at all: the url comes from `JAYPOST_URL` (a base URL, `http` or `https`, whose path goes in front of every API path, such as `https://jaypost.example.com/team`; without it the local `JAYPOST_HOST` and `JAYPOST_PORT` apply, default 127.0.0.1:8787) and the key from `JAYPOST_TOKEN`. A book key is never sent to an env URL, and an env token is never sent to a book URL. There is no `--port` on these commands; the book entry carries the port.
 
 ## Setup
 
-### `jaypost init`
+### `jaypost service install`
 
 ```
-jaypost init [launchd|systemd|compose|quadlet] [--port N] [--provider NAME] [--token|--no-token]
+jaypost service install [launchd|systemd|compose|quadlet] [--exposed] [--port N] [--provider NAME] [--token|--no-token]
 ```
 
-Installs or replaces the service and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. See [Install](install.md).
+Installs or replaces the service on this machine and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. It saves the service and its bot in the contact book. `--exposed` listens on all interfaces over plain http instead of only this machine, and ends by printing the `jaypost remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server). See [Install](install.md).
+
+### `jaypost service uninstall`
+
+```
+jaypost service uninstall
+```
+
+Stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log. It also drops the service's entries from the contact book.
+
+Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `service install` finds them and reuses the bot token, API token and owner without asking. For systemd and launchd, `jaypost.db` (with the question log) stays.
+
+Yes also removes the target's image, volume and files (for systemd and launchd that includes `jaypost.db`). The launchd log file in `~/Library/Logs/jaypost/` is kept even then.
+
+For systemd and launchd the npm package stays; `service uninstall` prints the command to remove it, `npm rm -g jaypost`, or `npm rm -g --prefix ~/.local/share/jaypost/npm jaypost` if `service install` installed it into that prefix.
+
+### `jaypost service start`, `stop` and `run`
+
+```
+jaypost service start
+jaypost service stop
+jaypost service run
+```
+
+`start` and `stop` start or stop the installed service through its target. `run` runs the service in the foreground; the installed services use this.
+
+### `jaypost remote`
+
+```
+jaypost remote add NAME URL ADMIN_KEY
+jaypost remote remove NAME
+jaypost remote list
+```
+
+A remote is a service on another machine that you administer. `add` checks the admin key against the service and saves it, and asks before replacing a remote with the same name. `remove` forgets it; bots from that service stay in your contacts. `list` shows names and urls, never keys. See [Hosting](hosting.md).
+
+### `jaypost join`
+
+```
+jaypost join INVITE [--as ALIAS]
+```
+
+Saves a bot from an invite (`jpi_...`) someone sent you and waits for its pairing code if you haven't paired. `--as` names the contact; the default is the bot's name. See [Pairing](pairing.md#joining-someone-elses-bot).
+
+### `jaypost bots`
+
+```
+jaypost bots
+jaypost bots default ALIAS
+jaypost bots rename ALIAS NEW
+jaypost bots remove ALIAS [-y]
+```
+
+Lists your contacts (alias, service and the default; never keys), sets the default, renames one or removes one. Removing the default asks which contact takes over.
 
 ### `jaypost status`
 
 ```
-jaypost status
+jaypost status [-b ALIAS]
 ```
 
 Shows the target, version, port, where the token comes from (never its value), whether the service is running, and pairing state (with the code and instructions if unpaired).
@@ -23,7 +76,7 @@ Shows the target, version, port, where the token comes from (never its value), w
 ### `jaypost ping`
 
 ```
-jaypost ping [--port N]
+jaypost ping [-b ALIAS]
 ```
 
 Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
@@ -44,26 +97,12 @@ jaypost update
 
 Moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
 
-### `jaypost uninstall`
-
-```
-jaypost uninstall
-```
-
-Stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log.
-
-Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `init` finds them and reuses the bot token and owner without asking. For systemd and launchd, `jaypost.db` (with the question log) stays. The API token file `~/.config/jaypost/token` is kept too, and the next `init` reuses it.
-
-Yes also removes the target's image, volume and files (for systemd and launchd that includes `jaypost.db`). The launchd log file in `~/Library/Logs/jaypost/` is kept even then.
-
-For systemd and launchd the npm package stays; `uninstall` prints the command to remove it, `npm rm -g jaypost`, or `npm rm -g --prefix ~/.local/share/jaypost/npm jaypost` if `init` installed it into that prefix.
-
 ## Asking and notifying
 
 ### `jaypost request`
 
 ```
-jaypost request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [--port N]
+jaypost request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [-b ALIAS]
 ```
 
 Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` run a vote or re-ask after a timeout; see [Several approvers](ci.md#several-approvers). See [From the shell](scripts.md#from-the-shell). `jaypost send request` still works as the old name.
@@ -71,7 +110,7 @@ Asks a question from the shell and prints the answer. `-o` adds a button, `-d` i
 ### `jaypost notify`
 
 ```
-jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--delete-after SECONDS|TIMESTAMP] [--port N]
+jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--delete-after SECONDS|TIMESTAMP] [-b ALIAS]
 ```
 
 Sends a message that doesn't need an answer. `--delete-after` deletes it after that many seconds, or at that ISO 8601 time with a timezone (default 8 hours; not shifted by quiet hours, capped at 47 hours). Direct mode ignores it. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell). `jaypost send notify` still works as the old name.
@@ -79,7 +118,7 @@ Sends a message that doesn't need an answer. `--delete-after` deletes it after t
 ### `jaypost mcp`
 
 ```
-jaypost mcp [--port N]
+jaypost mcp [-b ALIAS]
 ```
 
 Runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents (MCP)](mcp.md).
@@ -87,7 +126,7 @@ Runs an MCP server on stdin/stdout so agents can ask and notify you. See [Agents
 ### `jaypost hook`
 
 ```
-jaypost hook [--port N] [--project NAME] [--timeout S]
+jaypost hook [-b ALIAS] [--project NAME] [--timeout S]
 ```
 
 A Claude Code hook that sends permission prompts to your chat app and takes your reply to a finished turn as the next prompt. `--project` sets the `[name]` line (default: the project folder), `--timeout` is how long to wait for an answer (default 300, or 3600 for a finished turn). See [Claude Code](claude-code.md#hook-manual-setup).
@@ -95,53 +134,61 @@ A Claude Code hook that sends permission prompts to your chat app and takes your
 ### `jaypost log`
 
 ```
-jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] [--pairing ID] [--key ID] [--all] [--json]
+jaypost log [--since WHEN] [--project NAME] [-n N | --limit N] [--json] [-b ALIAS]
 ```
 
-Prints the questions the service asked and how they ended. `--since` takes a duration (`7d`) or a date, `--project` filters by name, `-n` limits to the last N, `--json` prints one object per line. `--bot`, `--pairing`, `--key` and `--all` read every bot's log through the admin routes and need the admin key; without one, `log` prints the caller key's own entries and says so on stderr. See [Question log](question-log.md).
+Prints the questions the chosen bot's key asked and how they ended. `--since` takes a duration (`7d`) or a date, `--project` filters by name, `-n` limits to the last N, `--json` prints one object per line. For every bot's log, use `jaypost admin log`. See [Question log](question-log.md).
 
 ## Admin
 
-These call the admin routes and need the admin key: read from the install on this machine, or `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY`. Every one takes `--json`. See [Hosting](hosting.md).
+These call the admin routes and need the admin key. Every one takes `-s NAME`, a [remote](#jaypost-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it asks for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one takes `--json`. See [Hosting](hosting.md).
 
-### `jaypost bot`
+### `jaypost admin bot`
 
 ```
-jaypost bot add [--provider NAME] [--label TEXT]
-jaypost bot list
-jaypost bot remove ID [-y]
+jaypost admin bot add [--provider NAME] [--label TEXT]
+jaypost admin bot list
+jaypost admin bot remove ID [-y]
 ```
 
 Adds a bot (asks for its settings), lists bots with their state, pairings and keys, or removes one with its pairings and keys.
 
-### `jaypost key`
+### `jaypost admin key`
 
 ```
-jaypost key create (--bot ID | --pairing ID | --same-as KEY) [--label TEXT] [--external-id ID]
-jaypost key list [--bot ID] [--pairing ID]
-jaypost key label ID [--label TEXT] [--external-id ID]
-jaypost key revoke ID
+jaypost admin key create (--bot ID | --pairing ID | --same-as KEY) [--label TEXT] [--external-id ID] [--save [--as ALIAS] | --invite]
+jaypost admin key list [--bot ID] [--pairing ID]
+jaypost admin key label ID [--label TEXT] [--external-id ID]
+jaypost admin key revoke ID
 ```
 
-`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
+`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own contact book (`--as` names it); `--invite` prints a `jaypost join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
 
-### `jaypost pairing`
+### `jaypost admin pairing`
 
 ```
-jaypost pairing create --bot ID
-jaypost pairing list [--bot ID]
-jaypost pairing remove ID [-y]
+jaypost admin pairing create --bot ID
+jaypost admin pairing list [--bot ID]
+jaypost admin pairing remove ID [-y]
 ```
 
 `create` makes a pairing with no key (an approver invite) and prints its code. `remove` revokes the pairing's keys too.
 
-### `jaypost admin-key rotate`
+### `jaypost admin rotate-key`
 
 ```
-jaypost admin-key rotate
+jaypost admin rotate-key
 ```
 
-Replaces the admin key; the old one stops working at once.
+Replaces the admin key; the old one stops working at once. The new one is printed and saved in your contact book.
+
+### `jaypost admin log`
+
+```
+jaypost admin log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] [--pairing ID] [--key ID] [--all] [--json]
+```
+
+Prints every bot's questions, or the ones of one `--bot`, `--pairing` or `--key`. If the local service doesn't answer, it reads the first bot's log from the files on disk and says so; `--bot` needs the service running. Flags otherwise as for [`log`](#jaypost-log).
 
 ## CI
 
@@ -162,14 +209,6 @@ jaypost pair approver [--provider NAME]
 Pairs approvers for direct mode votes, one code per person, asking `Pair another?` after each. Prints the new ids as a comma list to add to your approvers list and the `JAYPOST_APPROVERS` secret. See [CI](ci.md).
 
 ## Other
-
-### `jaypost start`
-
-```
-jaypost start
-```
-
-Runs the service in the foreground. The installed services use this.
 
 ### `jaypost openapi`
 

@@ -11,55 +11,78 @@ The pieces:
 
 There are no user accounts and no signup; the admin hands out keys.
 
-## Run it on a VM
+## Contacts
 
-Install it like any other service (see [Install](install.md)); `init` makes bot `b1`, pairing `p1`, key `k1` and the admin key. The service listens on 127.0.0.1 only. jaypost doesn't do TLS, so to reach it from other machines put a reverse proxy that terminates TLS in front of it and forward to the port. Set `JAYPOST_HOST` only if the proxy runs somewhere that can't reach loopback, and keep the port off the public internet. Don't install a service you expose with `--no-token`: a call without a token then acts as key `k1`.
+Your machine keeps a contact book, `~/.config/jaypost/bots.json` (mode 0600). A **contact** is an alias for one API key on one service, and `jaypost bots` lists them. A **remote** is a service you administer from this machine: a name, a url and its admin key, added with `jaypost remote add`. `jaypost service install` adds the local service, its first bot and its admin key for you. `jaypost join` adds a bot someone else runs. Commands that talk to a bot use the default contact, or `-b ALIAS`; admin commands use `-s NAME`. Keys never print in `bots` or `remote list`. See [Commands](commands.md).
 
-Everything below works from the VM itself. From another machine, point the CLI at the proxy:
+## A VM or server
+
+Install it like any other service (see [Install](install.md)); `service install` makes bot `b1`, pairing `p1`, key `k1` and the admin key. On a VM you reach from your own machine, add `--exposed`:
 
 ```
-export JAYPOST_URL=https://jaypost.example.com
-export JAYPOST_ADMIN_KEY=jpa_...
+jaypost service install --exposed
 ```
 
-On the VM the CLI finds the admin key on its own: in `~/.config/jaypost/admin-key` (mode 0600) for systemd and launchd, and inside the data volume for containers (it runs `jaypost admin-key show` there). `JAYPOST_ADMIN_KEY` wins when it's set.
+The service then listens on all interfaces (0.0.0.0) over plain http, so keys cross the network in the clear. Use it on a LAN, or put your own TLS proxy in front and keep the port off the public internet; jaypost doesn't do TLS. Don't install a service you expose with `--no-token`: a call without a token then acts as key `k1`.
 
-Admin changes apply to the running service, no restart needed. State lives next to `config.json` (the data volume for containers): `jaypost.db` (bots, pairings, keys, pending requests and the question log) and `admin-key`. An install from before the db isn't read: run `jaypost init` again, and it starts with an empty registry (the old json files are ignored).
+It ends by printing the line to run on your own machine, with the VM's hostname as a best guess (fix it if you reach the service through a proxy url):
+
+```
+jaypost remote add myvm http://myvm:8787 jpa_...
+```
+
+That line holds the admin key. Run it there, and every admin command works from that machine:
+
+```
+jaypost admin bot list -s myvm
+```
+
+With one remote and no local service, `-s` can be left out. Without `--exposed` the service listens on 127.0.0.1 only, and everything here works from the VM itself, where the CLI finds the local admin key in the contact book. To reach a service without a book, set `JAYPOST_URL` and `JAYPOST_ADMIN_KEY`. A lone `JAYPOST_ADMIN_KEY` still wins over the book's key for the local service. For containers the install reads the admin key from the data volume (`jaypost admin-key show` runs inside).
+
+Admin changes apply to the running service, no restart needed. State lives in `~/.config/jaypost/service/` next to `config.json` (the data volume for containers): `jaypost.db` (bots, pairings, keys, pending requests and the question log) and `admin-key`. An install from before the db isn't read: run `jaypost service install` again, and it starts with an empty registry (the old json files are ignored).
 
 ## Add a bot
 
 ```
-jaypost bot add [--provider NAME] [--label TEXT]
-jaypost bot list
-jaypost bot remove b2
+jaypost admin bot add [--provider NAME] [--label TEXT]
+jaypost admin bot list
+jaypost admin bot remove b2
 ```
 
-`bot add` asks for the provider's settings (the bot token), checks them and starts the bot at once. Adding credentials another bot already uses is rejected, since two runtimes on one Telegram token fight over updates. If the service is down and runs from this machine's files, `bot add` writes the registry and the bot starts with the service; a stopped container has to be started first.
+`admin bot add` asks for the provider's settings (the bot token), checks them and starts the bot at once. Adding credentials another bot already uses is rejected, since two runtimes on one Telegram token fight over updates. If the service is down and runs from this machine's files, `admin bot add` writes the registry and the bot starts with the service; a stopped container has to be started first.
 
-`bot list` shows each bot's state, pairings and keys. A bot that fails to start (rejected credentials, a provider error) shows `failed` with the reason, retries with backoff (5 seconds, doubling up to 5 minutes), and the other bots keep serving. A bot that fails fatally while running rejects its open questions with their timeout option. Questions on a bot that isn't `running` get 503.
+`admin bot list` shows each bot's state, pairings and keys. A bot that fails to start (rejected credentials, a provider error) shows `failed` with the reason, retries with backoff (5 seconds, doubling up to 5 minutes), and the other bots keep serving. A bot that fails fatally while running rejects its open questions with their timeout option. Questions on a bot that isn't `running` get 503.
 
-`bot remove` deletes the bot with its pairings and keys, and asks first unless `-y`. Its questions stay readable through `/admin/log` until they're 30 days old.
+`admin bot remove` deletes the bot with its pairings and keys, and asks first unless `-y`. Its questions stay readable through `/admin/log` until they're 30 days old.
 
 ## Hand out keys
 
-For a new person, make a key with a new pairing on a bot:
+For a new person, make an invite with a new pairing on a bot. It works against a remote:
 
 ```
-jaypost key create --bot b2 --label alice
+jaypost admin key create --bot b2 --label alice --invite -s myvm
 ```
 
-It prints the key (`jpk_...`) once and a pairing code. The service keeps only a hash, so lose the key and you make a new one. The key works once the person sends the code to the bot (see [Pairing](pairing.md)); until then `GET /status` called with the key shows the code, so the key holder can find it.
+It prints a line to send to the person, privately, since it holds their key:
+
+```
+jaypost join jpi_eyJ1cmwiOi...
+```
+
+They run it, and `join` saves the bot in their contacts and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
+
+For a key that isn't going into a contact book, such as a CI secret or an app using `--external-id`, leave `--invite` off and `create` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own contacts instead, with `--as` to name it.
 
 For someone already paired, or for a second workflow of the same person, share the pairing. It works right away, with no phone step:
 
 ```
-jaypost key create --same-as k2 --label release-workflow
-jaypost key create --pairing p3
+jaypost admin key create --same-as k2 --label release-workflow
+jaypost admin key create --pairing p3
 ```
 
-`--label` and `--external-id` are free text that jaypost stores and never reads; an app driving the admin API can use `--external-id` to map keys to its own users. Change them later with `jaypost key label k4 --label new-name` (an empty value clears it). `jaypost key list` never shows key values.
+`--label` and `--external-id` are free text that jaypost stores and never reads; an app driving the admin API can use `--external-id` to map keys to its own users. Change them later with `jaypost admin key label k4 --label new-name` (an empty value clears it). `jaypost admin key list` never shows key values.
 
-`jaypost key revoke k4` revokes a key and ends its open questions with their timeout option. Its pairing stays. `jaypost pairing remove p3` removes a pairing and revokes all its keys; `jaypost pairing list` shows the pending codes, and `jaypost pairing create --bot b2` makes a pairing with no key, an invite for someone who only approves votes.
+`jaypost admin key revoke k4` revokes a key and ends its open questions with their timeout option. Its pairing stays. `jaypost admin pairing remove p3` removes a pairing and revokes all its keys; `jaypost admin pairing list` shows the pending codes, and `jaypost admin pairing create --bot b2` makes a pairing with no key, an invite for someone who only approves votes.
 
 A person can have one pairing per bot. If someone already paired on a bot redeems another code on it, the key behind that code points to their existing pairing.
 
@@ -68,9 +91,9 @@ A person can have one pairing per bot. If someone already paired on a bot redeem
 Create one key per workflow on the same pairing, and store each in that workflow's secrets as `JAYPOST_TOKEN`, with `JAYPOST_URL` set to the service. All of them reach the same person on the same bot, none polls the bot itself, and the log tells them apart by key:
 
 ```
-jaypost key create --same-as k1 --label deploy
-jaypost key create --same-as k1 --label nightly
-jaypost log --key k5
+jaypost admin key create --same-as k1 --label deploy
+jaypost admin key create --same-as k1 --label nightly
+jaypost admin log --key k5
 ```
 
 See [CI](ci.md#through-a-service-by-url) for the workflow side.
@@ -88,21 +111,21 @@ In the chat, `/pending`, `/cancel` and `/history` only cover the questions addre
 Every logged question records its key, pairing and bot. A key holder reads its own with `GET /log`. The admin reads all of them:
 
 ```
-jaypost log --all
-jaypost log --bot b2 --since 7d
-jaypost log --pairing p3
-jaypost log --key k5 --json
+jaypost admin log
+jaypost admin log --bot b2 --since 7d
+jaypost admin log --pairing p3
+jaypost admin log --key k5 --json
 ```
 
-`--bot`, `--pairing`, `--key` and `--all` go through `/admin/log`, so they need the admin key. Without one, `log` falls back to `GET /log` (the entries of the key it holds) and says so on stderr. A script that needs other keys' entries has to have the admin key. The `pairing` and `key` filters accept ids that no longer exist, so the history of a revoked key or removed pairing stays readable. See [Question log](question-log.md).
+`admin log` goes through `/admin/log`, so it needs the admin key; plain `jaypost log` reads `GET /log`, the entries of the key it holds. A script that needs other keys' entries has to have the admin key. The `pairing` and `key` filters accept ids that no longer exist, so the history of a revoked key or removed pairing stays readable. See [Question log](question-log.md).
 
 ## Rotate the admin key
 
 ```
-jaypost admin-key rotate
+jaypost admin rotate-key
 ```
 
-The old key stops working immediately, the new one is written to the admin key file and printed once. If a script or app holds the old one, update it first or it's locked out until you set the new one.
+The old key stops working immediately, the new one is printed once and saved in your contacts (against a remote, add `-s NAME`). If a script or app holds the old one, update it first or it's locked out until you set the new one.
 
 ## Reset a person
 
@@ -110,7 +133,7 @@ The old key stops working immediately, the new one is written to the admin key f
 
 ## What isn't built
 
-- No TLS. Use a reverse proxy.
+- No TLS. Use a reverse proxy; `--exposed` is plain http.
 - No quotas or rate limits per key.
 - No per-key voter lists; `/vote` uses the rule above for every key.
 - No user accounts, signup or web UI; only the admin adds bots, and an app on top of the admin API can add the rest.

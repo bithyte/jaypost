@@ -135,26 +135,32 @@ test('empty string in the file counts as missing', () => {
   writeFileSync(file, JSON.stringify({ botToken: '' }))
   expect(() =>
     loadConfig({ JAYPOST_CONFIG: file, JAYPOST_OWNER_ID: '1' }, SERVICE_PROVIDERS),
-  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
+  ).toThrow(
+    'missing bot token; run `jaypost service install` to set up the bot (or set JAYPOST_BOT_TOKEN)',
+  )
 })
 
 test('missing token or non-integer JAYPOST_OWNER_ID throws mentioning init', () => {
   const none = join(dir, 'none.json')
   expect(() =>
     loadConfig({ JAYPOST_CONFIG: none, JAYPOST_OWNER_ID: '1' }, SERVICE_PROVIDERS),
-  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
+  ).toThrow(
+    'missing bot token; run `jaypost service install` to set up the bot (or set JAYPOST_BOT_TOKEN)',
+  )
   expect(() =>
     loadConfig(
       { JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: 'abc' },
       SERVICE_PROVIDERS,
     ),
-  ).toThrow('invalid owner id; run `jaypost init` to set up the bot (or set JAYPOST_OWNER_ID)')
+  ).toThrow(
+    'invalid owner id; run `jaypost service install` to set up the bot (or set JAYPOST_OWNER_ID)',
+  )
   expect(() =>
     loadConfig(
       { JAYPOST_CONFIG: none, JAYPOST_BOT_TOKEN: 't', JAYPOST_OWNER_ID: '1.5' },
       SERVICE_PROVIDERS,
     ),
-  ).toThrow(/jaypost init/)
+  ).toThrow(/jaypost service install/)
 })
 
 test('missing owner is undefined, not an error', () => {
@@ -231,7 +237,7 @@ test('JAYPOST_PROVIDER env overrides the file provider', () => {
 test('unknown provider fails with the init hint', () => {
   updateConfigFile(file, { provider: 'nope' })
   expect(() => loadConfig({ JAYPOST_CONFIG: file }, SERVICE_PROVIDERS)).toThrow(
-    'unknown provider "nope"; run `jaypost init`',
+    'unknown provider "nope"; run `jaypost service install`',
   )
 })
 
@@ -265,7 +271,8 @@ test('api token comes from JAYPOST_TOKEN, then apiToken in the file, else none',
 })
 
 test('an invalid api token throws without quoting it', () => {
-  const message = 'invalid api token; run `jaypost init` to set up the bot (or set JAYPOST_TOKEN)'
+  const message =
+    'invalid api token; run `jaypost service install` to set up the bot (or set JAYPOST_TOKEN)'
   updateConfigFile(file, { botToken: 'tok' })
   const fromEnv = () =>
     loadConfig({ JAYPOST_CONFIG: file, JAYPOST_TOKEN: 'short-secret' }, SERVICE_PROVIDERS)
@@ -340,5 +347,7 @@ test('unprefixed env vars are ignored', () => {
   const none = join(dir, 'none.json')
   expect(() =>
     loadConfig({ JAYPOST_CONFIG: none, BOT_TOKEN: 't', OWNER_ID: '1' }, SERVICE_PROVIDERS),
-  ).toThrow('missing bot token; run `jaypost init` to set up the bot (or set JAYPOST_BOT_TOKEN)')
+  ).toThrow(
+    'missing bot token; run `jaypost service install` to set up the bot (or set JAYPOST_BOT_TOKEN)',
+  )
 })

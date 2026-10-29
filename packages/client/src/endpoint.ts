@@ -53,7 +53,7 @@ export function describeEndpoint(url: URL): string {
 }
 
 /**
- * True when the endpoint is on this machine, so `jaypost status` and `jaypost init` can help with
+ * True when the endpoint is on this machine, so `jaypost status` and `jaypost service install` can help with
  * it; a remote relay is checked where it runs.
  */
 export function isLoopbackEndpoint(url: URL): boolean {

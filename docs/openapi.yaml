@@ -719,11 +719,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: An API key, such as the one `init` saved to `~/.config/jaypost/token`. A service installed without a token treats a call without the header as its first key.
+      description: An API key, such as the `key` of a bot in `~/.config/jaypost/bots.json`. A service installed without a token treats a call without the header as its first key.
     adminKey:
       type: http
       scheme: bearer
-      description: The admin key, in `~/.config/jaypost/admin-key` on the machine running the service. Only the admin routes take it.
+      description: The admin key, in `~/.config/jaypost/service/admin-key` on the machine running the service, and in `~/.config/jaypost/bots.json` on a machine that administers it. Only the admin routes take it.
   schemas:
     ApprovalRequest:
       type: object

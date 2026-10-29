@@ -709,11 +709,11 @@ async function createEmptyHome(): Promise<NodeJS.ProcessEnv> {
 }
 
 function unreachableLine(port: number): string {
-  return `jaypost isn't running on 127.0.0.1:${port}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
+  return `jaypost isn't running on 127.0.0.1:${port}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`
 }
 
 function tokenLine(message: string): string {
-  return `jaypost can't use its API token (${message}), so permission prompts stay in the terminal. Run \`jaypost init\`, or set JAYPOST_TOKEN in a container.`
+  return `jaypost can't use its API token (${message}), so permission prompts stay in the terminal. Run \`jaypost service install\`, or set JAYPOST_TOKEN in a container.`
 }
 
 test('session start with a paired service prints nothing', async () => {
@@ -750,7 +750,7 @@ test('session start when not paired says to pair', async () => {
   expect(out).toEqual([
     JSON.stringify({
       systemMessage:
-        "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair.",
+        "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost service install` to pair.",
     }),
   ])
 })

@@ -299,6 +299,6 @@ test('session start against the real cli reports a stopped service', async () =>
   )
   expect(result.status).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
-    systemMessage: `jaypost isn't running on 127.0.0.1:${botPort}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`,
+    systemMessage: `jaypost isn't running on 127.0.0.1:${botPort}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`,
   })
 })

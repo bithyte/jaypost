@@ -2,7 +2,7 @@
 
 If you use the [Claude Code plugin](claude-code.md#plugin), it adds this server for you.
 
-`jaypost mcp [--port N]` is a stdio MCP server with six tools that forward to the [HTTP API](http-api.md). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking. The server also sends MCP instructions that say when to use each tool; Claude Code puts them in the system prompt.
+`jaypost mcp [-b ALIAS]` is a stdio MCP server with six tools that forward to the [HTTP API](http-api.md). `project_name` shows as `[name]` on the first line of the message, so you can tell which agent is asking. The server also sends MCP instructions that say when to use each tool; Claude Code puts them in the system prompt.
 
 `ask_user` asks a question with buttons, a typed reply or both, and waits for the answer or the timeout:
 
@@ -78,7 +78,7 @@ In a container or anywhere the package isn't installed, use `npx -y jaypost mcp`
 }
 ```
 
-If the token file isn't readable where the MCP server runs (a container, another user), set `JAYPOST_TOKEN` to its contents, which wins over the file. In a client's JSON, add an `env` block:
+The server talks to your default contact, or the one `-b ALIAS` (or `JAYPOST_BOT`) names. If the contact book isn't readable where the MCP server runs (a container, another user), set `JAYPOST_URL` and `JAYPOST_TOKEN` instead; when either is set the book isn't read. In a client's JSON, add an `env` block:
 
 ```json
 {
@@ -87,20 +87,21 @@ If the token file isn't readable where the MCP server runs (a container, another
       "command": "jaypost",
       "args": ["mcp"],
       "env": {
-        "JAYPOST_TOKEN": "<contents of ~/.config/jaypost/token>"
+        "JAYPOST_URL": "https://jaypost.example.com",
+        "JAYPOST_TOKEN": "<an API key>"
       }
     }
   }
 }
 ```
 
-For a container, `export JAYPOST_TOKEN=$(cat ~/.config/jaypost/token)` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`.
+For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin key create` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/bots.json`.
 
-The port comes from `--port`, then `JAYPOST_PORT`, then the install's `install.json`, then 8787. Set `JAYPOST_URL` to reach a service by URL instead, on another host or behind a reverse proxy; `--port` still wins over it. If you run `start` by hand on a custom port without an install, pass `--port` or set `JAYPOST_PORT`.
+The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the book isn't read), then the book's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a contact with `jaypost join` or `jaypost service install`.
 
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 
-`project` needs a service at least as new as this release. An older service sends the message without the project line, and `notify_user` reports that the service is too old. Re-run `init` to upgrade. `format` needs a service at least as new as the release that added it; an older one shows the markdown as typed.
+`project` needs a service at least as new as this release. An older service sends the message without the project line, and `notify_user` reports that the service is too old. Run `jaypost service install` again to upgrade. `format` needs a service at least as new as the release that added it; an older one shows the markdown as typed.
 
 ## Telling the agent when to ask
 

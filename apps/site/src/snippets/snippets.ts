@@ -2,7 +2,7 @@ import type { SnippetId } from './types.ts'
 
 /** Code shown on the page; each one must appear in the root README or `docs/*.md` (see SnippetChecker). */
 export const SNIPPETS: Readonly<Record<SnippetId, string>> = {
-  npxInit: 'npx jaypost init',
+  npxInit: 'npx jaypost service install',
   installScript: 'curl -fsSL https://unpkg.com/jaypost/install.sh | sh',
   installScriptPages: 'curl -fsSL https://bithyte.github.io/jaypost/install.sh | sh',
   pair: '/start ABCD-EFGH',
@@ -10,7 +10,7 @@ export const SNIPPETS: Readonly<Record<SnippetId, string>> = {
   shellSend: "answer=$(jaypost request 'Deploy?' -o Approve -d Decline --timeout 60)",
   curlRequest: `curl -s -X POST http://127.0.0.1:8787/request \\
   -H 'content-type: application/json' \\
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \\
+  -H "authorization: Bearer $JAYPOST_TOKEN" \\
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'`,
   nodeClient: `import { Client } from 'jaypost'
 

@@ -25,6 +25,6 @@ A duration is `30m`, `2h`, `1d` or a combination in that order (`1h30m`, `1d12h`
 
 Both settings are saved in `config.json` as `quietHours` (`"23:00-08:00"`) and `mutedUntil` (an ISO timestamp), so they survive a restart. You can also edit them there; a hand edit applies on restart, and an invalid `quietHours` stops startup. When a mute passes, it just stops applying.
 
-Windows use the service's own time zone, and replies that set or show a time name it. The systemd and launchd targets use the host's. `init` writes `TZ` into the Compose and Quadlet `.env` so the container matches the host. Container installs from before this release use UTC until you re-run `init`.
+Windows use the service's own time zone, and replies that set or show a time name it. The systemd and launchd targets use the host's. `service install` writes `TZ` into the Compose and Quadlet `.env` so the container matches the host. Container installs from before this release use UTC until you run `service install` again.
 
 A notification sent while quiet is deleted 8 hours after the quiet period ends, not 8 hours after it was sent, so you get a chance to see it. If that would be more than 47 hours out (Telegram won't let a bot delete older messages), it isn't deleted automatically and stays until you dismiss it.

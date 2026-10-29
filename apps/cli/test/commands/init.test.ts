@@ -871,7 +871,7 @@ test('an invalid apiToken in a native install is replaced on service install', a
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
   expect(notes()).toContain('The saved API token was invalid; made a new one.')
   expect(notes().join('\n')).not.toContain('short-secret')
-  expect(notes().join('\n')).not.toContain('jaypost init')
+  expect(notes().join('\n')).not.toContain('jaypost service install')
 })
 
 test('a token that cannot be read fails the install', async () => {

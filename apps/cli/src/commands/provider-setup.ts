@@ -5,7 +5,7 @@ import type { ProviderSettingsOptions, ProviderSettingsResult, Prompts } from '.
 
 /**
  * The only provider in `providers`, or the user's pick with `preselected` (else the first)
- * selected. Shared by `init` and `pnpm dev`. Throws when `providers` is empty.
+ * selected. Shared by `service install` and `pnpm dev`. Throws when `providers` is empty.
  */
 export async function selectProvider(
   providers: readonly Provider[],

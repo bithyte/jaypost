@@ -5,9 +5,11 @@
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'
 ```
+
+`$JAYPOST_TOKEN` is an API key: the `key` of a bot in `~/.config/jaypost/bots.json`, or one from `jaypost admin key create`. A service installed with `--no-token` takes calls without the header.
 
 The request stays open until you tap a button (or reply, see below) or the timeout fires, then returns `200`:
 
@@ -22,13 +24,13 @@ For a question with no sensible buttons, set `allowText` and leave out `options`
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Which branch?","allowText":true,"timeoutOption":"main","timeout":120}'
 ```
 
 Reply to the question's message in Telegram; if it's the only open text question, just typing works. The first answer wins, whether it's a tap or a reply. Non-text replies don't count, and a registered command name (`/pending`, `/cancel`, `/history`) can't be typed as an answer.
 
-`allowText` needs a service at least as new as this release. An older one ignores it: with `options` you get a buttons-only question, without them a 400 `options must be a non-empty array`. Re-run `init` to upgrade.
+`allowText` needs a service at least as new as this release. An older one ignores it: with `options` you get a buttons-only question, without them a 400 `options must be a non-empty array`. Run `jaypost service install` again to upgrade.
 
 `POST /request` body:
 
@@ -71,7 +73,7 @@ If the caller disconnects early, the request is dropped and the Telegram message
 ```
 curl -s -X POST http://127.0.0.1:8787/request/async \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":3600}'
 ```
 
@@ -92,7 +94,7 @@ For messages that don't need an answer, e.g. from n8n when someone joins a game 
 ```
 curl -s -X POST http://127.0.0.1:8787/notify \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"alice joined the Core Keeper server"}'
 ```
 
@@ -134,7 +136,7 @@ Errors are JSON `{ "error": "..." }`:
 ```
 curl -s -X POST http://127.0.0.1:8787/vote \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Publish v123?","options":["Yes","No"],"timeoutOption":"No","voters":["111","222","333"],"require":"majority"}'
 ```
 
@@ -168,7 +170,7 @@ Send exactly one of `text` and `data`. The content must be at least 1 byte and a
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Push this diff?","options":["Push","Stop"],"timeoutOption":"Stop",
        "attachment":{"name":"changes.diff","text":"diff --git a/x b/x\n..."}}'
 
@@ -176,7 +178,7 @@ jq -n --arg data "$(base64 -w0 screen.png)" \
   '{text:"Login page is blank, see screenshot",attachment:{name:"screen.png",data:$data}}' |
   curl -s -X POST http://127.0.0.1:8787/notify \
     -H 'content-type: application/json' \
-    -H "authorization: Bearer $(cat ~/.config/jaypost/token)" -d @-
+    -H "authorization: Bearer $JAYPOST_TOKEN" -d @-
 ```
 
 The body limit is 14 MiB, which fits the base64 of a 10 MiB file. Send big files as `data`: a `text` attachment near 10 MiB with many quotes or control characters grows when JSON-escaped and can hit the `413`.
@@ -192,7 +194,7 @@ Attachments need a service at least as new as this release; an older one ignores
 `GET /log` returns the questions asked with the caller's key, oldest first, as `{ "entries": [...], "skippedCount": 0 }`. `skippedCount` is how many log lines couldn't be read. It takes `since` (a duration like `7d`, a date or an ISO date-time), `project` and `limit` (the last N); a bad or repeated parameter is a `400`. Each entry has `id`, `askedAt`, `text`, `options`, `timeoutOption`, `timeoutSeconds`, `status` and, once known, `answer` and `settledAt`, plus the `key` and `pairing` it came from. See [Question log](question-log.md).
 
 ```
-curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $(cat ~/.config/jaypost/token)"
+curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $JAYPOST_TOKEN"
 ```
 
 ## Admin routes
