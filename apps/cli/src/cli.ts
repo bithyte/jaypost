@@ -51,6 +51,9 @@ import {
   runPairingList,
   runPairingRemove,
   runPing,
+  runRemoteAdd,
+  runRemoteList,
+  runRemoteRemove,
   runResetOwner,
   runSendNotify,
   runSendRequest,
@@ -68,6 +71,7 @@ import { createProgress, formatOnRail, resolveProgressMode } from './progress/in
 import type { Progress } from './progress/index.ts'
 import type {
   AdminDeps,
+  BookDeps,
   DirectSendDeps,
   InitArgs,
   LogArgs,
@@ -568,6 +572,52 @@ function addServiceCommands(program: Command, setCode: (code: number) => void): 
     .action(() => runService(VERSION))
 }
 
+/** What the `remote` commands use; prompts abort with `signal`. */
+function createBookDeps(signal?: AbortSignal): BookDeps {
+  return {
+    bookPath: resolveBookPath(process.env),
+    prompt: createClackPrompts(signal),
+    isInteractive: process.stdin.isTTY === true,
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+  }
+}
+
+/** The `remote` group: services on other machines this one administers. */
+function addRemoteCommands(program: Command, setCode: (code: number) => void): void {
+  const remote = program
+    .command('remote')
+    .description('add, list and remove services on other machines you administer')
+  remote
+    .command('add')
+    .description('check the admin key against a service and save it as a remote')
+    .argument('<name>', 'a short name for the remote')
+    .argument('<url>', 'the service url')
+    .argument('<admin-key>', "the service's admin key")
+    .action(async (name: string, url: string, adminKey: string) => {
+      setCode(
+        await runWithSignals(
+          (controller) => runRemoteAdd({ name, url, adminKey }, createBookDeps(controller.signal)),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
+    })
+  remote
+    .command('remove')
+    .description('forget a remote; its bots stay')
+    .argument('<name>', 'the remote name')
+    .action(async (name: string) => {
+      setCode(await runRemoteRemove({ name }, createBookDeps()))
+    })
+  remote
+    .command('list')
+    .description('show the remotes (names and urls, no keys)')
+    .action(async () => {
+      setCode(await runRemoteList(createBookDeps()))
+    })
+}
+
 function runUpdateCommand(isFinish: boolean): Promise<number> {
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
@@ -786,6 +836,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   const program = new Command('jaypost').version(VERSION, '-v, --version').exitOverride()
   addServiceCommands(program, (serviceCode) => {
     code = serviceCode
+  })
+  addRemoteCommands(program, (remoteCode) => {
+    code = remoteCode
   })
   program
     .command('setup-ci')

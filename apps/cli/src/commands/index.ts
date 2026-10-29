@@ -12,6 +12,7 @@ export { defaultFetchStatus, waitForPairing } from './pairing-wait.ts'
 export { runPing } from './ping.ts'
 export { createClackPrompts, PromptAborted } from './prompts.ts'
 export { resolveProviderSettings, selectProvider } from './provider-setup.ts'
+export { runRemoteAdd, runRemoteList, runRemoteRemove } from './remote.ts'
 export { runResetOwner } from './reset-owner.ts'
 export { formatRoundTitle, runDirectSendNotify, runDirectSendRequest } from './send-direct.ts'
 export { runSendNotify, runSendRequest } from './send.ts'
@@ -27,6 +28,7 @@ export type {
   AdminIdArgs,
   AdminOutputArgs,
   AdminRemoveArgs,
+  BookDeps,
   BotAddArgs,
   DirectSendDeps,
   InitArgs,

@@ -30,6 +30,16 @@ export type Prompts = {
   ) => Promise<T>
 }
 
+/** What the contact book commands touch outside themselves, injected for tests. */
+export type BookDeps = {
+  readonly bookPath: string
+  readonly prompt: Prompts
+  /** True on a terminal; only then may a command ask before overwriting. */
+  readonly isInteractive: boolean
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
+}
+
 /** Inputs to `resolveProviderSettings`. */
 export type ProviderSettingsOptions = {
   readonly provider: Provider

@@ -295,6 +295,24 @@ test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
   }
 })
 
+test('remote list on an empty book prints No remotes.', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-remote-'))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'remote', 'list'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
+      },
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('No remotes.\n')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['log'], ['status']])(
   '%s -b with an unknown alias exits 1 and lists the known ones',
   (...command) => {
