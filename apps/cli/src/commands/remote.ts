@@ -105,7 +105,7 @@ export function runRemoteList(deps: BookDeps): Promise<number> {
 }
 
 // A corrupt book is reported, not thrown; its message names the file, never a value.
-function loadBook(deps: BookDeps): Book | undefined {
+export function loadBook(deps: BookDeps): Book | undefined {
   try {
     return readBook(deps.bookPath)
   } catch (error) {

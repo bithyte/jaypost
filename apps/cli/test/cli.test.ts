@@ -313,6 +313,24 @@ test('remote list on an empty book prints No remotes.', () => {
   }
 })
 
+test('bots on an empty book says how to add one', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-bots-'))
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'bots'],
+      {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
+      },
+    )
+    expect(result.status).toBe(0)
+    expect(result.stdout).toBe('No bots. Run "jaypost service install" or "jaypost join".\n')
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('jaypost key list is an unknown command', async () => {
   const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   for (const command of [

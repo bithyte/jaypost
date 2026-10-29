@@ -52,6 +52,10 @@ import {
   runPairingList,
   runPairingRemove,
   runPing,
+  runBotsDefault,
+  runBotsList,
+  runBotsRemove,
+  runBotsRename,
   runRemoteAdd,
   runRemoteList,
   runRemoteRemove,
@@ -622,6 +626,55 @@ function addRemoteCommands(program: Command, setCode: (code: number) => void): v
     })
 }
 
+/** The `bots` group: the contacts in your book; with no subcommand it lists them. */
+function addBotsCommands(program: Command, setCode: (code: number) => void): void {
+  const bots = program
+    .command('bots')
+    .description('list your contacts, or set the default, rename and remove them')
+    .action(async () => {
+      setCode(await runBotsList(createBookDeps()))
+    })
+  bots
+    .command('list')
+    .description('show the bots (aliases and services, no keys)')
+    .action(async () => {
+      setCode(await runBotsList(createBookDeps()))
+    })
+  bots
+    .command('default')
+    .description('make a bot the default')
+    .argument('<alias>', 'the bot alias')
+    .action(async (alias: string) => {
+      setCode(await runBotsDefault({ alias }, createBookDeps()))
+    })
+  bots
+    .command('rename')
+    .description('give a bot a new alias')
+    .argument('<alias>', 'the current alias')
+    .argument('<new-alias>', 'the new alias')
+    .action(async (alias: string, newAlias: string) => {
+      setCode(await runBotsRename({ alias, newAlias }, createBookDeps()))
+    })
+  bots
+    .command('remove')
+    .description('remove a bot from your contacts')
+    .argument('<alias>', 'the bot alias')
+    .option('-y, --yes', 'skip the confirmation')
+    .action(async (alias: string, options: { readonly yes?: boolean }) => {
+      setCode(
+        await runWithSignals(
+          (controller) =>
+            runBotsRemove(
+              { alias, ...(options.yes === true ? { yes: true } : {}) },
+              createBookDeps(controller.signal),
+            ),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
+    })
+}
+
 function runUpdateCommand(isFinish: boolean): Promise<number> {
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
@@ -937,6 +990,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   })
   addRemoteCommands(program, (remoteCode) => {
     code = remoteCode
+  })
+  addBotsCommands(program, (botsCode) => {
+    code = botsCode
   })
   program
     .command('setup-ci')

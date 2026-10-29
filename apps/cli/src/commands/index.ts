@@ -1,6 +1,7 @@
 export { runAdminKeyRotate, runAdminKeyShow } from './admin.ts'
 export { formatWaitTitle } from './answer-wait.ts'
 export { runAudit } from './audit.ts'
+export { runBotsDefault, runBotsList, runBotsRemove, runBotsRename } from './bots.ts'
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
 export { runKeyCreate, runKeyLabel, runKeyList, runKeyRevoke } from './key.ts'
