@@ -1,16 +1,8 @@
 import { randomBytes } from 'node:crypto'
-import { readFileSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { SECRET_FILE_MODE } from '../config/constants.ts'
-import { findEnvValue, resolveConfigDirectory } from '../config/paths.ts'
-import { isMissingFileError, writeFileAtomic } from '../system/files.ts'
-import {
-  NO_CLIENT_TOKEN,
-  TOKEN_BYTES,
-  TOKEN_ENV_VAR,
-  TOKEN_FILE_NAME,
-  TOKEN_PATTERN,
-} from './constants.ts'
+import { readFileSync } from 'node:fs'
+import { findEnvValue } from '../config/paths.ts'
+import { isMissingFileError } from '../system/files.ts'
+import { NO_CLIENT_TOKEN, TOKEN_BYTES, TOKEN_ENV_VAR, TOKEN_PATTERN } from './constants.ts'
 import type { ClientSecretNames, ClientToken } from './types.ts'
 
 const CLIENT_TOKEN_NAMES: ClientSecretNames = {
@@ -30,12 +22,7 @@ export function parseToken(raw: string): string | undefined {
   return TOKEN_PATTERN.test(trimmed) ? trimmed : undefined
 }
 
-/** Path of the client token file in the install config directory; ignores JAYPOST_CONFIG. */
-export function resolveTokenFile(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolveConfigDirectory(env), TOKEN_FILE_NAME)
-}
-
-/** Raw text of the token file, or undefined when it is missing; other read errors are rethrown. */
+/** Raw text of a token-shaped secret file (the admin key), or undefined when it is missing. */
 export function readTokenFile(path: string): string | undefined {
   try {
     return readFileSync(path, 'utf8')
@@ -47,33 +34,18 @@ export function readTokenFile(path: string): string | undefined {
   }
 }
 
-/** Atomically writes `token` plus a newline, readable by the owner only. */
-export function writeTokenFile(path: string, token: string): void {
-  writeFileAtomic(path, `${token}\n`, SECRET_FILE_MODE)
-}
-
-/** Deletes the token file; a missing file is fine. */
-export function removeTokenFile(path: string): void {
-  rmSync(path, { force: true })
-}
-
 /**
- * Finds the client token: the env var (empty counts as unset), then the file, else none. A source
- * that exists but is invalid or unreadable gives `unusable`, with a message that names the source
- * and never the value. Never throws.
+ * The client token from JAYPOST_TOKEN only, never a file. A bad value gives `unusable` with a
+ * message that never quotes it. Never throws.
  */
-export function resolveClientToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
-  return resolveClientSecret(env, tokenFile, CLIENT_TOKEN_NAMES)
-}
-
-/** The client token from JAYPOST_TOKEN only, never a file. Same messages as `resolveClientToken`. */
 export function resolveEnvToken(env: NodeJS.ProcessEnv): ClientToken {
   return resolveEnvSecret(env, CLIENT_TOKEN_NAMES) ?? NO_CLIENT_TOKEN
 }
 
 /**
- * `resolveClientToken` for any secret with the token's shape: `names.envVar`, then `path`, else
- * none. Messages name the source with `names` and never quote the value. Never throws.
+ * A secret with the token's shape: `names.envVar` (empty counts as unset), then `path`, else none.
+ * A source that exists but is invalid or unreadable gives `unusable`; messages name the source
+ * with `names` and never quote the value. Never throws.
  */
 export function resolveClientSecret(
   env: NodeJS.ProcessEnv,

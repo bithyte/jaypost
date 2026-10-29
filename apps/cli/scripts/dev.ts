@@ -139,7 +139,7 @@ if (typeof serviceEnv === 'number') {
   process.exit(serviceEnv)
 }
 console.log(`try it from another terminal: pnpm cli test --port ${port}`)
-const child = spawn(process.execPath, ['--watch', 'apps/cli/src/cli.ts', 'start'], {
+const child = spawn(process.execPath, ['--watch', 'apps/cli/src/cli.ts', 'service', 'run'], {
   cwd: root,
   stdio: 'inherit',
   env: serviceEnv,

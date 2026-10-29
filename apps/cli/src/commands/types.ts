@@ -108,12 +108,18 @@ export type InitDeps = {
   readonly platform?: string
   /** IANA zone passed to container installs as `TZ`; omitted when unknown. */
   readonly timeZone?: string
+  /** The contact book; gets the local service and its seed bot. */
+  readonly bookPath: string
+  /** This machine's name (`os.hostname()`), for the `remote add` line `--exposed` prints. */
+  readonly hostname: string
 }
 
-/** Parsed `init` flags; absent fields mean the user didn't pass them. */
+/** Parsed `service install` flags; absent fields mean the user didn't pass them. */
 export type InitArgs = {
   readonly target?: TargetName
   readonly port?: number
+  /** Listen on all interfaces over plain http instead of loopback. */
+  readonly exposed?: boolean
   readonly tarball?: string
   readonly provider?: string
   /** `true` for `--token`, `false` for `--no-token`; absent when neither was passed. */
@@ -131,8 +137,8 @@ export type ResetOwnerDeps = {
   readonly wait: WaitForPairing
   readonly progress: Progress
   readonly signal?: AbortSignal
-  /** Key 1's token; its /status names the pairing to reset. */
-  readonly token: ClientToken
+  /** The contact book; the local seed bot's key is key 1's token, whose /status names the pairing. */
+  readonly bookPath: string
   readonly fetchStatus: FetchStatus
   /** Delay between /status polls while the service starts; defaults to an abortable timer. */
   readonly sleep?: (delayMs: number) => Promise<void>
@@ -172,6 +178,16 @@ export type UninstallDeps = {
   readonly confirm: Prompts['confirm']
   readonly progress: Progress
   readonly signal?: AbortSignal
+  /** The contact book; loses the local service and its bots. */
+  readonly bookPath: string
+}
+
+/** Everything `runServiceStart` and `runServiceStop` touch outside themselves, injected for tests. */
+export type ServiceControlDeps = {
+  readonly paths: InstallPaths
+  readonly targets: Readonly<Record<TargetName, Target>>
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
 }
 
 /** Everything `runUpdate` and `runFinishUpdate` touch outside themselves, injected for tests. */

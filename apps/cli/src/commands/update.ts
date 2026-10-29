@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { NO_AUTH, parseToken, readTokenFile } from '@jaypost/store'
+import { NO_AUTH, parseToken } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import {
   compareVersions,
@@ -14,7 +14,14 @@ import {
   resolveRecordProvider,
   writeInstall,
 } from '@jaypost/install'
-import type { ExistingInstall, InstallPaths, LatestRelease, TargetName } from '@jaypost/install'
+import type {
+  ExistingInstall,
+  InstallPaths,
+  InstallRecord,
+  LatestRelease,
+  Target,
+  TargetName,
+} from '@jaypost/install'
 import { runStep } from '../progress/index.ts'
 import type { ProgressStep } from '../progress/index.ts'
 import { requireProvider } from '@jaypost/core'
@@ -247,7 +254,9 @@ async function handOff(deps: UpdateDeps, subject: Subject): Promise<number> {
   if (result.code === 0 || result.code === 130) {
     return result.code
   }
-  deps.progress.note('The new version is in place; run "jaypost update" again or "jaypost init".')
+  deps.progress.note(
+    'The new version is in place; run "jaypost update" again or "jaypost service install".',
+  )
   return result.code
 }
 
@@ -334,11 +343,22 @@ export async function runUpdate(deps: UpdateDeps): Promise<number> {
   }
 }
 
-/** A valid token from the token file, else no auth; an unreadable file throws. */
-function readAuth(tokenFile: string): ApiAuth {
-  const raw = readTokenFile(tokenFile)
-  const token = raw === undefined ? undefined : parseToken(raw)
-  return token === undefined ? NO_AUTH : { kind: 'token', token }
+/**
+ * The token the installed service enforces, else no auth. Throws when it can't be read or isn't a
+ * valid token, never quoting it: upgrading without it would quietly open the API.
+ */
+async function readAuth(target: Target, record: InstallRecord): Promise<ApiAuth> {
+  const raw = await target.readApiToken(record)
+  if (raw === undefined) {
+    return NO_AUTH
+  }
+  const token = parseToken(raw)
+  if (token === undefined) {
+    throw new Error(
+      `the service's API token isn't valid; run "jaypost service install" to make a new one`,
+    )
+  }
+  return { kind: 'token', token }
 }
 
 /** The `.env` a container target rewrites on upgrade; undefined for the native targets. */
@@ -398,11 +418,10 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
     const provider = requireProvider(deps.providers, resolveRecordProvider(record))
     const { settings } = await target.readSecrets(record)
     requireContainerSettings(deps.paths, record.target, provider, settings)
-    const auth = readAuth(deps.paths.tokenFile)
-    // install.json doesn't record whether the old service required a token, so always say so.
+    const auth = await readAuth(target, record)
     if (auth.kind === 'none') {
       print(
-        `No API token file at ${deps.paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+        `The service has no API token, so it still won't require one. Run "jaypost service install" to set one.`,
       )
     }
     const next = await runUpdateStep(

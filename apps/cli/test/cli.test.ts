@@ -33,11 +33,31 @@ test('--version prints VERSION', async () => {
   expect(write).toHaveBeenCalledWith(`${VERSION}\n`)
 })
 
-test('init rejects bad port and unknown target with 2', async () => {
+test('service install rejects bad port and unknown target with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['init', '--port', 'abc'])).toBe(2)
-  expect(await main(['init', '--port', '70000'])).toBe(2)
-  expect(await main(['init', 'nope'])).toBe(2)
+  expect(await main(['service', 'install', '--port', 'abc'])).toBe(2)
+  expect(await main(['service', 'install', '--port', '70000'])).toBe(2)
+  expect(await main(['service', 'install', 'nope'])).toBe(2)
+})
+
+test('init is an unknown command', async () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  for (const command of ['init', 'uninstall', 'start']) {
+    write.mockClear()
+    expect(await main([command])).toBe(2)
+    expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toContain(
+      `unknown command '${command}'`,
+    )
+  }
+})
+
+test('service --help lists install, uninstall, start, stop and run', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['service', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
+  for (const command of ['install', 'uninstall', 'start', 'stop', 'run']) {
+    expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
+  }
 })
 
 test('log rejects bad --since, --limit and empty --project with 2', async () => {
@@ -49,15 +69,17 @@ test('log rejects bad --since, --limit and empty --project with 2', async () => 
   expect(await main(['log', '--project', ' '])).toBe(2)
 })
 
-test('init --help lists --provider', async () => {
+test('service install --help lists --provider and --exposed', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-  expect(await main(['init', '--help'])).toBe(0)
-  expect(write.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider <name>')
+  expect(await main(['service', 'install', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
+  expect(help).toContain('--exposed')
+  expect(help).toContain('--provider <name>')
 })
 
-test('init --help lists --token and --no-token', async () => {
+test('service install --help lists --token and --no-token', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-  expect(await main(['init', '--help'])).toBe(0)
+  expect(await main(['service', 'install', '--help'])).toBe(0)
   const help = write.mock.calls.map((call) => String(call[0])).join('')
   expect(help).toContain('--token ')
   expect(help).toContain('--no-token')

@@ -1,11 +1,11 @@
 import { createServer } from 'node:http'
 import type { RequestListener, Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { NO_AUTH, resolveBookPath, writeBook, writeTokenFile } from '@jaypost/store'
+import { NO_AUTH, resolveBookPath, writeBook } from '@jaypost/store'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import type { ApprovalRequest, NotifyRequest, RequestResult } from '@jaypost/core'
 import {
@@ -23,7 +23,7 @@ const TOKEN = 'A'.repeat(43)
 const FIRST = 'B'.repeat(43)
 const SECOND = 'C'.repeat(43)
 let directory = ''
-const tokenFile = (): string => join(directory, 'jaypost', 'service', 'token')
+const legacyTokenPath = (): string => join(directory, 'jaypost', 'service', 'token')
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-client-'))
@@ -291,7 +291,8 @@ test('JAYPOST_TOKEN is read on every call', async () => {
 
 test('the token file is no longer consulted', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
-  writeTokenFile(tokenFile(), FIRST)
+  mkdirSync(dirname(legacyTokenPath()), { recursive: true })
+  writeFileSync(legacyTokenPath(), `${FIRST}\n`)
   await new Client({ port }).notify({ text: 'x' })
   expect(seen.authorization).toBeUndefined()
 })

@@ -10,10 +10,11 @@ import {
   NO_CLIENT_TOKEN,
   openDatabase,
   RegistryStore,
+  readBook,
   resolveDatabasePath,
-  writeTokenFile,
+  writeBook,
 } from '@jaypost/store'
-import type { Registry } from '@jaypost/store'
+import type { Book, Registry } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import {
   ADMIN_KEY_REJECTED_MESSAGE,
@@ -24,12 +25,7 @@ import {
 } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
-import {
-  defaultFetchStatus,
-  resolveResetOwnerToken,
-  runResetOwner,
-  runUninstall,
-} from '../../src/commands/index.ts'
+import { defaultFetchStatus, runResetOwner, runUninstall } from '../../src/commands/index.ts'
 import type { StatusFetch, WaitOptions } from '../../src/commands/index.ts'
 import type { StatusInfo } from '@jaypost/protocol'
 import {
@@ -48,6 +44,7 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 let tmp: string
 let paths: InstallPaths
+let bookPath: string
 let order: string[]
 let out: string[]
 let recording = createRecordingProgress()
@@ -69,6 +66,7 @@ function notes(): string[] {
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'manage-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
+  bookPath = join(tmp, 'cfg', 'jaypost', 'bots.json')
   order = []
   out = []
   recording = createRecordingProgress()
@@ -120,7 +118,22 @@ const INVITE = JSON.stringify({
   pairing: { id: 'p1', bot: 'b1', state: 'pending', code: 'ABCD-EFGH', keys: ['k1'] },
   code: 'ABCD-EFGH',
 })
-const TOKEN_FILE = '/h/.config/jaypost/service/token'
+const LOCAL_URL = 'http://127.0.0.1:9000/'
+
+/** A book with the local install on port 9000, its seed bot and a hosted bot. */
+function localBook(over: Partial<Book> = {}): Book {
+  return {
+    version: 1,
+    default: 'local',
+    local: { url: LOCAL_URL, adminKey: ADMIN_KEY },
+    remotes: [],
+    bots: [
+      { alias: 'local', url: LOCAL_URL, key: TOKEN },
+      { alias: 'work', url: 'https://bots.example.com/', key: 'W'.repeat(43) },
+    ],
+    ...over,
+  }
+}
 
 function answered(status: StatusInfo) {
   return { kind: 'answered' as const, status }
@@ -137,8 +150,7 @@ function base(over = {}) {
     print: (s: string) => out.push(s),
     progress: recording.progress,
     confirm: vi.fn(async () => true),
-    token: NO_CLIENT_TOKEN as ClientToken,
-    tokenFile: TOKEN_FILE,
+    bookPath,
     fetchStatus: vi.fn(async (): Promise<StatusFetch> => PAIRED_K1),
     sleep: vi.fn(async () => {}),
     ...over,
@@ -159,7 +171,7 @@ test('uninstall passes purge answer through and removes install.json', async () 
     const d = base({ confirm: vi.fn(async () => ans) })
     expect(await runUninstall(d)).toBe(0)
     expect(d.confirm).toHaveBeenCalledWith(
-      'Also delete the saved credentials, API token, paired owner and question log?',
+      'Also delete the saved credentials, paired owner and question log?',
       false,
     )
     expect(d.targets.compose.remove).toHaveBeenCalledWith(
@@ -171,18 +183,41 @@ test('uninstall passes purge answer through and removes install.json', async () 
   }
 })
 
-test('uninstall purge removes the token file; no purge keeps it', async () => {
-  for (const purge of [false, true]) {
-    seed('compose')
-    writeTokenFile(paths.tokenFile, TOKEN)
-    const d = base({ confirm: vi.fn(async () => purge) })
-    expect(await runUninstall(d)).toBe(0)
-    expect(d.confirm).toHaveBeenCalledWith(
-      'Also delete the saved credentials, API token, paired owner and question log?',
-      false,
-    )
-    expect(existsSync(paths.tokenFile)).toBe(!purge)
-  }
+test('service uninstall removes local and its bots from the book and names the new default', async () => {
+  seed()
+  writeBook(bookPath, localBook())
+  expect(await runUninstall(base())).toBe(0)
+  expect(readBook(bookPath)).toEqual({
+    version: 1,
+    default: 'work',
+    remotes: [],
+    bots: [{ alias: 'work', url: 'https://bots.example.com/', key: 'W'.repeat(43) }],
+  })
+  expect(recording.events.slice(-2)).toEqual([
+    'note:Default bot is now "work".',
+    'note:Uninstalled.',
+  ])
+})
+
+test('service uninstall keeps a default on another service without naming it', async () => {
+  seed()
+  writeBook(bookPath, localBook({ default: 'work' }))
+  expect(await runUninstall(base())).toBe(0)
+  expect(readBook(bookPath).default).toBe('work')
+  expect(notes()).not.toContain('Default bot is now "work".')
+})
+
+test('service uninstall with a corrupt book still removes the service and says why', async () => {
+  seed()
+  mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
+  writeFileSync(bookPath, '{nope')
+  const d = base()
+  expect(await runUninstall(d)).toBe(0)
+  expect(d.targets.systemd.remove).toHaveBeenCalled()
+  expect(notes()).toContain(
+    `Couldn't update the contact book: contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`,
+  )
+  expect(readFileSync(bookPath, 'utf8')).toBe('{nope')
 })
 
 test('uninstall works on legacy install', async () => {
@@ -410,11 +445,17 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
     seen.push(await defaultFetchStatus(options.url, options.token))
     return 'paired' as const
   })
+  writeBook(bookPath, {
+    version: 1,
+    default: 'local',
+    local: { url: `http://127.0.0.1:${port}/` },
+    remotes: [],
+    bots: [{ alias: 'local', url: `http://127.0.0.1:${port}/`, key: TOKEN }],
+  })
   const d = {
     ...base({
       targets: targets({ systemd: target }),
       providers,
-      token: { kind: 'token', token: TOKEN, source: 'file' },
       fetchStatus: defaultFetchStatus,
     }),
     wait,
@@ -445,7 +486,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
 test('reset-owner not installed -> 1', async () => {
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(1)
-  expect(notes()).toEqual(['Not installed. Run "jaypost init".'])
+  expect(notes()).toEqual(['Not installed. Run "jaypost service install".'])
   expect(d.confirm).not.toHaveBeenCalled()
 })
 
@@ -731,9 +772,9 @@ test('reset-owner wait throwing prints a generic error and returns 1', async () 
 
 test('reset-owner with an unusable token fails before resetting', async () => {
   const { seen } = await seedResetStub()
-  const d = resetDeps({ token: { kind: 'unusable', message: 'bad token here' } })
+  const d = resetDeps({ env: { JAYPOST_TOKEN: 'short' } })
   expect(await runResetOwner(d)).toBe(1)
-  expect(notes()).toEqual(['bad token here'])
+  expect(notes()).toEqual(["JAYPOST_TOKEN isn't a valid jaypost token"])
   expect(d.confirm).not.toHaveBeenCalled()
   expect(d.wait).not.toHaveBeenCalled()
   expect(seen).toEqual([])
@@ -743,7 +784,7 @@ test('reset-owner with an unusable token fails before resetting', async () => {
 test('reset-owner sends the token to /status and the wait and explains unauthorized', async () => {
   const { port } = await seedResetStub()
   const d = {
-    ...resetDeps({ token: { kind: 'token', token: TOKEN, source: 'env' } }),
+    ...resetDeps({ env: { JAYPOST_TOKEN: TOKEN } }),
     wait: vi.fn(async () => 'unauthorized' as const),
   }
   expect(await runResetOwner(d)).toBe(1)
@@ -820,20 +861,38 @@ test('reset-owner keeps the owner when the admin call fails after a stopped serv
   expect(notes()).toEqual(['unknown pairing p1'])
 })
 
-test('reset-owner token prefers the token file over JAYPOST_TOKEN', () => {
-  const tokenFile = join(tmp, 'token')
+test("reset-owner uses the local seed bot's key over JAYPOST_TOKEN", async () => {
+  const { port } = await seedResetStub()
   const envToken = 'E'.repeat(43)
-  const env = { JAYPOST_TOKEN: envToken }
-  expect(resolveResetOwnerToken(env, tokenFile)).toEqual({
-    kind: 'token',
-    token: envToken,
-    source: 'env',
+  writeBook(bookPath, {
+    version: 1,
+    local: { url: `http://127.0.0.1:${port}/` },
+    remotes: [],
+    bots: [
+      { alias: 'other', url: 'https://bots.example.com/', key: 'W'.repeat(43) },
+      { alias: 'home', url: `http://127.0.0.1:${port}/`, key: TOKEN },
+    ],
   })
-  writeTokenFile(tokenFile, TOKEN)
-  expect(resolveResetOwnerToken(env, tokenFile)).toEqual({
-    kind: 'token',
-    token: TOKEN,
-    source: 'file',
-  })
-  expect(resolveResetOwnerToken({}, join(tmp, 'missing'))).toEqual(NO_CLIENT_TOKEN)
+  const d = resetDeps({ env: { JAYPOST_TOKEN: envToken } })
+  expect(await runResetOwner(d)).toBe(0)
+  expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), TOKEN)
+  expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
+})
+
+test('reset-owner falls back to JAYPOST_TOKEN when the book has no local seed key', async () => {
+  const { port } = await seedResetStub()
+  const envToken = 'E'.repeat(43)
+  const d = resetDeps({ env: { JAYPOST_TOKEN: envToken } })
+  expect(await runResetOwner(d)).toBe(0)
+  expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), envToken)
+})
+
+test('reset-owner with a corrupt book fails before prompting', async () => {
+  await seedResetStub()
+  mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
+  writeFileSync(bookPath, '{nope')
+  const d = resetDeps()
+  expect(await runResetOwner(d)).toBe(1)
+  expect(notes()).toEqual([`contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`])
+  expect(d.confirm).not.toHaveBeenCalled()
 })

@@ -1,7 +1,9 @@
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { isDeepStrictEqual } from 'node:util'
 import { findDatabasePath } from '../database/index.ts'
-import { parseToken, readTokenFile, resolveClientSecret, writeTokenFile } from '../auth/token.ts'
+import { parseToken, readTokenFile, resolveClientSecret } from '../auth/token.ts'
+import { SECRET_FILE_MODE } from '../config/constants.ts'
+import { writeFileAtomic } from '../system/files.ts'
 import type { ClientToken } from '../auth/types.ts'
 import { ADMIN_KEY_ENV_VAR, REGISTRY_VERSION } from './constants.ts'
 import { generateAdminKey } from './keys.ts'
@@ -320,7 +322,7 @@ function writeSeed(
 
 /** Atomically writes `key` plus a newline, readable by the owner only. */
 export function writeAdminKeyFile(path: string, key: string): void {
-  writeTokenFile(path, key)
+  writeFileAtomic(path, `${key}\n`, SECRET_FILE_MODE)
 }
 
 /**
@@ -345,7 +347,7 @@ export function ensureAdminKey(path: string, log: (line: string) => void): strin
 
 /**
  * Client side: JAYPOST_ADMIN_KEY (empty counts as unset), then the file, else none; same shape and
- * messages as resolveClientToken, never quoting the value. Never throws.
+ * messages as resolveEnvToken, never quoting the value. Never throws.
  */
 export function resolveAdminKey(env: NodeJS.ProcessEnv, path: string): ClientToken {
   return resolveClientSecret(env, path, {

@@ -12,9 +12,10 @@ export { defaultFetchStatus, waitForPairing } from './pairing-wait.ts'
 export { runPing } from './ping.ts'
 export { createClackPrompts, PromptAborted } from './prompts.ts'
 export { resolveProviderSettings, selectProvider } from './provider-setup.ts'
-export { resolveResetOwnerToken, runResetOwner } from './reset-owner.ts'
+export { runResetOwner } from './reset-owner.ts'
 export { formatRoundTitle, runDirectSendNotify, runDirectSendRequest } from './send-direct.ts'
 export { runSendNotify, runSendRequest } from './send.ts'
+export { runServiceStart, runServiceStop } from './service.ts'
 export { runSetupCi } from './setup-ci.ts'
 export { runWithSignals } from './signals.ts'
 export { writeAll } from './stdout.ts'
@@ -49,6 +50,7 @@ export type {
   SendDeps,
   SendNotifyArgs,
   SendRequestArgs,
+  ServiceControlDeps,
   SetupCiArgs,
   SetupCiDeps,
   StatusDeps,

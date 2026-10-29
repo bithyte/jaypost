@@ -3,7 +3,7 @@ import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
-import { resolveClientToken } from '@jaypost/store'
+import { findLocalSeedBot, readBook, resolveEnvToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
 import { openAdmin } from './admin-access.ts'
@@ -23,12 +23,12 @@ type PairingLookup =
   | { readonly kind: 'failed'; readonly message: string }
 
 /**
- * Key 1's token for reset-owner: the token file init wrote, else `JAYPOST_TOKEN`, so a shell set
- * up for another key doesn't pick the pairing. Never throws.
+ * Key 1's token: the local seed bot's key in the book, else `JAYPOST_TOKEN`, so a shell set up for
+ * another key doesn't pick the pairing. Throws when the book can't be read, never quoting a key.
  */
-export function resolveResetOwnerToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
-  const fromFile = resolveClientToken({}, tokenFile)
-  return fromFile.kind === 'none' ? resolveClientToken(env, tokenFile) : fromFile
+function resolveSeedToken(env: NodeJS.ProcessEnv, bookPath: string): ClientToken {
+  const key = findLocalSeedBot(readBook(bookPath))?.key
+  return key === undefined ? resolveEnvToken(env) : { kind: 'token', token: key, source: 'book' }
 }
 
 /**
@@ -49,12 +49,19 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   }
   const existing = findExistingInstall(deps.paths, deps.targets)
   if (!existing) {
-    print('Not installed. Run "jaypost init".')
+    print('Not installed. Run "jaypost service install".')
     return 1
   }
   const { record } = existing
-  if (deps.token.kind === 'unusable') {
-    print(deps.token.message)
+  let seedToken: ClientToken
+  try {
+    seedToken = resolveSeedToken(deps.env, deps.bookPath)
+  } catch (error) {
+    print(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+  if (seedToken.kind === 'unusable') {
+    print(seedToken.message)
     return 1
   }
   const target = deps.targets[record.target]
@@ -70,7 +77,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     print(`${provider.label} doesn't support re-pairing.`)
     return 1
   }
-  const token = deps.token.kind === 'token' ? deps.token.token : undefined
+  const token = seedToken.kind === 'token' ? seedToken.token : undefined
   const stepOptions = deps.signal ? { signal: deps.signal } : {}
   let outcome: ResetOutcome
   try {
@@ -143,7 +150,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     return 130
   }
   if (result === 'unauthorized') {
-    print(describeUnauthorized(deps.token.kind === 'token'))
+    print(describeUnauthorized(token !== undefined))
     return 1
   }
   print(target.logsHint(record))

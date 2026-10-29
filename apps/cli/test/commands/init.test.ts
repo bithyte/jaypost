@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, expect, test, vi } from 'vite-plus/test'
-import { NO_AUTH, writeTokenFile } from '@jaypost/store'
+import { NO_AUTH, readBook } from '@jaypost/store'
 import { TOKEN_REJECTED_MESSAGE } from '@jaypost/client'
 import { PromptAborted, runInit } from '../../src/commands/index.ts'
 import type { InitDeps } from '../../src/commands/index.ts'
@@ -17,6 +17,7 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 let tmp: string
 let paths: InstallPaths
+let bookPath: string
 let order: string[]
 let recording = createRecordingProgress()
 
@@ -27,6 +28,7 @@ function notes(): string[] {
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'init-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
+  bookPath = join(tmp, 'cfg', 'jaypost', 'bots.json')
   order = []
   recording = createRecordingProgress()
 })
@@ -37,10 +39,18 @@ const REQUIRE =
   'Require an API token? Scripts, n8n flows and agents in containers will need to send it.'
 const NO_TOKEN_LINE = 'No API token: any local process can use the API.'
 
-const savedToken = () => readFileSync(paths.tokenFile, 'utf8').trim()
+const ADMIN_KEY = `jpa_${'k'.repeat(43)}`
+const LOCAL_URL = 'http://127.0.0.1:8787/'
+const CONTAINER_LINE = 'Agents in containers need JAYPOST_TOKEN set to its key from that file.'
 
-function savedToLine(): string {
-  return `API token saved to ${paths.tokenFile}. Agents in containers need JAYPOST_TOKEN set to it.`
+/** The key `install` was called with on `target`. */
+function installedToken(target: Target): string | undefined {
+  const auth = vi.mocked(target.install).mock.calls[0]?.[0].auth
+  return auth?.kind === 'token' ? auth.token : undefined
+}
+
+function savedLine(): string {
+  return `Your bot is saved as "local" in ${bookPath}.`
 }
 
 function wasAsked(d: InitDeps): boolean {
@@ -83,6 +93,10 @@ function fake(name: TargetName, ok = true, secrets: Secrets = NO_SECRETS): Mutab
       order.push('remove')
     }),
     restart: vi.fn(),
+    start: vi.fn(),
+    stop: vi.fn(),
+    readApiToken: vi.fn(async () => undefined),
+    readAdminKey: vi.fn(async () => ADMIN_KEY),
     clearOwner: vi.fn(),
     isRunning: vi.fn(async () => true),
     readAuditLog: vi.fn(),
@@ -115,6 +129,8 @@ function deps(over: Partial<InitDeps> & { targets?: Record<TargetName, Target> }
     version: '1.2.3',
     env: {},
     platform: 'linux',
+    bookPath,
+    hostname: 'box.lan',
     ...over,
   }
 }
@@ -406,7 +422,7 @@ test('install throwing returns 1 with generic message, no secrets', async () => 
   expect(await runInit({}, d)).toBe(1)
   const text = notes().join('\n')
   expect(text).toContain('Install failed: boom ***')
-  expect(text).toContain('Run jaypost init again')
+  expect(text).toContain('Run jaypost service install again')
   expect(text).not.toContain('good-token')
 })
 
@@ -557,7 +573,8 @@ test('single provider: no provider prompt and unchanged output', async () => {
   expect(notes()).toEqual([
     'Done. Try it: jaypost ping',
     'Check state: jaypost status',
-    savedToLine(),
+    savedLine(),
+    CONTAINER_LINE,
     'Admin commands: jaypost key create --help',
     'Logs: logs for quadlet',
   ])
@@ -584,7 +601,8 @@ test('a native install ends with where the admin key is', async () => {
   expect(notes()).toEqual([
     'Done. Try it: jaypost ping',
     'Check state: jaypost status',
-    savedToLine(),
+    savedLine(),
+    CONTAINER_LINE,
     `Admin key: ${join(tmp, 'service', 'admin-key')}`,
     'Logs: logs for systemd',
   ])
@@ -729,56 +747,52 @@ test('a provider with nothing to prompt and rejected credentials returns 1', asy
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
-test('fresh install generates a token, saves it before installing, and passes it on', async () => {
+test('fresh install generates a token and passes it to the install and the wait', async () => {
   const d = deps()
-  let isSavedAtInstall = false
-  vi.mocked(d.targets.quadlet.install).mockImplementation(async (o) => {
-    isSavedAtInstall = existsSync(paths.tokenFile)
-    return { target: 'quadlet', port: o.port, version: o.version }
-  })
   expect(await runInit({}, d)).toBe(0)
-  expect(isSavedAtInstall).toBe(true)
-  const token = savedToken()
+  const token = installedToken(d.targets.quadlet)
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-  expect(statSync(paths.tokenFile).mode & 0o777).toBe(0o600)
-  expect(d.targets.quadlet.install).toHaveBeenCalledWith(
-    expect.objectContaining({ auth: { kind: 'token', token } }),
-  )
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token }))
+  expect(d.targets.quadlet.readApiToken).not.toHaveBeenCalled()
   expect(wasAsked(d)).toBe(false)
-  expect(notes()).toContain(savedToLine())
+  expect(notes()).toContain(CONTAINER_LINE)
   expect(notes().join('\n')).not.toContain(token)
 })
 
-test('a valid token file is reused without asking', async () => {
+test("service install reuses the token the existing install's service holds", async () => {
   seed('compose')
-  writeTokenFile(paths.tokenFile, TOKEN)
-  const d = deps()
-  expect(await runInit({}, d)).toBe(0)
+  const targets = systemdFirst()
+  targets.compose.readApiToken = vi.fn(async () => TOKEN)
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(0)
+  expect(targets.compose.readApiToken).toHaveBeenCalledWith({
+    target: 'compose',
+    port: 9000,
+    version: '1.0.0',
+  })
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(
     expect.objectContaining({ auth: { kind: 'token', token: TOKEN } }),
   )
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
   expect(notes()).toContain('Reusing the saved API token.')
   expect(wasAsked(d)).toBe(false)
-  expect(savedToken()).toBe(TOKEN)
+  expect(readBook(bookPath).bots).toEqual([
+    { alias: 'local', url: 'http://127.0.0.1:9000/', key: TOKEN },
+  ])
   expect(notes().join('\n')).not.toContain(TOKEN)
 })
 
-test('replacing an install without a token file asks, and yes makes one', async () => {
+test('replacing an install whose service holds no token asks, and yes makes one', async () => {
   seed('compose')
   const d = deps()
   expect(await runInit({}, d)).toBe(0)
   expect(d.prompt.confirm).toHaveBeenCalledWith(REQUIRE, true)
-  const token = savedToken()
+  const token = installedToken(d.targets.quadlet)
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-  expect(d.targets.quadlet.install).toHaveBeenCalledWith(
-    expect.objectContaining({ auth: { kind: 'token', token } }),
-  )
-  expect(notes()).toContain(savedToLine())
+  expect(notes()).toContain(CONTAINER_LINE)
 })
 
-test('answering no installs without a token', async () => {
+test('answering no installs without a token and saves the seed without a key', async () => {
   seed('compose')
   const d = deps()
   vi.mocked(d.prompt.confirm).mockImplementation(async (message) => message !== REQUIRE)
@@ -786,7 +800,8 @@ test('answering no installs without a token', async () => {
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: NO_AUTH }))
   expect(d.wait).toHaveBeenCalledWith(expect.not.objectContaining({ token: expect.anything() }))
   expect(notes()).toContain(NO_TOKEN_LINE)
-  expect(existsSync(paths.tokenFile)).toBe(false)
+  expect(notes()).not.toContain(CONTAINER_LINE)
+  expect(readBook(bookPath).bots).toEqual([{ alias: 'local', url: 'http://127.0.0.1:9000/' }])
 })
 
 test('--token and --no-token skip the question', async () => {
@@ -795,79 +810,178 @@ test('--token and --no-token skip the question', async () => {
     const d = deps()
     expect(await runInit({ token }, d)).toBe(0)
     expect(wasAsked(d)).toBe(false)
-    expect(existsSync(paths.tokenFile)).toBe(token)
+    expect(installedToken(d.targets.quadlet) !== undefined).toBe(token)
   }
 })
 
-test('--no-token removes the token file only after the install succeeds', async () => {
-  writeTokenFile(paths.tokenFile, TOKEN)
-  const failing = deps()
-  vi.mocked(failing.targets.quadlet.install).mockImplementation(async () => {
-    throw new Error('boom')
-  })
-  expect(await runInit({ token: false }, failing)).toBe(1)
-  expect(savedToken()).toBe(TOKEN)
-  const d = deps()
-  expect(await runInit({ token: false }, d)).toBe(0)
+test('--no-token ignores the token the existing service holds', async () => {
+  seed('compose')
+  const targets = systemdFirst()
+  targets.compose.readApiToken = vi.fn(async () => TOKEN)
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet', token: false }, d)).toBe(0)
   expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: NO_AUTH }))
-  expect(existsSync(paths.tokenFile)).toBe(false)
   expect(notes()).toContain(NO_TOKEN_LINE)
 })
 
-test('an invalid token file is replaced without asking', async () => {
+test('an invalid saved token is replaced without asking', async () => {
   seed('compose')
-  mkdirSync(dirname(paths.tokenFile), { recursive: true })
-  writeFileSync(paths.tokenFile, 'short-secret\n')
-  const d = deps()
-  expect(await runInit({}, d)).toBe(0)
-  const token = savedToken()
+  const targets = systemdFirst()
+  targets.compose.readApiToken = vi.fn(async () => 'short-secret')
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(0)
+  const token = installedToken(d.targets.quadlet)
   expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/)
-  expect(d.targets.quadlet.install).toHaveBeenCalledWith(
-    expect.objectContaining({ auth: { kind: 'token', token } }),
-  )
   expect(notes()).toContain('The saved API token was invalid; made a new one.')
   expect(wasAsked(d)).toBe(false)
   expect(notes().join('\n')).not.toContain('short-secret')
 })
 
-test('an unreadable token file fails the install', async () => {
-  mkdirSync(paths.tokenFile, { recursive: true })
-  const d = deps()
-  expect(await runInit({}, d)).toBe(1)
-  expect(notes().join('\n')).toContain('Install failed:')
+test('a token that cannot be read fails the install', async () => {
+  seed('compose')
+  const targets = systemdFirst()
+  targets.compose.readApiToken = vi.fn(async () => {
+    throw new Error('config unreadable')
+  })
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(1)
+  expect(notes().join('\n')).toContain('Install failed: config unreadable')
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
 test('the token is masked in install errors', async () => {
-  writeTokenFile(paths.tokenFile, TOKEN)
-  const d = deps()
+  seed('compose')
+  const targets = systemdFirst()
+  targets.compose.readApiToken = vi.fn(async () => TOKEN)
+  const d = deps({ targets })
   vi.mocked(d.targets.quadlet.install).mockImplementation(async () => {
     throw new Error(`boom ${TOKEN}`)
   })
-  expect(await runInit({}, d)).toBe(1)
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(1)
   const text = notes().join('\n')
   expect(text).toContain('Install failed: boom ***')
   expect(text).not.toContain(TOKEN)
 })
 
-test('a failed install keeps the new token for the retry', async () => {
-  const failing = deps()
-  vi.mocked(failing.targets.quadlet.install).mockImplementation(async () => {
-    throw new Error('boom')
-  })
-  expect(await runInit({}, failing)).toBe(1)
-  const first = vi.mocked(failing.targets.quadlet.install).mock.calls[0]?.[0].auth
-  expect(first).toEqual({ kind: 'token', token: savedToken() })
-  const d = deps()
-  expect(await runInit({}, d)).toBe(0)
-  expect(d.targets.quadlet.install).toHaveBeenCalledWith(expect.objectContaining({ auth: first }))
-})
-
 test('a stale JAYPOST_TOKEN in the shell does not reach the wait', async () => {
   const d = deps({ env: { JAYPOST_TOKEN: OTHER_TOKEN } })
   expect(await runInit({}, d)).toBe(0)
-  expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: savedToken() }))
-  expect(savedToken()).not.toBe(OTHER_TOKEN)
+  const token = installedToken(d.targets.quadlet)
+  expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token }))
+  expect(token).not.toBe(OTHER_TOKEN)
+})
+
+test('service install writes local and the seed bot to the book before waiting for pairing', async () => {
+  const d = deps({
+    wait: vi.fn(async () => {
+      const book = readBook(bookPath)
+      expect(book).toEqual({
+        version: 1,
+        default: 'local',
+        local: { url: LOCAL_URL },
+        remotes: [],
+        bots: [{ alias: 'local', url: LOCAL_URL, key: installedToken(d.targets.quadlet) }],
+      })
+      return 'paired' as const
+    }),
+  })
+  expect(await runInit({}, d)).toBe(0)
+  expect(d.wait).toHaveBeenCalledTimes(1)
+  expect(statSync(bookPath).mode & 0o777).toBe(0o600)
+})
+
+test('service install saves the admin key to the book once the service answers', async () => {
+  const d = deps()
+  expect(await runInit({ target: 'systemd' }, d)).toBe(0)
+  expect(d.targets.systemd.readAdminKey).toHaveBeenCalledWith({
+    target: 'systemd',
+    port: 8787,
+    version: '1.2.3',
+  })
+  const book = readBook(bookPath)
+  expect(book.local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
+  expect(book.bots.map((bot) => bot.alias)).toEqual(['local'])
+  expect(notes().join('\n')).not.toContain(ADMIN_KEY)
+})
+
+test('service install reads the admin key whatever the wait returned', async () => {
+  const d = deps({ wait: vi.fn(async () => 'stopped' as const) })
+  expect(await runInit({}, d)).toBe(1)
+  expect(readBook(bookPath).local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
+})
+
+test('an unreadable admin key is a note, not a failed install', async () => {
+  const targets = systemdFirst()
+  targets.quadlet.readAdminKey = vi.fn(async () => {
+    throw new Error('admin key file missing')
+  })
+  const d = deps({ targets })
+  expect(await runInit({ target: 'quadlet' }, d)).toBe(0)
+  expect(notes()).toContain(
+    "Couldn't save the admin key to the contact book: admin key file missing",
+  )
+  expect(readBook(bookPath).local).toEqual({ url: LOCAL_URL })
+})
+
+test('a rerun keeps a renamed seed bot and the other bots in the book', async () => {
+  expect(await runInit({ token: true }, deps())).toBe(0)
+  const first = readBook(bookPath)
+  const key = first.bots[0]?.key
+  writeFileSync(
+    bookPath,
+    JSON.stringify({
+      ...first,
+      default: 'other',
+      bots: [
+        { alias: 'home', url: LOCAL_URL, ...(key === undefined ? {} : { key }) },
+        { alias: 'other', url: 'https://bots.example.com/', key: OTHER_TOKEN },
+      ],
+    }),
+  )
+  seed('quadlet', 8787)
+  const targets = systemdFirst()
+  targets.quadlet.readApiToken = vi.fn(async () => key)
+  recording = createRecordingProgress()
+  expect(await runInit({ target: 'quadlet' }, deps({ targets }))).toBe(0)
+  const book = readBook(bookPath)
+  expect(book.default).toBe('other')
+  expect(book.bots.map((bot) => bot.alias)).toEqual(['home', 'other'])
+  expect(notes()).toContain(`Your bot is saved as "home" in ${bookPath}.`)
+})
+
+test('a corrupt contact book fails the install before anything is installed', async () => {
+  mkdirSync(dirname(bookPath), { recursive: true })
+  writeFileSync(bookPath, '{nope')
+  const d = deps()
+  expect(await runInit({}, d)).toBe(1)
+  expect(notes().join('\n')).toContain(`contact book ${JSON.stringify(bookPath)} isn't valid`)
+  expect(d.targets.quadlet.install).not.toHaveBeenCalled()
+})
+
+test('service install --exposed passes exposed and prints the remote add line with the hostname', async () => {
+  const d = deps()
+  expect(await runInit({ exposed: true, port: 9100 }, d)).toBe(0)
+  expect(d.targets.quadlet.install).toHaveBeenCalledWith(
+    expect.objectContaining({ exposed: true, port: 9100 }),
+  )
+  const all = notes()
+  expect(all[0]).toBe(
+    '--exposed listens on all interfaces over plain http; keys cross the network in the clear. Use it on a LAN or behind a TLS proxy.',
+  )
+  expect(all.slice(-3)).toEqual([
+    'To manage this service from another machine, run there:',
+    '',
+    `  jaypost remote add box.lan http://box.lan:9100 ${ADMIN_KEY}`,
+  ])
+  expect(readBook(bookPath).local).toEqual({ url: 'http://127.0.0.1:9100/', adminKey: ADMIN_KEY })
+})
+
+test('service install without --exposed passes no exposed flag and prints no remote line', async () => {
+  const d = deps()
+  expect(await runInit({}, d)).toBe(0)
+  const [options] = vi.mocked(d.targets.quadlet.install).mock.calls[0]!
+  expect(options.exposed).toBeUndefined()
+  expect(notes().join('\n')).not.toContain('remote add')
 })
 
 test('an unauthorized wait returns 1 with the hint', async () => {
@@ -916,7 +1030,7 @@ test('init fails the install step when the install record cannot be written', as
     'start:Installing the systemd service',
     'fail:Installing the systemd service',
     expect.stringMatching(/^note:Install failed: /),
-    'note:Run jaypost init again. Check the logs for details.',
+    'note:Run jaypost service install again. Check the logs for details.',
   ])
 })
 

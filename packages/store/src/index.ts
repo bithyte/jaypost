@@ -22,13 +22,9 @@ export {
   NO_CLIENT_TOKEN,
   parseToken,
   readTokenFile,
-  removeTokenFile,
-  resolveClientToken,
   resolveEnvToken,
-  resolveTokenFile,
   TOKEN_ENV_VAR,
   UNAUTHORIZED_ERROR,
-  writeTokenFile,
 } from './auth/index.ts'
 export type { ApiAuth, ClientToken } from './auth/index.ts'
 export {

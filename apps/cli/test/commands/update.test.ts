@@ -6,7 +6,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { writeTokenFile } from '@jaypost/store'
 import { runFinishUpdate, runUpdate } from '../../src/commands/index.ts'
 import type { UpdateDeps } from '../../src/commands/index.ts'
 import {
@@ -48,6 +47,8 @@ let calls: Call[]
 let server: Server | undefined
 let base: string
 let holdAsset: boolean
+/** What the fake targets' `readApiToken` returns: the token the service holds. */
+let heldToken: string | undefined
 
 beforeEach(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'update-'))
@@ -55,6 +56,7 @@ beforeEach(async () => {
   recording = createRecordingProgress()
   calls = []
   holdAsset = false
+  heldToken = undefined
   base = await serve({
     '/release': JSON.stringify({
       tag_name: 'v0.5.0',
@@ -118,6 +120,7 @@ function fake(name: TargetName): Mutable<Target> {
     restart: vi.fn(),
     clearOwner: vi.fn(),
     isRunning: vi.fn(async () => true),
+    readApiToken: vi.fn(async () => heldToken),
     logsHint: vi.fn(() => 'logs hint'),
   } as unknown as Mutable<Target>
 }
@@ -413,7 +416,7 @@ test('container install with an old npx CLI asks for npx jaypost@latest', async 
 
 test('container install already on the latest CLI finishes in-process', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({
     cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js'),
     version: '0.5.0',
@@ -454,7 +457,7 @@ test('failed handoff prints the retry hint', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }, { handoff: 1 }) })
   expect(await runUpdate(d)).toBe(1)
   expect(notes()).toEqual([
-    'The new version is in place; run "jaypost update" again or "jaypost init".',
+    'The new version is in place; run "jaypost update" again or "jaypost service install".',
   ])
 })
 
@@ -477,7 +480,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
     version: '0.4.0',
     provider: 'telegram',
   })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0', timeZone: 'Europe/Paris' })
   expect(await runFinishUpdate(d)).toBe(0)
   const [options, previous] = vi.mocked(d.targets.quadlet.upgrade).mock.calls[0] ?? []
@@ -499,7 +502,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
   expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
 })
 
-test('runFinishUpdate without a token file warns and installs without auth', async () => {
+test('runFinishUpdate without a token in the service warns and installs without auth', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
   const d = deps({ version: '0.5.0' })
   expect(await runFinishUpdate(d)).toBe(0)
@@ -507,14 +510,42 @@ test('runFinishUpdate without a token file warns and installs without auth', asy
     auth: { kind: 'none' },
   })
   expect(notes()).toEqual([
-    `No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'The service has no API token, so it still won\'t require one. Run "jaypost service install" to set one.',
     'Updated jaypost 0.4.0 -> 0.5.0.',
+  ])
+})
+
+test('update keeps the token the service holds', async () => {
+  writeInstall(paths.installFile, { target: 'systemd', port: 9000, version: '0.4.0' })
+  heldToken = TOKEN
+  const d = deps({ version: '0.5.0' })
+  expect(await runFinishUpdate(d)).toBe(0)
+  expect(d.targets.systemd.readApiToken).toHaveBeenCalledWith({
+    target: 'systemd',
+    port: 9000,
+    version: '0.4.0',
+  })
+  expect(vi.mocked(d.targets.systemd.upgrade).mock.calls[0]?.[0]).toMatchObject({
+    auth: { kind: 'token', token: TOKEN },
+  })
+  expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
+  expect(notes().join('\n')).not.toContain(TOKEN)
+})
+
+test('update refuses an invalid token in the service without quoting it', async () => {
+  writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
+  heldToken = 'short-secret'
+  const d = deps({ version: '0.5.0' })
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(d.targets.compose.upgrade).not.toHaveBeenCalled()
+  expect(notes()).toEqual([
+    'Update failed: the service\'s API token isn\'t valid; run "jaypost service install" to make a new one',
   ])
 })
 
 test('runFinishUpdate failure keeps install.json and exits 1', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0' })
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)
@@ -524,7 +555,7 @@ test('runFinishUpdate failure keeps install.json and exits 1', async () => {
 
 test('runFinishUpdate refuses a container .env with the old names and leaves it as is', async () => {
   writeInstall(paths.installFile, { target: 'quadlet', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const envPath = join(paths.quadletDirectory, '.env')
   const oldEnv = 'PROVIDER=telegram\nBOT_TOKEN=123:old-secret\nPORT=9000\nOWNER_ID=42\n'
   mkdirSync(paths.quadletDirectory, { recursive: true })
@@ -662,7 +693,7 @@ test('finish update streams the service upgrade output', async () => {
   })
   expect(await runFinishUpdate(d)).toBe(0)
   expect(recording.events).toEqual([
-    `note:No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'note:The service has no API token, so it still won\'t require one. Run "jaypost service install" to set one.',
     'start:Updating the compose service',
     'output:building image\n',
     'note:hint',
@@ -673,7 +704,7 @@ test('finish update streams the service upgrade output', async () => {
 
 test('finish update failure fails the service step', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0' })
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)

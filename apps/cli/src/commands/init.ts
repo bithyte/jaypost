@@ -1,13 +1,15 @@
 import {
   DEFAULT_PORT,
+  findLocalSeedBot,
   generateToken,
+  LOCAL_ALIAS,
   NO_AUTH,
   parseToken,
-  readTokenFile,
-  removeTokenFile,
+  readBook,
   resolveAdminKeyPath,
   resolveConfigPath,
-  writeTokenFile,
+  setLocal,
+  writeBook,
 } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import { describeUnauthorized } from '@jaypost/client'
@@ -29,6 +31,10 @@ import { TARGET_LABELS, toLocalUrl } from './constants.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact, resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type { InitArgs, InitDeps } from './types.ts'
+
+/** Printed before an `--exposed` install. */
+const EXPOSED_WARNING =
+  '--exposed listens on all interfaces over plain http; keys cross the network in the clear. Use it on a LAN or behind a TLS proxy.'
 
 /** Secret values of `secrets` when its provider is registered; [] otherwise. */
 function listKnownSecretValues(deps: InitDeps, secrets: Secrets | undefined): readonly string[] {
@@ -59,17 +65,21 @@ async function chooseProvider(
 }
 
 /**
- * The API auth to install with: none for `--no-token`, else a valid saved token, else a new one
- * when `--token` is set or this is a fresh install, else the user's answer. An invalid saved token
- * is replaced; an unreadable token file throws.
+ * The API auth to install with: none for `--no-token`, else a valid token the existing install's
+ * service holds (`saved`), else a new one when `--token` is set or this is a fresh install, else
+ * the user's answer. An invalid saved token is replaced.
  */
-async function chooseAuth(args: InitArgs, deps: InitDeps, isReplacing: boolean): Promise<ApiAuth> {
+async function chooseAuth(
+  args: InitArgs,
+  deps: InitDeps,
+  isReplacing: boolean,
+  saved: string | undefined,
+): Promise<ApiAuth> {
   if (args.token === false) {
     return NO_AUTH
   }
-  const raw = readTokenFile(deps.paths.tokenFile)
-  if (raw !== undefined) {
-    const token = parseToken(raw)
+  if (saved !== undefined) {
+    const token = parseToken(saved)
     if (token !== undefined) {
       deps.progress.note('Reusing the saved API token.')
       return { kind: 'token', token }
@@ -98,10 +108,11 @@ function describeInstallStep(name: TargetName): string {
 }
 
 /**
- * Installs or replaces the service and waits for pairing. Saves the API token before installing,
- * and removes the token file only after a tokenless install succeeds. Returns 0 on success or when
- * the user declines, 1 on failure, 130 on interrupt; error text is shown with known secrets and
- * the API token masked.
+ * Installs or replaces the service and waits for pairing. Reuses the API token the replaced
+ * install's service holds. Right after the install is recorded, saves the local service and its
+ * seed bot to the contact book; once the wait returns, adds the admin key to it (a failure there
+ * is only a note). Returns 0 on success or when the user declines, 1 on failure, 130 on interrupt;
+ * error text is shown with known secrets and the API token masked.
  */
 export async function runInit(args: InitArgs, deps: InitDeps): Promise<number> {
   // Every secret value init has seen, so error messages can be shown with them masked.
@@ -115,7 +126,7 @@ export async function runInit(args: InitArgs, deps: InitDeps): Promise<number> {
     }
     const message = error instanceof Error ? error.message : String(error)
     deps.progress.note(`Install failed: ${redact(message, seen)}`)
-    deps.progress.note('Run jaypost init again. Check the logs for details.')
+    deps.progress.note('Run jaypost service install again. Check the logs for details.')
     return 1
   }
 }
@@ -124,6 +135,11 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   const { progress, prompt } = deps
   const print = progress.note
   const env = deps.env ?? process.env
+  if (args.exposed === true) {
+    print(EXPOSED_WARNING)
+  }
+  // Read first, so a corrupt book fails the run before anything changes.
+  const savedBook = readBook(deps.bookPath)
   const detected = await detectTargets(
     deps.targets,
     resolveTargetOrder(deps.platform ?? process.platform),
@@ -167,6 +183,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   const { text } = provider.setup
   let secrets: Secrets | undefined
   let record: InstallRecord | undefined
+  let savedToken: string | undefined
   if (existing) {
     record = existing.record
     print(
@@ -200,6 +217,11 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
           await old.clearOwner(record)
         }
       }
+    }
+    // Read before the remove below, while the old install's files are surely in place.
+    savedToken = args.token === false ? undefined : await old.readApiToken(record)
+    if (savedToken !== undefined) {
+      seen.push(savedToken)
     }
     // Record a legacy install too, so a failed run below can still find its config on retry.
     if (existing.legacy) {
@@ -237,12 +259,16 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     return 1
   }
   progress.done(`Port ${port} is free`)
-  const auth = await chooseAuth(args, deps, existing !== undefined)
+  const auth = await chooseAuth(args, deps, existing !== undefined, savedToken)
   if (auth.kind === 'token') {
     seen.push(auth.token)
-    // Saved first, so a failed install below reuses this token on the retry.
-    writeTokenFile(deps.paths.tokenFile, auth.token)
   }
+  const url = toLocalUrl(port).href
+  const book = setLocal(
+    savedBook,
+    { url },
+    { alias: LOCAL_ALIAS, url, ...(auth.kind === 'token' ? { key: auth.token } : {}) },
+  )
   progress.plan([
     describeInstallStep(name),
     'Waiting for the service to start',
@@ -260,11 +286,14 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
         settings,
         auth,
         ...(deps.timeZone === undefined ? {} : { timeZone: deps.timeZone }),
+        ...(args.exposed === true ? { exposed: true } : {}),
         ...(args.tarball === undefined ? {} : { tarball: args.tarball }),
         print,
         output: step.output,
       })
       writeInstall(deps.paths.installFile, record)
+      // Before the pairing wait, so an interrupted run still leaves a usable entry.
+      writeBook(deps.bookPath, book)
       return record
     },
     {
@@ -272,9 +301,6 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
       ...(deps.signal ? { signal: deps.signal } : {}),
     },
   )
-  if (auth.kind === 'none') {
-    removeTokenFile(deps.paths.tokenFile)
-  }
   // The token just chosen, never JAYPOST_TOKEN: a stale one in the shell would fail pairing.
   const result = await deps.wait({
     url: toLocalUrl(port),
@@ -284,12 +310,16 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     ...(auth.kind === 'token' ? { token: auth.token } : {}),
     progress,
   })
+  const adminKey = await saveAdminKey(deps, () => target.readAdminKey(installed), url, seen)
   if (result === 'paired') {
     print('Done. Try it: jaypost ping')
     print('Check state: jaypost status')
     print(
+      `Your bot is saved as "${findLocalSeedBot(book)?.alias ?? LOCAL_ALIAS}" in ${deps.bookPath}.`,
+    )
+    print(
       auth.kind === 'token'
-        ? `API token saved to ${deps.paths.tokenFile}. Agents in containers need JAYPOST_TOKEN set to it.`
+        ? 'Agents in containers need JAYPOST_TOKEN set to its key from that file.'
         : 'No API token: any local process can use the API.',
     )
     print(
@@ -298,6 +328,11 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
         : 'Admin commands: jaypost key create --help',
     )
     print(`Logs: ${target.logsHint(installed)}`)
+    if (args.exposed === true && adminKey !== undefined) {
+      print('To manage this service from another machine, run there:')
+      print('')
+      print(`  jaypost remote add ${deps.hostname} http://${deps.hostname}:${port} ${adminKey}`)
+    }
     return 0
   }
   if (result === 'interrupted') {
@@ -309,4 +344,27 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   }
   print(target.logsHint(installed))
   return 1
+}
+
+/**
+ * Reads the admin key the installed service wrote and adds it to the book's local entry; returns
+ * it, or undefined after a note saying why it couldn't (a failure here doesn't fail the install).
+ */
+async function saveAdminKey(
+  deps: InitDeps,
+  readAdminKey: () => Promise<string>,
+  url: string,
+  seen: string[],
+): Promise<string | undefined> {
+  try {
+    const adminKey = await readAdminKey()
+    seen.push(adminKey)
+    const book = readBook(deps.bookPath)
+    writeBook(deps.bookPath, { ...book, local: { url, adminKey } })
+    return adminKey
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    deps.progress.note(`Couldn't save the admin key to the contact book: ${redact(message, seen)}`)
+    return undefined
+  }
 }

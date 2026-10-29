@@ -12,8 +12,8 @@ import {
   MODE_ENV_VAR,
   parseSince,
   realExec,
+  resolveBookPath,
   resolveJaypostDirectory,
-  resolveTokenFile,
 } from '@jaypost/store'
 import {
   DEFAULT_PROVIDER,
@@ -51,10 +51,11 @@ import {
   runPairingList,
   runPairingRemove,
   runPing,
-  resolveResetOwnerToken,
   runResetOwner,
   runSendNotify,
   runSendRequest,
+  runServiceStart,
+  runServiceStop,
   runSetupCi,
   runStatus,
   runUninstall,
@@ -73,6 +74,7 @@ import type {
   PairApproverArgs,
   SendDeps,
   SendRequestArgs,
+  ServiceControlDeps,
   SetupCiArgs,
 } from './commands/index.ts'
 import { formatOpenApiYaml, resolveApprovers, resolveSendMode, runService } from '@jaypost/service'
@@ -318,6 +320,8 @@ function runInitCommand(args: InitArgs): Promise<number> {
         signal: controller.signal,
         version: VERSION,
         ...(timeZone === undefined ? {} : { timeZone }),
+        bookPath: resolveBookPath(process.env),
+        hostname: os.hostname(),
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
@@ -447,7 +451,6 @@ function runLogCommand(args: LogArgs, bot: string | undefined): Promise<number> 
 }
 
 function runResetOwnerCommand(): Promise<number> {
-  const token = resolveResetOwnerToken(process.env, resolveTokenFile(process.env))
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
   return runWithSignals(
@@ -461,7 +464,7 @@ function runResetOwnerCommand(): Promise<number> {
         wait: waitForPairing,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
-        token,
+        bookPath: resolveBookPath(process.env),
         fetchStatus: defaultFetchStatus,
       }),
     SETUP_SIGNALS,
@@ -480,10 +483,89 @@ function runUninstallCommand(): Promise<number> {
         confirm: createClackPrompts(controller.signal).confirm,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
+        bookPath: resolveBookPath(process.env),
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
   )
+}
+
+/** What `service start` and `service stop` use. */
+function createServiceControlDeps(): ServiceControlDeps {
+  const paths = resolveInstallPaths()
+  return {
+    paths,
+    targets: createRealTargets(paths),
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+  }
+}
+
+/** The `service` group: install, uninstall, start, stop and run on this machine. */
+function addServiceCommands(program: Command, setCode: (code: number) => void): void {
+  const service = program
+    .command('service')
+    .description('install, remove, start, stop or run the service on this machine')
+  service
+    .command('install')
+    .description('set up the bot token and install the service')
+    .addArgument(new Argument('[target]').choices(resolveTargetOrder(process.platform)))
+    .option('--port <n>', "API port (default 8787, or the existing install's)", parsePort)
+    .option('--exposed', 'listen on all interfaces over plain http, not just this machine')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .option('--token', 'require an API token (default for new setups)')
+    .option('--no-token', "don't require an API token")
+    // Installs an unpublished build; for testing.
+    .addOption(new Option('--tarball <path>').hideHelp())
+    .action(
+      async (
+        target: TargetName | undefined,
+        options: {
+          readonly port?: number
+          readonly exposed?: boolean
+          readonly tarball?: string
+          readonly provider?: string
+          readonly token?: boolean
+        },
+      ) => {
+        setCode(
+          await runInitCommand({
+            ...(target ? { target } : {}),
+            ...(options.port === undefined ? {} : { port: options.port }),
+            ...(options.exposed === undefined ? {} : { exposed: options.exposed }),
+            ...(options.provider === undefined ? {} : { provider: options.provider }),
+            ...(options.token === undefined ? {} : { token: options.token }),
+            ...(options.tarball === undefined ? {} : { tarball: resolve(options.tarball) }),
+          }),
+        )
+      },
+    )
+  service
+    .command('uninstall')
+    .description('remove the service and its entries in the contact book')
+    .action(async () => {
+      setCode(await runUninstallCommand())
+    })
+  service
+    .command('start')
+    .description('start the installed service')
+    .action(async () => {
+      setCode(await runServiceStart(createServiceControlDeps()))
+    })
+  service
+    .command('stop')
+    .description('stop the installed service')
+    .action(async () => {
+      setCode(await runServiceStop(createServiceControlDeps()))
+    })
+  service
+    .command('run')
+    .description('run the service in the foreground')
+    .action(() => runService(VERSION))
 }
 
 function runUpdateCommand(isFinish: boolean): Promise<number> {
@@ -702,39 +784,9 @@ function toCurrentArgv(argv: readonly string[]): readonly string[] {
 export async function main(argv: readonly string[]): Promise<number> {
   let code = 0
   const program = new Command('jaypost').version(VERSION, '-v, --version').exitOverride()
-  program
-    .command('init')
-    .description('set up the bot token and install the service')
-    .addArgument(new Argument('[target]').choices(resolveTargetOrder(process.platform)))
-    .option('--port <n>', "API port (default 8787, or the existing install's)", parsePort)
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .option('--token', 'require an API token (default for new setups)')
-    .option('--no-token', "don't require an API token")
-    // Installs an unpublished build; for testing.
-    .addOption(new Option('--tarball <path>').hideHelp())
-    .action(
-      async (
-        target: TargetName | undefined,
-        options: {
-          readonly port?: number
-          readonly tarball?: string
-          readonly provider?: string
-          readonly token?: boolean
-        },
-      ) => {
-        code = await runInitCommand({
-          ...(target ? { target } : {}),
-          ...(options.port === undefined ? {} : { port: options.port }),
-          ...(options.provider === undefined ? {} : { provider: options.provider }),
-          ...(options.token === undefined ? {} : { token: options.token }),
-          ...(options.tarball === undefined ? {} : { tarball: resolve(options.tarball) }),
-        })
-      },
-    )
+  addServiceCommands(program, (serviceCode) => {
+    code = serviceCode
+  })
   program
     .command('setup-ci')
     .description('pair an owner for CI and print the env vars for direct mode')
@@ -762,10 +814,6 @@ export async function main(argv: readonly string[]): Promise<number> {
         options.provider === undefined ? {} : { provider: options.provider },
       )
     })
-  program
-    .command('start')
-    .description('run the service in the foreground')
-    .action(() => runService(VERSION))
   program
     .command('status')
     .description('show the bot and its pairing state')
@@ -832,12 +880,6 @@ export async function main(argv: readonly string[]): Promise<number> {
     .description('clear the paired owner so a new one can pair')
     .action(async () => {
       code = await runResetOwnerCommand()
-    })
-  program
-    .command('uninstall')
-    .description('remove the service')
-    .action(async () => {
-      code = await runUninstallCommand()
     })
   program
     .command('update')
@@ -1116,8 +1158,8 @@ export async function main(argv: readonly string[]): Promise<number> {
 
 if (import.meta.main) {
   const code = await main(process.argv.slice(2))
-  // `start` keeps the process alive via the server and bot; only exit for other commands.
-  if (process.argv[2] !== 'start') {
+  // `service run` keeps the process alive via the server and bot; only exit for other commands.
+  if (!(process.argv[2] === 'service' && process.argv[3] === 'run')) {
     process.exit(code)
   }
 }

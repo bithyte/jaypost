@@ -10,7 +10,7 @@ import {
   RegistryStore,
   resolveAdminKeyPath,
   resolveDatabasePath,
-  writeTokenFile,
+  writeAdminKeyFile,
 } from '@jaypost/store'
 import type { Registry } from '@jaypost/store'
 import { ADMIN_KEY_REJECTED_MESSAGE } from '@jaypost/client'
@@ -266,7 +266,7 @@ test('a wrong admin key says the service rejected it', async () => {
 
 test('bot add writes the registry directly when the local service is down', async () => {
   const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
-  writeTokenFile(resolveAdminKeyPath(configPath), `jpa_${'k'.repeat(43)}`)
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), `jpa_${'k'.repeat(43)}`)
   const env = {
     HOME: tmp,
     XDG_CONFIG_HOME: join(tmp, 'cfg'),
@@ -324,7 +324,7 @@ test('bot add with an admin key uses the api when the service starts meanwhile',
   const configPath = join(directory, 'config.json')
   mkdirSync(directory, { recursive: true })
   const adminKey = `jpa_${'k'.repeat(43)}`
-  writeTokenFile(resolveAdminKeyPath(configPath), adminKey)
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), adminKey)
   const port = await freePort()
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
   // The service comes up while the bot token is asked for, seeded from a config of its own.
@@ -629,7 +629,7 @@ test('admin-key rotate with JAYPOST_ADMIN_KEY set says to update it', async () =
 test('admin-key show prints the key file next to the config', async () => {
   const configPath = join(tmp, 'data', 'config.json')
   const key = `jpa_${'k'.repeat(43)}`
-  writeTokenFile(resolveAdminKeyPath(configPath), key)
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), key)
   const print = vi.fn()
   const printError = vi.fn()
   expect(runAdminKeyShow({ JAYPOST_CONFIG: configPath }, print, printError)).toBe(0)

@@ -13,8 +13,6 @@ export type InstallPaths = {
   readonly configDirectory: string
   readonly configFile: string
   readonly installFile: string
-  /** The client token file `init` writes for the CLI and MCP server. */
-  readonly tokenFile: string
   readonly composeDirectory: string
   readonly quadletDirectory: string
   readonly systemdUnit: string
