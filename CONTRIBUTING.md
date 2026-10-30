@@ -11,6 +11,8 @@ pnpm dev
 
 To skip the questions, `cp .env.example .env` and fill in `JAYPOST_BOT_TOKEN` (and `JAYPOST_PROVIDER=discord` for Discord). If `JAYPOST_CONFIG` is set, `pnpm dev` uses that file as is and never writes to it.
 
+To run your branch as the real installed service, `pnpm install:local` packs `apps/cli` and runs `service install` with that tarball instead of the npm release. Arguments go to `service install`, e.g. `pnpm install:local quadlet`. It replaces the current install like any `service install` and keeps the bot token and owner. The version doesn't change, so the container image keeps the same tag and is rebuilt over it.
+
 Before a PR, run `pnpm test` and `pnpm check`. If the change matters to users, add a changeset (see [Releasing](#releasing)).
 
 ## Layout

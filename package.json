@@ -6,6 +6,7 @@
     "dev": "vp run --filter jaypost dev",
     "start": "node apps/cli/src/cli.ts service run",
     "cli": "node apps/cli/src/cli.ts",
+    "install:local": "node scripts/install-local.ts",
     "test": "vp test",
     "check": "vp check",
     "build": "vp run --filter jaypost build",
