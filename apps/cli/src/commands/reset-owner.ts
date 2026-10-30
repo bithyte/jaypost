@@ -17,14 +17,14 @@ type ResetOutcome =
   | { readonly kind: 'reset' }
   | { readonly kind: 'failed'; readonly message: string }
 
-/** The pairing /status named for the token, with its key when the service said. */
-type PairingLookup =
-  | { readonly kind: 'found'; readonly pairingId: string; readonly keyId: string | undefined }
+/** The contact /status named for the token, with its key when the service said. */
+type ContactLookup =
+  | { readonly kind: 'found'; readonly contactId: string; readonly keyId: string | undefined }
   | { readonly kind: 'failed'; readonly message: string }
 
 /**
  * Key 1's token: the local seed bot's key in the inbox, else `JAYPOST_TOKEN`, so a shell set up for
- * another key doesn't pick the pairing. Throws when the inbox can't be read, never quoting a key.
+ * another key doesn't pick the contact. Throws when the inbox can't be read, never quoting a key.
  */
 function resolveSeedToken(env: NodeJS.ProcessEnv, inboxPath: string): ClientToken {
   const key = findLocalSeedBot(readInbox(inboxPath))?.key
@@ -33,7 +33,7 @@ function resolveSeedToken(env: NodeJS.ProcessEnv, inboxPath: string): ClientToke
 
 /**
  * Unlinks the paired owner without a restart: reads /status with key 1's token to learn its
- * pairing (and names it in the prompt), resets that pairing through the admin route, drops the
+ * contact (and names it in the prompt), resets that contact through the admin route, drops the
  * owner from the install's seed inputs and waits for a new pairing. A stopped service is started
  * after the prompt. Refuses while `JAYPOST_URL` is set: it only works on this machine's install.
  * Returns 0 on success or if the user declines, 1 on failure, not installed, `JAYPOST_URL` set or
@@ -82,7 +82,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   let outcome: ResetOutcome
   try {
     const isRunning = await target.isRunning(record)
-    const known = isRunning ? await findPairing(deps, target, record, token) : undefined
+    const known = isRunning ? await findContact(deps, target, record, token) : undefined
     if (known?.kind === 'failed') {
       print(known.message)
       return 1
@@ -106,7 +106,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     outcome = await runStep(
       deps.progress,
       'Clearing the owner',
-      () => resetOwnerPairing(deps, target, record, token, known),
+      () => resetOwnerContact(deps, target, record, token, known),
       {
         ...stepOptions,
         settle: (step, value) =>
@@ -158,25 +158,25 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   return 1
 }
 
-/** The provider's warning, naming the pairing and key when /status was read before the prompt. */
+/** The provider's warning, naming the contact and key when /status was read before the prompt. */
 function formatConfirm(
   warning: string,
-  known: Extract<PairingLookup, { readonly kind: 'found' }> | undefined,
+  known: Extract<ContactLookup, { readonly kind: 'found' }> | undefined,
 ): string {
   if (known === undefined) {
     return `${warning} Continue?`
   }
   const key = known.keyId === undefined ? '' : ` (key ${known.keyId})`
-  return `${warning} It resets pairing ${known.pairingId}${key}. Continue?`
+  return `${warning} It resets contact ${known.contactId}${key}. Continue?`
 }
 
-/** Asks /status which pairing `token` belongs to. Throws only when interrupted. */
-async function findPairing(
+/** Asks /status which contact `token` belongs to. Throws only when interrupted. */
+async function findContact(
   deps: ResetOwnerDeps,
   target: Target,
   record: InstallRecord,
   token: string | undefined,
-): Promise<PairingLookup> {
+): Promise<ContactLookup> {
   const fetched = await fetchStartedStatus(deps, record.port, token)
   switch (fetched.kind) {
     case 'unreachable':
@@ -186,26 +186,26 @@ async function findPairing(
     case 'answered':
       break
   }
-  const { contact: pairing, key } = fetched.status
-  // A service from before pairings has no admin routes either.
-  return pairing === undefined
+  const { contact, key } = fetched.status
+  // A service from before contacts has no admin routes either.
+  return contact === undefined
     ? { kind: 'failed', message: ADMIN_TOO_OLD_MESSAGE }
-    : { kind: 'found', pairingId: pairing, keyId: key }
+    : { kind: 'found', contactId: contact, keyId: key }
 }
 
 /**
- * Resets the pairing (`known`, or the one /status names now) through `openAdmin`, then
+ * Resets the contact (`known`, or the one /status names now) through `openAdmin`, then
  * drops the owner from the install's seed inputs so a later re-seed can't pair them again. Throws
  * when interrupted or when the seed inputs can't be written.
  */
-async function resetOwnerPairing(
+async function resetOwnerContact(
   deps: ResetOwnerDeps,
   target: Target,
   record: InstallRecord,
   token: string | undefined,
-  known: PairingLookup | undefined,
+  known: ContactLookup | undefined,
 ): Promise<ResetOutcome> {
-  const found = known ?? (await findPairing(deps, target, record, token))
+  const found = known ?? (await findContact(deps, target, record, token))
   if (found.kind === 'failed') {
     return found
   }
@@ -215,7 +215,7 @@ async function resetOwnerPairing(
   if (opened.kind !== 'opened') {
     return { kind: 'failed', message: opened.message }
   }
-  const reset = await opened.caller.resetContact(found.pairingId)
+  const reset = await opened.caller.resetContact(found.contactId)
   if (reset.kind === 'failed') {
     return { kind: 'failed', message: reset.message }
   }

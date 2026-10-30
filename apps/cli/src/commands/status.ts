@@ -5,10 +5,10 @@ import type { StatusDeps } from './types.ts'
 
 const NO_BOT_MESSAGE = 'no bot to send to'
 
-/** The key and pairing lines, and the bot's error when it failed; older services send neither. */
+/** The key and contact lines, and the bot's error when it failed; older services send neither. */
 function printKey(status: StatusInfo, print: (text: string) => void): void {
   if (status.key !== undefined && status.contact !== undefined) {
-    print(`Key:     ${status.key} (pairing ${status.contact})`)
+    print(`Key:     ${status.key} (contact ${status.contact})`)
   }
   if (status.state === 'failed') {
     print(`Bot:     failed (${status.error ?? 'no reason given'})`)
@@ -17,7 +17,7 @@ function printKey(status: StatusInfo, print: (text: string) => void): void {
 
 /**
  * Prints the bot (alias or "env" and where it is), the install lines when it is the service on
- * this machine, then the key and pairing from /status. Returns 0 only when /status answered; 1
+ * this machine, then the key and contact from /status. Returns 0 only when /status answered; 1
  * otherwise, including no bot, a service that isn't running, or an unusable or rejected key. The
  * key itself is never printed.
  */

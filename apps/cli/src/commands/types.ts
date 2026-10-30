@@ -147,7 +147,7 @@ export type ResetOwnerDeps = {
   readonly wait: WaitForPairing
   readonly progress: Progress
   readonly signal?: AbortSignal
-  /** The inbox; the local seed bot's key is key 1's token, whose /status names the pairing. */
+  /** The inbox; the local seed bot's key is key 1's token, whose /status names the contact. */
   readonly inboxPath: string
   readonly fetchStatus: FetchStatus
   /** Delay between /status polls while the service starts; defaults to an abortable timer. */
@@ -452,7 +452,7 @@ export type BotAddArgs = AdminOutputArgs & {
   readonly label?: string
 }
 
-/** `bot remove` and `pairing remove`; `yes` skips the confirmation. */
+/** `bot remove` and `contact remove`; `yes` skips the confirmation. */
 export type AdminRemoveArgs = AdminOutputArgs & { readonly id: string; readonly yes?: boolean }
 
 /**
@@ -473,25 +473,16 @@ export type KeyCreateArgs = AdminOutputArgs & {
   readonly invite?: boolean
 }
 
-export type KeyListArgs = AdminOutputArgs & { readonly bot?: string; readonly pairing?: string }
-
-/** An empty string clears the field; absent keeps it. */
-export type KeyLabelArgs = AdminOutputArgs & {
-  readonly id: string
-  readonly label?: string
-  readonly externalId?: string
-}
-
 export type AdminIdArgs = AdminOutputArgs & { readonly id: string }
 
-export type PairingCreateArgs = AdminOutputArgs & { readonly bot: string }
+export type ContactAddArgs = AdminOutputArgs & { readonly bot: string }
 
-export type PairingListArgs = AdminOutputArgs & { readonly bot?: string }
+export type ContactListArgs = AdminOutputArgs & { readonly bot?: string }
 
-/** Parsed `admin log` flags; no `bot`, `pairing` or `key` means every bot's questions. */
+/** Parsed `admin log` flags; no `bot`, `contact` or `key` means every bot's questions. */
 export type AdminLogArgs = LogArgs & {
   readonly bot?: string
-  readonly pairing?: string
+  readonly contact?: string
   readonly key?: string
   /** Every bot's questions; the same as giving no filter flag. */
   readonly all?: boolean

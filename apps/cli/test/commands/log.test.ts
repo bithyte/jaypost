@@ -456,6 +456,18 @@ test('admin log --key narrows to that key', async () => {
   expect(printedIds()).toEqual(['b'])
 })
 
+test('admin log --contact narrows to that contact', async () => {
+  const env = await startWithQuestions()
+  expect(await runAdminLog({ contact: 'c1', json: true }, adminDeps(env))).toBe(0)
+  expect(printedIds()).toEqual(['a', 'b'])
+})
+
+test('admin log --contact of another contact prints nothing', async () => {
+  const env = await startWithQuestions()
+  expect(await runAdminLog({ contact: 'c9', json: true }, adminDeps(env))).toBe(0)
+  expect(out.join('\n')).not.toMatch(/"id"/)
+})
+
 test('admin log with a rejected admin key exits 1', async () => {
   const env = await startWithQuestions()
   const deps = adminDeps({ ...env, JAYPOST_ADMIN_KEY: `jpa_${'z'.repeat(43)}` })

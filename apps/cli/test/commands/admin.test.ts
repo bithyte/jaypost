@@ -27,13 +27,11 @@ import {
   runBotAdd,
   runBotList,
   runBotRemove,
+  runContactAdd,
+  runContactList,
+  runContactRemove,
   runKeyCreate,
-  runKeyLabel,
-  runKeyList,
   runKeyRevoke,
-  runPairingCreate,
-  runPairingList,
-  runPairingRemove,
 } from '../../src/commands/index.ts'
 import type { AdminDeps, FetchStatus, Prompts } from '../../src/commands/index.ts'
 import { UNREACHABLE_STATUS } from '../../src/commands/constants.ts'
@@ -464,7 +462,7 @@ test('a container install reads the admin key through the target', async () => {
   expect(quadlet.readAdminKey).toHaveBeenCalledWith(record)
   expect(out).toEqual([
     [
-      'ID  PROVIDER  LABEL  ACCOUNT  STATE    PAIRINGS  KEYS',
+      'ID  PROVIDER  LABEL  ACCOUNT  STATE    CONTACTS  KEYS',
       'b1  fakepair  -      fake     running  1         1',
     ].join('\n'),
   ])
@@ -523,7 +521,7 @@ test('bot remove says how many keys go and asks first', async () => {
   const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
   expect(await runBotRemove({ id: 'b1' }, deps)).toBe(0)
   expect(confirm).toHaveBeenCalledWith(
-    'Remove bot b1 (fake)? This removes 1 pairing and revokes 1 key.',
+    'Remove bot b1 (fake)? This removes 1 contact and revokes 1 key.',
     false,
   )
   expect(err).toEqual(['Nothing removed.'])
@@ -550,65 +548,69 @@ test('bot remove --yes skips the question', async () => {
   expect(JSON.parse(out.join('\n'))).toEqual({ removedKeys: ['k1'] })
 })
 
-test('pairing create prints the code and pairing list shows it', async () => {
+test('contact add prints the code and contact list shows it with key labels', async () => {
   const started = await start()
   const deps = createDeps(remoteEnv(started))
-  expect(await runPairingCreate({ bot: 'b1' }, deps)).toBe(0)
-  expect(await runPairingList({ bot: 'b1' }, deps)).toBe(0)
+  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci' }, deps)).toBe(0)
+  out = []
+  expect(await runContactAdd({ bot: 'b1' }, deps)).toBe(0)
+  expect(await runContactList({ bot: 'b1' }, deps)).toBe(0)
   expect(out).toEqual([
-    'Pairing c2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
+    'Contact c2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
     [
       'ID  BOT  STATE    PERSON  CODE       KEYS',
-      'c1  b1   paired   u1      -          k1',
+      'c1  b1   paired   u1      -          k1, k2 ci',
       'c2  b1   pending  -       PAIR-2222  -',
     ].join('\n'),
   ])
 })
 
-test('pairing remove says how many keys it revokes and asks first', async () => {
+test('contact list without a bot shows every bot and --json prints only the contacts body', async () => {
+  const started = await start()
+  const deps = createDeps(remoteEnv(started))
+  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci' }, deps)).toBe(0)
+  out = []
+  expect(await runContactList({ json: true }, deps)).toBe(0)
+  expect(JSON.parse(out.join('\n'))).toEqual({
+    contacts: [{ id: 'c1', bot: 'b1', person: 'u1', state: 'paired', keys: ['k1', 'k2'] }],
+  })
+})
+
+test('contact list for an unknown bot fails once with no table', async () => {
+  const started = await start()
+  expect(await runContactList({ bot: 'b9' }, createDeps(remoteEnv(started)))).toBe(1)
+  expect(out).toEqual([])
+  expect(err).toEqual(['unknown bot "b9"'])
+})
+
+test('contact remove says how many keys it revokes and asks first', async () => {
   const started = await start()
   const confirm = vi.fn(async () => true)
   const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
-  expect(await runPairingRemove({ id: 'c1' }, deps)).toBe(0)
-  expect(confirm).toHaveBeenCalledWith('Remove pairing c1 on bot b1? This revokes 1 key.', false)
-  expect(out).toEqual(['Removed pairing c1 and revoked 1 key (k1).'])
+  expect(await runContactRemove({ id: 'c1' }, deps)).toBe(0)
+  expect(confirm).toHaveBeenCalledWith('Remove contact c1 on bot b1? This revokes 1 key.', false)
+  expect(out).toEqual(['Removed contact c1 and revoked 1 key (k1).'])
 })
 
-test('key list, label and revoke', async () => {
+test('contact remove of an unknown contact fails before asking', async () => {
   const started = await start()
-  const deps = createDeps(remoteEnv(started))
-  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci', externalId: 'user-7' }, deps)).toBe(0)
-  out = []
-  expect(await runKeyLabel({ id: 'k2', label: '', externalId: 'user-8' }, deps)).toBe(0)
-  expect(await runKeyRevoke({ id: 'k1' }, deps)).toBe(0)
-  expect(await runKeyList({ pairing: 'c1' }, deps)).toBe(0)
-  expect(out).toEqual([
-    'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   c1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
-    'Revoked key k1.',
-    'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   c1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
-  ])
+  const confirm = vi.fn(async () => true)
+  const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
+  expect(await runContactRemove({ id: 'c9' }, deps)).toBe(1)
+  expect(confirm).not.toHaveBeenCalled()
+  expect(err).toEqual(['unknown contact "c9"'])
 })
 
-test('key label needs a field to change', async () => {
-  expect(await runKeyLabel({ id: 'k1' }, createDeps({ HOME: tmp }))).toBe(2)
-  expect(err).toEqual(['give --label, --external-id or both (an empty value clears it)'])
+test('key revoke prints the result', async () => {
+  const started = await start()
+  expect(await runKeyRevoke({ id: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(out).toEqual(['Revoked key k1.'])
 })
 
 test('key revoke of an unknown key prints the service error', async () => {
   const started = await start()
   expect(await runKeyRevoke({ id: 'k9' }, createDeps(remoteEnv(started)))).toBe(1)
   expect(err).toEqual(['unknown key "k9"'])
-})
-
-test('key list with no keys says so', async () => {
-  const started = await start()
-  const deps = createDeps(remoteEnv(started))
-  expect(await runKeyRevoke({ id: 'k1' }, deps)).toBe(0)
-  out = []
-  expect(await runKeyList({}, deps)).toBe(0)
-  expect(out).toEqual(['No keys.'])
 })
 
 test('admin rotate-key locally prints the new key, which the service saved', async () => {
@@ -680,7 +682,7 @@ test('admin commands pick the remote named by -s', async () => {
   expect(await runBotList({}, createDeps(env, { service: 'x' }))).toBe(0)
   expect(out).toEqual([
     [
-      'ID  PROVIDER  LABEL  ACCOUNT  STATE    PAIRINGS  KEYS',
+      'ID  PROVIDER  LABEL  ACCOUNT  STATE    CONTACTS  KEYS',
       'b1  fakepair  -      fake     running  1         1',
     ].join('\n'),
   ])

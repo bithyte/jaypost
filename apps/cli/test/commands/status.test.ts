@@ -61,7 +61,7 @@ test('status prints install lines for the local bot', async () => {
     'Version: 1.0.0',
     'Port:    9000',
     'Running: yes',
-    'Key:     k1 (pairing c1)',
+    'Key:     k1 (contact c1)',
     'Pairing: paired',
   ])
 })
@@ -158,7 +158,7 @@ test('status shows a failed bot with its error', async () => {
   })
   expect(await runStatus(deps)).toBe(0)
   expect(out.slice(-3)).toEqual([
-    'Key:     k1 (pairing c1)',
+    'Key:     k1 (contact c1)',
     'Bot:     failed (the bot token was rejected)',
     'Pairing: paired',
   ])

@@ -5,11 +5,11 @@ export { runInboxDefault, runInboxList, runInboxRemove, runInboxRename } from '.
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
 export { runJoin } from './join.ts'
-export { runKeyCreate, runKeyLabel, runKeyList, runKeyRevoke } from './key.ts'
+export { runKeyCreate, runKeyRevoke } from './key.ts'
 export { runAdminLog, runLog } from './log.ts'
 export { runOwner } from './owner.ts'
 export { runPairApprover } from './pair-approver.ts'
-export { runPairingCreate, runPairingList, runPairingRemove } from './pairing.ts'
+export { runContactAdd, runContactList, runContactRemove } from './contact.ts'
 export { defaultFetchStatus, waitForPairing } from './pairing-wait.ts'
 export { runPing } from './ping.ts'
 export { createClackPrompts, PromptAborted } from './prompts.ts'
@@ -33,21 +33,19 @@ export type {
   AdminLogDeps,
   AdminOutputArgs,
   AdminRemoveArgs,
+  ContactAddArgs,
+  ContactListArgs,
   InboxDeps,
   BotAddArgs,
   DirectSendDeps,
   InitArgs,
   InitDeps,
   KeyCreateArgs,
-  KeyLabelArgs,
-  KeyListArgs,
   LogArgs,
   LogDeps,
   FetchStatus,
   PairApproverArgs,
   PairApproverDeps,
-  PairingCreateArgs,
-  PairingListArgs,
   PingDeps,
   Prompts,
   ProviderSettingsOptions,

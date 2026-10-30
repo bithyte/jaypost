@@ -41,16 +41,14 @@ import {
   runDirectSendNotify,
   runDirectSendRequest,
   runInit,
+  runContactAdd,
+  runContactList,
+  runContactRemove,
   runKeyCreate,
-  runKeyLabel,
-  runKeyList,
   runKeyRevoke,
   runLog,
   runOwner,
   runPairApprover,
-  runPairingCreate,
-  runPairingList,
-  runPairingRemove,
   runPing,
   runInboxDefault,
   runInboxList,
@@ -842,14 +840,14 @@ function addAdminBotCommands(admin: Command, setCode: (code: number) => void): v
     )
   bot
     .command('list')
-    .description('show the bots with their state, pairings and keys')
+    .description('show the bots with their state, contacts and keys')
     .option('--json', JSON_HELP)
     .action(async (options: { readonly json?: boolean }, command: Command) => {
       setCode(await runBotList(options, createAdminDeps(findService(command))))
     })
   bot
     .command('remove')
-    .description('remove a bot with its pairings and keys')
+    .description('remove a bot with its contacts and keys')
     .argument('<id>', 'bot id, such as b2')
     .option('-y, --yes', "don't ask first")
     .option('--json', JSON_HELP)
@@ -866,11 +864,59 @@ function addAdminBotCommands(admin: Command, setCode: (code: number) => void): v
         )
       },
     )
+  addAdminContactCommands(bot, setCode)
+}
+
+/** The `admin bot contact` commands. */
+function addAdminContactCommands(bot: Command, setCode: (code: number) => void): void {
+  const contact = bot
+    .command('contact')
+    .description('add, list and remove the people a bot can ask')
+  contact
+    .command('add')
+    .description('add a contact with no key (an approver) and print its pairing code')
+    .argument('<bot>', 'bot id, such as b1')
+    .option('--json', JSON_HELP)
+    .action(async (botId: string, options: { readonly json?: boolean }, command: Command) => {
+      setCode(
+        await runContactAdd({ bot: botId, ...options }, createAdminDeps(findService(command))),
+      )
+    })
+  contact
+    .command('list')
+    .description('show the contacts with their keys and the codes of pending ones')
+    .argument('[bot]', "only this bot's contacts, such as b1")
+    .option('--json', JSON_HELP)
+    .action(
+      async (botId: string | undefined, options: { readonly json?: boolean }, command: Command) => {
+        const args = botId === undefined ? options : { bot: botId, ...options }
+        setCode(await runContactList(args, createAdminDeps(findService(command))))
+      },
+    )
+  contact
+    .command('remove')
+    .description('remove a contact and revoke its keys')
+    .argument('<contact>', 'contact id, such as c2')
+    .option('-y, --yes', "don't ask first")
+    .option('--json', JSON_HELP)
+    .action(
+      async (
+        id: string,
+        options: { readonly yes?: boolean; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runContactRemove({ id, ...options }, deps),
+          ),
+        )
+      },
+    )
 }
 
 /** The `admin key` commands. */
 function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): void {
-  const key = admin.command('key').description('create, list, label and revoke API keys')
+  const key = admin.command('key').description('create and revoke API keys')
   key
     .command('create')
     .description('create an API key and print it once')
@@ -906,36 +952,6 @@ function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): v
       },
     )
   key
-    .command('list')
-    .description("show the keys (never the keys' values)")
-    .option('--bot <id>', "only this bot's keys")
-    .option('--pairing <id>', "only this pairing's keys")
-    .option('--json', JSON_HELP)
-    .action(
-      async (
-        options: { readonly bot?: string; readonly pairing?: string; readonly json?: boolean },
-        command: Command,
-      ) => {
-        setCode(await runKeyList(options, createAdminDeps(findService(command))))
-      },
-    )
-  key
-    .command('label')
-    .description("set or clear a key's label and external id")
-    .argument('<id>', 'key id, such as k2')
-    .option('--label <text>', 'the new label; "" clears it')
-    .option('--external-id <id>', 'the new external id; "" clears it')
-    .option('--json', JSON_HELP)
-    .action(
-      async (
-        id: string,
-        options: { readonly label?: string; readonly externalId?: string; readonly json?: boolean },
-        command: Command,
-      ) => {
-        setCode(await runKeyLabel({ id, ...options }, createAdminDeps(findService(command))))
-      },
-    )
-  key
     .command('revoke')
     .description('revoke a key; its pairing stays')
     .argument('<id>', 'key id, such as k2')
@@ -945,52 +961,6 @@ function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): v
     })
 }
 
-/** The `admin pairing` commands. */
-function addAdminPairingCommands(admin: Command, setCode: (code: number) => void): void {
-  const pairing = admin
-    .command('pairing')
-    .description('create, list and remove pairings between a bot and a person')
-  pairing
-    .command('create')
-    .description('create a pairing with no key (an approver) and print its code')
-    .requiredOption('--bot <id>', 'the bot to pair with')
-    .option('--json', JSON_HELP)
-    .action(
-      async (options: { readonly bot: string; readonly json?: boolean }, command: Command) => {
-        setCode(await runPairingCreate(options, createAdminDeps(findService(command))))
-      },
-    )
-  pairing
-    .command('list')
-    .description('show the pairings and the codes of pending ones')
-    .option('--bot <id>', "only this bot's pairings")
-    .option('--json', JSON_HELP)
-    .action(
-      async (options: { readonly bot?: string; readonly json?: boolean }, command: Command) => {
-        setCode(await runPairingList(options, createAdminDeps(findService(command))))
-      },
-    )
-  pairing
-    .command('remove')
-    .description('remove a pairing and revoke its keys')
-    .argument('<id>', 'pairing id, such as p2')
-    .option('-y, --yes', "don't ask first")
-    .option('--json', JSON_HELP)
-    .action(
-      async (
-        id: string,
-        options: { readonly yes?: boolean; readonly json?: boolean },
-        command: Command,
-      ) => {
-        setCode(
-          await runPromptingAdminCommand(findService(command), (deps) =>
-            runPairingRemove({ id, ...options }, deps),
-          ),
-        )
-      },
-    )
-}
-
 /**
  * The `admin` group, which calls a service's admin routes: the remote `-s` names, else the env,
  * the local install or the only remote. Also the hidden top-level `admin-key show`.
@@ -998,11 +968,10 @@ function addAdminPairingCommands(admin: Command, setCode: (code: number) => void
 function addAdminCommands(program: Command, setCode: (code: number) => void): void {
   const admin = program
     .command('admin')
-    .description("manage a service's bots, keys and pairings, and the remotes you administer")
+    .description("manage a service's bots, contacts and keys, and the remotes you administer")
     .option('-s, --service <name>', 'the remote to manage (default: the local service)')
   addAdminBotCommands(admin, setCode)
   addAdminKeyCommands(admin, setCode)
-  addAdminPairingCommands(admin, setCode)
   addAdminRemoteCommands(admin, setCode)
   admin
     .command('rotate-key')
@@ -1022,7 +991,7 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
     .option('--project <name>', 'only questions from this project', parseProjectOption)
     .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
     .option('--bot <id>', "only this bot's questions")
-    .option('--pairing <id>', "only this pairing's questions")
+    .option('--contact <id>', "only this contact's questions")
     .option('--key <id>', "only this key's questions")
     .option('--all', "every bot's questions (the default)")
     .option('--json', 'print one JSON entry per line')

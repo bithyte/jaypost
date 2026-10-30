@@ -426,17 +426,41 @@ test('jaypost key list is an unknown command', async () => {
   }
 })
 
-test('admin --help lists bot, key, pairing, remote, rotate-key and log', async () => {
+test('admin --help lists bot, remote, rotate-key and log, and no pairing', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['admin', '--help'])).toBe(0)
   const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
-  for (const command of ['bot', 'key', 'pairing', 'remote', 'rotate-key', 'log']) {
+  for (const command of ['bot', 'remote', 'rotate-key', 'log']) {
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
+  expect(help).not.toMatch(/^\s+pairing\b/m)
   expect(help).toContain('-s, --service <name>')
 })
 
-test('jaypost admin key list -s x and jaypost admin -s x key list both reach the remote x', async () => {
+test('admin bot --help lists add, list, remove and contact', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['admin', 'bot', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
+  for (const command of ['add', 'list', 'remove', 'contact']) {
+    expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
+  }
+})
+
+test('admin pairing list and admin key list are unknown commands', async () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  for (const command of [
+    ['admin', 'pairing', 'list'],
+    ['admin', 'key', 'list'],
+  ]) {
+    write.mockClear()
+    expect(await main(command)).toBe(2)
+    expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toMatch(
+      /unknown command/,
+    )
+  }
+})
+
+test('jaypost admin bot contact remove -s x and jaypost admin -s x bot contact remove both reach the remote x', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'cli-test-admin-'))
   const other = await listenForRequests()
   const x = await listenForRequests()
@@ -463,15 +487,15 @@ test('jaypost admin key list -s x and jaypost admin -s x key list both reach the
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
   try {
-    await main(['admin', 'key', 'list', '-s', 'x'])
-    await main(['admin', '-s', 'x', 'key', 'list'])
-    await main(['admin', 'key', 'list', '--service', 'x'])
+    await main(['admin', 'bot', 'contact', 'remove', 'c1', '-y', '-s', 'x'])
+    await main(['admin', '-s', 'x', 'bot', 'contact', 'remove', 'c1', '-y'])
+    await main(['admin', 'bot', 'contact', 'remove', 'c1', '-y', '--service', 'x'])
   } finally {
     other.close()
     x.close()
     rmSync(directory, { recursive: true, force: true })
   }
-  expect(x.urls).toEqual(['/admin/keys', '/admin/keys', '/admin/keys'])
+  expect(x.urls).toEqual(['/admin/contacts/c1', '/admin/contacts/c1', '/admin/contacts/c1'])
   expect(other.urls).toEqual([])
 })
 

@@ -44,7 +44,7 @@ function formatBots(body: BotsBody): string {
     return 'No bots.'
   }
   return formatTable(
-    ['ID', 'PROVIDER', 'LABEL', 'ACCOUNT', 'STATE', 'PAIRINGS', 'KEYS'],
+    ['ID', 'PROVIDER', 'LABEL', 'ACCOUNT', 'STATE', 'CONTACTS', 'KEYS'],
     body.bots.map((bot) => [
       bot.id,
       bot.provider,
@@ -57,7 +57,7 @@ function formatBots(body: BotsBody): string {
   )
 }
 
-/** The settings without the owner, which a bot never takes: pairings hold the people. */
+/** The settings without the owner, which a bot never takes: contacts hold the people. */
 function withoutOwner(provider: Provider, settings: SettingValues): SettingValues {
   const owner = findOwnerSetting(provider)
   return Object.fromEntries(
@@ -250,7 +250,7 @@ export function runBotAdd(args: BotAddArgs, deps: AdminDeps): Promise<number> {
   })
 }
 
-/** Prints every bot with its state and how many pairings and keys it has. */
+/** Prints every bot with its state and how many contacts and keys it has. */
 export function runBotList(args: AdminOutputArgs, deps: AdminDeps): Promise<number> {
   return runAdminCommand(deps, async () => {
     const caller = await openAdminCaller(deps)
@@ -262,7 +262,7 @@ export function runBotList(args: AdminOutputArgs, deps: AdminDeps): Promise<numb
 }
 
 /**
- * Removes a bot with its pairings and keys, after saying how many keys go with it and asking
+ * Removes a bot with its contacts and keys, after saying how many keys go with it and asking
  * (unless `yes`). Returns 0, also when declined.
  */
 export function runBotRemove(args: AdminRemoveArgs, deps: AdminDeps): Promise<number> {
@@ -284,7 +284,7 @@ export function runBotRemove(args: AdminRemoveArgs, deps: AdminDeps): Promise<nu
       }
       const name = bot.label ?? bot.displayName ?? bot.provider
       const question =
-        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.contactCount, 'pairing')} ` +
+        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.contactCount, 'contact')} ` +
         `and revokes ${formatCount(bot.keyCount, 'key')}.`
       if (!(await deps.prompt.confirm(question, false))) {
         deps.printError('Nothing removed.')

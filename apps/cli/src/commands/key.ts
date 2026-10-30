@@ -2,29 +2,12 @@ import { encodeInvite, findBot, saveBot, writeInbox } from '@jaypost/store'
 import type { Inbox } from '@jaypost/store'
 import { isLoopbackEndpoint } from '@jaypost/client'
 import type { AdminCaller, AdminResult } from '@jaypost/client'
-import type { CreatedKey, KeysBody } from '@jaypost/protocol'
+import type { CreatedKey } from '@jaypost/protocol'
 import { loadInbox, openAdmin, openAdminCaller } from './admin-access.ts'
-import { formatTable, printResult, runAdminCommand } from './admin.ts'
+import { printResult, runAdminCommand } from './admin.ts'
 import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
-import { formatInvite } from './pairing.ts'
-import type { AdminDeps, AdminIdArgs, KeyCreateArgs, KeyLabelArgs, KeyListArgs } from './types.ts'
-
-function formatKeys(body: KeysBody): string {
-  if (body.keys.length === 0) {
-    return 'No keys.'
-  }
-  return formatTable(
-    ['ID', 'BOT', 'PAIRING', 'LABEL', 'EXTERNAL ID', 'CREATED'],
-    body.keys.map((key) => [
-      key.id,
-      key.bot,
-      key.contact,
-      key.label,
-      key.externalId,
-      key.createdAt.slice(0, 10),
-    ]),
-  )
-}
+import { formatInvite } from './contact.ts'
+import type { AdminDeps, AdminIdArgs, KeyCreateArgs } from './types.ts'
 
 /** Whether an inbox alias may be written: free, replacing it was confirmed, or not. */
 type AliasClaim = 'free' | 'taken' | 'declined'
@@ -146,17 +129,6 @@ async function resolveSaveAlias(
     return toUnknown('bot', botId.value)
   }
   return { kind: 'ok', value: bot.label ?? bot.displayName ?? bot.id }
-}
-
-/** An empty string clears the field (null on the wire); absent keeps it. */
-function toUpdatedField(
-  name: 'label' | 'externalId',
-  value: string | undefined,
-): { readonly label?: string | null } | { readonly externalId?: string | null } {
-  if (value === undefined) {
-    return {}
-  }
-  return { [name]: value === '' ? null : value }
 }
 
 /**
@@ -284,40 +256,6 @@ async function prepareSave(
   return claim === 'free'
     ? { kind: 'ready', inbox: loaded.inbox, alias: alias.value }
     : { kind: 'refused' }
-}
-
-/** Prints the keys, all or those of one bot or pairing; never a key itself. */
-export function runKeyList(args: KeyListArgs, deps: AdminDeps): Promise<number> {
-  return runAdminCommand(deps, async () => {
-    const caller = await openAdminCaller(deps)
-    if (caller === undefined) {
-      return 1
-    }
-    const result = await caller.listKeys({
-      ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
-    })
-    return printResult(result, args, deps, formatKeys)
-  })
-}
-
-/** Sets or clears a key's label and external id. Returns 2 when neither is given. */
-export function runKeyLabel(args: KeyLabelArgs, deps: AdminDeps): Promise<number> {
-  return runAdminCommand(deps, async () => {
-    if (args.label === undefined && args.externalId === undefined) {
-      deps.printError('give --label, --external-id or both (an empty value clears it)')
-      return 2
-    }
-    const caller = await openAdminCaller(deps)
-    if (caller === undefined) {
-      return 1
-    }
-    const result = await caller.updateKey(args.id, {
-      ...toUpdatedField('label', args.label),
-      ...toUpdatedField('externalId', args.externalId),
-    })
-    return printResult(result, args, deps, ({ key }) => formatKeys({ keys: [key] }))
-  })
 }
 
 /** Revokes a key; its open questions end with their timeout answer. Its pairing stays. */

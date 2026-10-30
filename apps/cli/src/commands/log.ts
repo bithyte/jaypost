@@ -86,7 +86,7 @@ function printEntries(
 }
 
 /**
- * Prints every bot's question log through GET /admin/log, narrowed by `--bot`, `--pairing` and
+ * Prints every bot's question log through GET /admin/log, narrowed by `--bot`, `--contact` and
  * `--key` (none, or `--all`, means every bot). When the local service doesn't answer, or its admin
  * key can't be found, reads the seed bot's log from the install's files instead and says so on
  * stderr. Returns 0, or 1 when the log can't be read or the install is too old to read.
@@ -99,7 +99,7 @@ export function runAdminLog(args: AdminLogArgs, deps: AdminLogDeps): Promise<num
       ...(args.project === undefined ? {} : { project: args.project }),
       ...(limit === undefined ? {} : { limit }),
       ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
+      ...(args.contact === undefined ? {} : { contact: args.contact }),
       ...(args.key === undefined ? {} : { key: args.key }),
     }
     const read = await readAdminLog(filter, deps)

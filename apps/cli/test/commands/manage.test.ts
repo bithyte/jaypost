@@ -398,7 +398,7 @@ afterEach(async () => {
   service = undefined
 })
 
-test('reset-owner resets pairing 1 through the admin route and waits for the new pairing', async () => {
+test('reset-owner resets contact c1 through the admin route and waits for the new pairing', async () => {
   const directory = join(tmp, 'service')
   mkdirSync(directory)
   const configPath = join(directory, 'config.json')
@@ -480,7 +480,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
     apiToken: TOKEN,
   })
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Fake account. It resets pairing c1 (key k1). Continue?',
+    'This unlinks your Fake account. It resets contact c1 (key k1). Continue?',
     false,
   )
   expect(notes()).toEqual(['Paired. Try it: jaypost ping'])
@@ -502,12 +502,12 @@ test('reset-owner declined: no reset and the owner stays', async () => {
   expect(d.wait).not.toHaveBeenCalled()
 })
 
-test('reset-owner yes: resets the pairing with the admin key and waits, with no restart', async () => {
+test('reset-owner yes: resets the contact with the admin key and waits, with no restart', async () => {
   const { port, seen } = await seedResetStub()
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Telegram account. It resets pairing c1 (key k1). Continue?',
+    'This unlinks your Telegram account. It resets contact c1 (key k1). Continue?',
     false,
   )
   expect(d.fetchStatus).toHaveBeenCalledTimes(1)
@@ -557,18 +557,18 @@ test('reset-owner on a container drops the owner from its inputs without clearOw
   expect(d.targets.compose.clearOwner).not.toHaveBeenCalled()
 })
 
-test('reset-owner names the pairing for a key other than k1', async () => {
+test('reset-owner names the contact for a key other than k1', async () => {
   await seedResetStub()
   const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', contact: 'c4' }))
   const d = resetDeps({ fetchStatus, confirm: vi.fn(async () => false) })
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Telegram account. It resets pairing c4 (key k7). Continue?',
+    'This unlinks your Telegram account. It resets contact c4 (key k7). Continue?',
     false,
   )
 })
 
-test('reset-owner resets the pairing /status names for the token', async () => {
+test('reset-owner resets the contact /status names for the token', async () => {
   const { seen } = await seedResetStub()
   const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', contact: 'c4' }))
   expect(await runResetOwner(resetDeps({ fetchStatus }))).toBe(0)
@@ -642,7 +642,7 @@ test('reset-owner confirm text comes from the provider', async () => {
   })
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Fake account. It resets pairing c1 (key k1). Continue?',
+    'This unlinks your Fake account. It resets contact c1 (key k1). Continue?',
     false,
   )
 })
@@ -742,7 +742,7 @@ test('reset-owner reports a rejected admin key', async () => {
   expect(d.wait).not.toHaveBeenCalled()
 })
 
-test('reset-owner on a service without pairings says it is too old', async () => {
+test('reset-owner on a service without contacts says it is too old', async () => {
   const { seen } = await seedResetStub()
   const d = resetDeps({ fetchStatus: vi.fn(async () => answered({ paired: true, bot: 'b' })) })
   expect(await runResetOwner(d)).toBe(1)
@@ -854,12 +854,12 @@ test('reset-owner prompt interrupted while reading /status -> 130 before the pro
 })
 
 test('reset-owner keeps the owner when the admin call fails after a stopped service', async () => {
-  await seedResetStub(404, '{"error":"unknown pairing c1"}')
+  await seedResetStub(404, '{"error":"unknown contact \\"c1\\""}')
   const target = fake('systemd', false)
   const d = resetDeps({ targets: targets({ systemd: target }) })
   expect(await runResetOwner(d)).toBe(1)
   expect(order).toEqual(['start'])
-  expect(notes()).toEqual(['unknown pairing c1'])
+  expect(notes()).toEqual(['unknown contact "c1"'])
 })
 
 test("reset-owner uses the local seed bot's key over JAYPOST_TOKEN", async () => {
