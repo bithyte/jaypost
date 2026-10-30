@@ -13,7 +13,8 @@ const INSTALL_MESSAGE =
   "jaypost isn't installed or isn't on PATH, so permission prompts stay in the terminal. Install it with `npm install -g jaypost` or see https://github.com/bithyte/jaypost#quick-start"
 const CHECK_FAILED_MESSAGE =
   "jaypost's setup check failed, so permission prompts may stay in the terminal. Run `jaypost status` to see why."
-const TOO_OLD_MESSAGE = 'jaypost is too old for this plugin. Run `jaypost update`.'
+const TOO_OLD_MESSAGE =
+  'jaypost is too old for this plugin. Run `jaypost update`, then `jaypost service update`.'
 const PERMISSION_EVENT = '{"hook_event_name":"PermissionRequest"}'
 const DECISION = '{"hookSpecificOutput":{"decision":{"behavior":"allow"}}}'
 const FAKE_SCRIPT = `#!/bin/sh

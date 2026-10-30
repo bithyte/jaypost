@@ -514,11 +514,11 @@ function createServiceControlDeps(): ServiceControlDeps {
   }
 }
 
-/** The `service` group: install, uninstall, start, stop and run on this machine. */
+/** The `service` group: install, uninstall, start, stop, run and update on this machine. */
 function addServiceCommands(program: Command, setCode: (code: number) => void): void {
   const service = program
     .command('service')
-    .description('install, remove, start, stop or run the service on this machine')
+    .description('install, remove, start, stop, run or update the service on this machine')
   service
     .command('install')
     .description('set up the bot token and install the service')
@@ -579,6 +579,14 @@ function addServiceCommands(program: Command, setCode: (code: number) => void): 
     .command('run')
     .description('run the service in the foreground')
     .action(() => runService(VERSION))
+  service
+    .command('update')
+    .description('update the service or this CLI to the latest release')
+    // Run by the new CLI after `service update` fetched it, to rewrite the install's files.
+    .addOption(new Option('--finish').hideHelp())
+    .action(async (options: { readonly finish?: boolean }) => {
+      setCode(await runUpdateCommand(options.finish === true))
+    })
 }
 
 /** What the `bots` and `admin remote` commands use; prompts abort with `signal`. */
@@ -871,7 +879,7 @@ function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): v
     .option('--external-id <id>', 'a free-form id from another system')
     .option('--save', "also save the key to this machine's contacts")
     .option('--as <alias>', "with --save, the contact's name (default: the bot's name)")
-    .option('--invite', 'print a jaypost join line to send instead of the key (remotes only)')
+    .option('--invite', 'print a jaypost bots join line to send instead of the key (remotes only)')
     .option('--json', JSON_HELP)
     .action(
       async (
@@ -1038,27 +1046,6 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
   })
 }
 
-/**
- * Maps the old `send request`, `send notify`, `test`, `setup-ci` and `reset-owner` spellings so
- * existing scripts keep working.
- */
-function toCurrentArgv(argv: readonly string[]): readonly string[] {
-  const [first, second] = argv
-  if (first === 'send' && (second === 'request' || second === 'notify')) {
-    return argv.slice(1)
-  }
-  if (first === 'test') {
-    return ['ping', ...argv.slice(1)]
-  }
-  if (first === 'setup-ci') {
-    return ['pair', 'ci', ...argv.slice(1)]
-  }
-  if (first === 'reset-owner') {
-    return ['pair', 'reset-owner', ...argv.slice(1)]
-  }
-  return argv
-}
-
 /** Takes argv without node and script path; returns the exit code (2 for usage errors). */
 export async function main(argv: readonly string[]): Promise<number> {
   let code = 0
@@ -1067,14 +1054,6 @@ export async function main(argv: readonly string[]): Promise<number> {
   addServiceCommands(program, (serviceCode) => {
     code = serviceCode
   })
-  program
-    .command('update')
-    .description('update the service or this CLI to the latest release')
-    // Run by the new CLI after `update` fetched it, to rewrite the install's files.
-    .addOption(new Option('--finish').hideHelp())
-    .action(async (options: { readonly finish?: boolean }) => {
-      code = await runUpdateCommand(options.finish === true)
-    })
   addBotsCommands(program, (botsCode) => {
     code = botsCode
   })
@@ -1399,7 +1378,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       code = runAudit(args)
     })
   try {
-    await program.parseAsync(argv.length === 0 ? ['--help'] : toCurrentArgv(argv), {
+    await program.parseAsync(argv.length === 0 ? ['--help'] : argv, {
       from: 'user',
     })
   } catch (error) {

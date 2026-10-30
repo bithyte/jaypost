@@ -252,7 +252,7 @@ test('binary systemd install swaps the copy then hands off to it', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(copy)).toEqual(NEW_BINARY)
-  expect(lastCall()).toEqual([copy, ['update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([copy, ['service', 'update', '--finish'], { inherit: true }])
   expect(notes()).toEqual([])
 })
 
@@ -264,7 +264,7 @@ test('npm systemd install runs npm i -g then hands off with the unit node', asyn
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 function seedLaunchd(cliKind: 'npm' | 'binary', cliPath: string): void {
@@ -296,7 +296,7 @@ test('launchd npm install updates the package the plist runs', async () => {
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('launchd binary install replaces the recorded copy', async () => {
@@ -307,7 +307,7 @@ test('launchd binary install replaces the recorded copy', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(copy)).toEqual(NEW_BINARY)
-  expect(lastCall()).toEqual([copy, ['update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([copy, ['service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm install under the fallback prefix passes --prefix', async () => {
@@ -319,7 +319,7 @@ test('npm install under the fallback prefix passes --prefix', async () => {
     'npm',
     ['i', '-g', '--prefix', paths.userNpmPrefix, 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [cliPath, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [cliPath, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('legacy install takes cliPath and node from the unit', async () => {
@@ -330,7 +330,7 @@ test('legacy install takes cliPath and node from the unit', async () => {
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm install that already reports the latest skips npm and hands off', async () => {
@@ -338,7 +338,7 @@ test('npm install that already reports the latest skips npm and hands off', asyn
   const d = deps({ exec: createExec({ [NPM_CLI]: '0.5.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(calls.filter(([command]) => command === 'npm')).toEqual([])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm failure exits 1 without handing off', async () => {
@@ -409,7 +409,7 @@ test('container install with an old npx CLI asks for npx jaypost@latest', async 
   const d = deps({ cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js') })
   expect(await runUpdate(d)).toBe(1)
   expect(notes()).toEqual([
-    `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
+    `Can't update this copy; run "npx jaypost@latest service update" or download the latest binary.`,
   ])
   expect(d.targets.quadlet.upgrade).not.toHaveBeenCalled()
   expect(calls.filter(([command, args]) => command === 'npm' && args[0] === 'i')).toEqual([])
@@ -440,7 +440,7 @@ test('container install with a global npm CLI runs npm i -g then hands off', asy
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('nothing installed updates the running binary only', async () => {
@@ -458,7 +458,7 @@ test('failed handoff prints the retry hint', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }, { handoff: 1 }) })
   expect(await runUpdate(d)).toBe(1)
   expect(notes()).toEqual([
-    'The new version is in place; run "jaypost update" again or "jaypost service install".',
+    'The new version is in place; run "jaypost service update" again or "jaypost service install".',
   ])
 })
 
@@ -628,7 +628,7 @@ test('runFinishUpdate refuses a container .env with the old names and leaves it 
   expect(await runFinishUpdate(d)).toBe(1)
   expect(readFileSync(envPath, 'utf8')).toBe(oldEnv)
   expect(notes()).toEqual([
-    `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
+    `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost service update" again`,
   ])
   expect(notes().join('\n')).not.toContain('old-secret')
   expect(readInstall(paths.installFile)?.version).toBe('0.4.0')

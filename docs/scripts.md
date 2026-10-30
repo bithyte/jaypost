@@ -2,7 +2,7 @@
 
 ## From the shell
 
-`jaypost send` wraps `/request` and `/notify` so scripts don't need curl:
+`jaypost request` and `jaypost notify` wrap `/request` and `/notify` so scripts don't need curl:
 
 ```
 answer=$(jaypost request 'Deploy?' -o Approve -d Decline --timeout 60)

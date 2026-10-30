@@ -1,6 +1,6 @@
 # CI (GitHub Actions)
 
-In CI there's usually no service to run. Set `JAYPOST_MODE=direct` and `jaypost send` talks to the chat app itself, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
+In CI there's usually no service to run. Set `JAYPOST_MODE=direct` and `jaypost request` and `jaypost notify` talk to the chat app themselves, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
 
 Run `jaypost pair ci` once on your machine (`--provider NAME` picks the chat app). It prints a pairing code, waits for you to send it to the bot, then prints the env vars to store as GitHub secrets. It writes no files.
 

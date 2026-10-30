@@ -36,10 +36,10 @@ jaypost service run
 
 `start` and `stop` start or stop the installed service through its target. `run` runs the service in the foreground; the installed services use this.
 
-### `jaypost update`
+### `jaypost service update`
 
 ```
-jaypost update
+jaypost service update
 ```
 
 Moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
@@ -68,7 +68,7 @@ Lists your contacts (alias, service and the default; never keys), sets the defau
 jaypost pair ci [--provider NAME]
 ```
 
-Pairs an owner and prints the env vars for CI. Add approvers with `jaypost pair approver`. See [CI](ci.md). `jaypost setup-ci` still works as the old name.
+Pairs an owner and prints the env vars for CI. Add approvers with `jaypost pair approver`. See [CI](ci.md).
 
 ### `jaypost pair approver`
 
@@ -84,7 +84,7 @@ Pairs approvers for direct mode votes, one code per person, asking `Pair another
 jaypost pair reset-owner
 ```
 
-Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md). `jaypost reset-owner` still works as the old name.
+Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md).
 
 ## Asking and notifying
 
@@ -94,7 +94,7 @@ Resets the pairing of the install's key (through the service, no restart needed)
 jaypost request TEXT [-o OPTION...] [--allow-text] -d DEFAULT [--timeout S] [-u ID...] [--require all|majority] [--retry N] [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--json] [-b ALIAS]
 ```
 
-Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` run a vote or re-ask after a timeout; see [Several approvers](ci.md#several-approvers). See [From the shell](scripts.md#from-the-shell). `jaypost send request` still works as the old name.
+Asks a question from the shell and prints the answer. `-o` adds a button, `-d` is the answer on timeout (added as the last button), `--allow-text` also accepts a typed reply. `-u`, `--require` and `--retry` run a vote or re-ask after a timeout; see [Several approvers](ci.md#several-approvers). See [From the shell](scripts.md#from-the-shell).
 
 ### `jaypost notify`
 
@@ -102,7 +102,7 @@ Asks a question from the shell and prints the answer. `-o` adds a button, `-d` i
 jaypost notify TEXT [--project NAME] [--format plain|markdown] [--attach FILE|-] [--attach-name NAME] [--delete-after SECONDS|TIMESTAMP] [-b ALIAS]
 ```
 
-Sends a message that doesn't need an answer. `--delete-after` deletes it after that many seconds, or at that ISO 8601 time with a timezone (default 8 hours; not shifted by quiet hours, capped at 47 hours). Direct mode ignores it. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell). `jaypost send notify` still works as the old name.
+Sends a message that doesn't need an answer. `--delete-after` deletes it after that many seconds, or at that ISO 8601 time with a timezone (default 8 hours; not shifted by quiet hours, capped at 47 hours). Direct mode ignores it. In a terminal it confirms with a "Sent" line on stderr; from a script it prints nothing. See [From the shell](scripts.md#from-the-shell).
 
 ### `jaypost mcp`
 

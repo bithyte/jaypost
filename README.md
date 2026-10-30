@@ -80,7 +80,7 @@ A small service on localhost holds each request open until you tap a button, rep
 - [Pairing](docs/pairing.md): pairing, changing owner, Discord setup
 - [Claude Code](docs/claude-code.md): plugin, permission hook and replies to a finished turn
 - [Agents (MCP)](docs/mcp.md): tools for any MCP client
-- [Shell and Node](docs/scripts.md): `jaypost send` and the `Client`
+- [Shell and Node](docs/scripts.md): `jaypost request`, `jaypost notify` and the `Client`
 - [HTTP API](docs/http-api.md): questions, background questions, notifications, attachments, log, admin routes
 - [Formatting](docs/formatting.md): the markdown subset messages support
 - [CI](docs/ci.md): GitHub Action, direct mode, several approvers

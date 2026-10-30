@@ -116,7 +116,7 @@ Re-running `service install` on an install without an API token asks whether to 
 
 The CLI regrouped its commands and keeps the client's keys in a contact book. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin`, and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
 
-There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `bots.json`. `jaypost update` doesn't write the book. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `jaypost update` or `service install` rewrites the unit.
+There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `bots.json`. `jaypost service update` doesn't write the book. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `service update` or `service install` rewrites the unit. An older CLI's `jaypost update` gets the new CLI onto the machine but can't finish, so run `jaypost service update` after it.
 
 A container install from before this release isn't detected by `service install`; stop or remove the old container first, or the new install fails with "Port 8787 is in use".
 

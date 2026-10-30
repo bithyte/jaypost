@@ -206,7 +206,7 @@ export type UpdateDeps = {
   readonly paths: InstallPaths
   readonly providers: readonly Provider[]
   readonly exec: Exec
-  /** The CLI running `update`; it updates itself for container installs or no install. */
+  /** The CLI running `service update`; it updates itself for container installs or no install. */
   readonly cli: CliLocation
   /** This CLI's version; the finish step installs it. */
   readonly version: string

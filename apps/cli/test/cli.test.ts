@@ -75,7 +75,6 @@ test('--help lists the commands under their groups and hides the moved and devel
     'Options:',
     'Set up:',
     'service',
-    'update',
     'bots',
     'pair',
     'admin',
@@ -93,9 +92,9 @@ test('--help lists the commands under their groups and hides the moved and devel
   ])
 })
 
-test('join and remote are unknown top-level commands', async () => {
+test('moved and old command names are unknown top-level commands', async () => {
   const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  for (const command of ['join', 'remote']) {
+  for (const command of ['join', 'remote', 'update', 'setup-ci', 'reset-owner', 'send', 'test']) {
     write.mockClear()
     expect(await main([command])).toBe(2)
     expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toContain(
@@ -104,11 +103,11 @@ test('join and remote are unknown top-level commands', async () => {
   }
 })
 
-test('service --help lists install, uninstall, start, stop and run', async () => {
+test('service --help lists install, uninstall, start, stop, run and update', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['service', '--help'])).toBe(0)
   const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
-  for (const command of ['install', 'uninstall', 'start', 'stop', 'run']) {
+  for (const command of ['install', 'uninstall', 'start', 'stop', 'run', 'update']) {
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
 })
@@ -162,15 +161,6 @@ test('pair --help lists ci, approver and reset-owner', async () => {
   for (const command of ['ci', 'approver', 'reset-owner']) {
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
-})
-
-test('the old setup-ci and reset-owner spellings reach pair ci and pair reset-owner', async () => {
-  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-  expect(await main(['setup-ci', '--help'])).toBe(0)
-  expect(await main(['reset-owner', '--help'])).toBe(0)
-  const help = write.mock.calls.map((call) => String(call[0])).join('')
-  expect(help).toContain('Usage: jaypost pair ci')
-  expect(help).toContain('Usage: jaypost pair reset-owner')
 })
 
 test('pair approver --provider nope exits 2', async () => {
@@ -567,20 +557,6 @@ test('notify requires text', async () => {
   expect(await main(['notify'])).toBe(2)
 })
 
-test('the old send request, send notify and test spellings still run', async () => {
-  const listener = await listenForRequests()
-  vi.stubEnv('JAYPOST_URL', `http://127.0.0.1:${listener.port}`)
-  vi.spyOn(console, 'log').mockImplementation(() => {})
-  try {
-    expect(await main(['send', 'request', 'Deploy?', '-o', 'Yes', '-d', 'No'])).toBe(0)
-    expect(await main(['send', 'notify', 'hi'])).toBe(0)
-    expect(await main(['test'])).toBe(0)
-  } finally {
-    listener.close()
-  }
-  expect(listener.urls).toEqual(['/request', '/notify', '/notify'])
-})
-
 test('hook rejects a bad timeout and positional arguments with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   expect(await main(['hook', '--timeout', '0'])).toBe(2)
@@ -844,16 +820,16 @@ test('JAYPOST_APPROVERS makes the question a vote', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')
   vi.stubEnv('JAYPOST_APPROVERS', '1,2')
-  const args = ['send', 'request', 'Deploy?', '-o', 'Yes', '-o', 'Maybe', '-d', 'No']
+  const args = ['request', 'Deploy?', '-o', 'Yes', '-o', 'Maybe', '-d', 'No']
   expect(await main(args)).toBe(2)
 })
 
-test('send notify ignores JAYPOST_APPROVERS', async () => {
+test('notify ignores JAYPOST_APPROVERS', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')
   vi.stubEnv('JAYPOST_APPROVERS', '')
   vi.stubEnv('JAYPOST_BOT_TOKEN', '')
-  expect(await main(['send', 'notify', 'done'])).toBe(1)
+  expect(await main(['notify', 'done'])).toBe(1)
 })
 
 test('a vote needs one -o and a different -d without --allow-text', async () => {
