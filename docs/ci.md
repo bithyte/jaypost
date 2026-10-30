@@ -15,7 +15,7 @@ JAYPOST_OWNER_ID=...
 
 ## Through a service by URL
 
-If the runner can reach a jaypost service, it can use that one instead of direct mode, and the service keeps the only connection to the bot. Leave `JAYPOST_MODE` unset and point `send` at the service with an API key from `jaypost admin key create` (see [Hosting](hosting.md#share-a-bot-between-ci-workflows)); the inbox isn't read when these are set:
+If the runner can reach a jaypost service, it can use that one instead of direct mode, and the service keeps the only connection to the bot. Leave `JAYPOST_MODE` unset and point `send` at the service with an API key from `jaypost admin bot key add` (see [Hosting](hosting.md#share-a-bot-between-ci-workflows)); the inbox isn't read when these are set:
 
 ```
 JAYPOST_URL=https://jaypost.example.com

@@ -100,7 +100,7 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/service/config.json`, else `~/.config/jaypost/service/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. Clients read `JAYPOST_TOKEN` too; without it they use the key in the inbox. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
-The service keeps its bots, pairings and API keys in `jaypost.db` next to the config file (the data volume for containers), along with pending requests and the question log. The env vars and `config.json` only seed the first bot, pairing and key when the registry is empty; after that, change things with `jaypost admin bot`, `admin key` and `admin pairing` (see [Hosting](hosting.md)). Running `service install` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
+The service keeps its bots, contacts and API keys in `jaypost.db` next to the config file (the data volume for containers), along with pending requests and the question log. The env vars and `config.json` only seed the first bot, contact and key when the registry is empty; after that, change things with `jaypost admin bot`, `admin bot contact` and `admin bot key` (see [Hosting](hosting.md)). Running `service install` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
 
 ## One instance per token
 
@@ -114,7 +114,7 @@ Re-running `service install` on an install without an API token asks whether to 
 
 ## Upgrading to the inbox
 
-The CLI regrouped its commands and keeps the client's keys in an inbox. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin`, and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
+The CLI regrouped its commands and keeps the client's keys in an inbox. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin` (now `admin bot`, `admin bot contact` and `admin bot key`), and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
 
 There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `inbox.json`. `jaypost service update` doesn't write the inbox. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `service update` or `service install` rewrites the unit. An older CLI's `jaypost update` gets the new CLI onto the machine but can't finish, so run `jaypost service update` after it.
 

@@ -95,7 +95,7 @@ The server talks to your default bot, or the one `-b ALIAS` (or `JAYPOST_BOT`) n
 }
 ```
 
-For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin key create` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/inbox.json`.
+For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin bot key add` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/inbox.json`.
 
 The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the inbox isn't read), then the inbox's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a bot to your inbox with `jaypost inbox join` or `jaypost service install`.
 

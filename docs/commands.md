@@ -84,7 +84,7 @@ Pairs approvers for direct mode votes, one code per person, asking `Pair another
 jaypost pair reset-owner
 ```
 
-Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md).
+Resets the contact of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md).
 
 ## Asking and notifying
 
@@ -155,31 +155,29 @@ These call the admin routes and need the admin key, except `admin remote`, which
 ```
 jaypost admin bot add [--provider NAME] [--label TEXT]
 jaypost admin bot list
-jaypost admin bot remove ID [-y]
+jaypost admin bot remove BOT [-y]
 ```
 
-Adds a bot (asks for its settings), lists bots with their state, pairings and keys, or removes one with its pairings and keys.
+Adds a bot (asks for its settings), lists bots with their state, contacts and keys, or removes one with its contacts and keys.
 
-### `jaypost admin key`
-
-```
-jaypost admin key create (--bot ID | --pairing ID | --same-as KEY) [--label TEXT] [--external-id ID] [--save [--as ALIAS] | --invite]
-jaypost admin key list [--bot ID] [--pairing ID]
-jaypost admin key label ID [--label TEXT] [--external-id ID]
-jaypost admin key revoke ID
-```
-
-`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own inbox (`--as` names it); `--invite` prints a `jaypost inbox join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
-
-### `jaypost admin pairing`
+### `jaypost admin bot contact`
 
 ```
-jaypost admin pairing create --bot ID
-jaypost admin pairing list [--bot ID]
-jaypost admin pairing remove ID [-y]
+jaypost admin bot contact add BOT
+jaypost admin bot contact list [BOT]
+jaypost admin bot contact remove CONTACT [-y]
 ```
 
-`create` makes a pairing with no key (an approver invite) and prints its code. `remove` revokes the pairing's keys too.
+`add` makes a contact with no key (an approver invite) and prints its pairing code. `list` shows each contact's state, person, pairing code while pending, and its keys with their labels; without a bot it lists every bot's. `remove` revokes the contact's keys too, and asks first unless `-y`.
+
+### `jaypost admin bot key`
+
+```
+jaypost admin bot key add TARGET [--label TEXT] [--save [ALIAS] | --invite]
+jaypost admin bot key revoke KEY
+```
+
+`add` prints the new key once. The target says where it points: a bot (`b1`) makes a new contact and prints its pairing code, a contact (`c2`) adds a key to that contact, and a key (`k3`) adds one to that key's contact. `--save` also adds the key to your own inbox, under `ALIAS` or, without one, the label, the display name or the id; write the target first (`key add b1 --save`), or `--save` takes it as the alias. `--invite` prints a `jaypost inbox join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `revoke` leaves the contact alone. Labels and external ids are changed through the API, see [HTTP API](http-api.md).
 
 ### `jaypost admin remote`
 
@@ -202,10 +200,10 @@ Replaces the admin key; the old one stops working at once. The new one is printe
 ### `jaypost admin log`
 
 ```
-jaypost admin log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] [--pairing ID] [--key ID] [--all] [--json]
+jaypost admin log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] [--contact ID] [--key ID] [--all] [--json]
 ```
 
-Prints every bot's questions, or the ones of one `--bot`, `--pairing` or `--key`. If the local service doesn't answer, it reads the first bot's log from the files on disk and says so; `--bot` needs the service running. Flags otherwise as for [`log`](#jaypost-log).
+Prints every bot's questions, or the ones of one `--bot`, `--contact` or `--key`. If the local service doesn't answer, it reads the first bot's log from the files on disk and says so; `--bot` needs the service running. Flags otherwise as for [`log`](#jaypost-log).
 
 ## Other
 
