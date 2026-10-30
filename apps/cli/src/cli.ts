@@ -44,7 +44,7 @@ import {
   runContactAdd,
   runContactList,
   runContactRemove,
-  runKeyCreate,
+  runKeyAdd,
   runKeyRevoke,
   runLog,
   runOwner,
@@ -865,6 +865,7 @@ function addAdminBotCommands(admin: Command, setCode: (code: number) => void): v
       },
     )
   addAdminContactCommands(bot, setCode)
+  addAdminKeyCommands(bot, setCode)
 }
 
 /** The `admin bot contact` commands. */
@@ -914,31 +915,28 @@ function addAdminContactCommands(bot: Command, setCode: (code: number) => void):
     )
 }
 
-/** The `admin key` commands. */
-function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): void {
-  const key = admin.command('key').description('create and revoke API keys')
+/** The `admin bot key` commands. */
+function addAdminKeyCommands(bot: Command, setCode: (code: number) => void): void {
+  const key = bot.command('key').description('add and revoke API keys')
   key
-    .command('create')
-    .description('create an API key and print it once')
-    .option('--bot <id>', 'for a new pairing on this bot, with a pairing code')
-    .option('--pairing <id>', 'for this existing pairing')
-    .option('--same-as <key id>', 'for the pairing of this key')
+    .command('add')
+    .description(
+      "add an API key for a bot (new contact), a contact or a key's contact, and print it once",
+    )
+    .argument('<target>', 'bot, contact or key id, such as b1, c2 or k3')
     .option('--label <text>', 'a free-form label')
-    .option('--external-id <id>', 'a free-form id from another system')
-    .option('--save', "also save the key to this machine's inbox")
-    .option('--as <alias>', "with --save, the bot's alias (default: the bot's name)")
+    .option(
+      '--save [alias]',
+      "also save the key to this machine's inbox, as ALIAS (default: the bot's name)",
+    )
     .option('--invite', 'print a jaypost inbox join line to send instead of the key (remotes only)')
     .option('--json', JSON_HELP)
     .action(
       async (
+        target: string,
         options: {
-          readonly bot?: string
-          readonly pairing?: string
-          readonly sameAs?: string
           readonly label?: string
-          readonly externalId?: string
-          readonly save?: boolean
-          readonly as?: string
+          readonly save?: boolean | string
           readonly invite?: boolean
           readonly json?: boolean
         },
@@ -946,15 +944,15 @@ function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): v
       ) => {
         setCode(
           await runPromptingAdminCommand(findService(command), (deps) =>
-            runKeyCreate(options, deps),
+            runKeyAdd({ target, ...options }, deps),
           ),
         )
       },
     )
   key
     .command('revoke')
-    .description('revoke a key; its pairing stays')
-    .argument('<id>', 'key id, such as k2')
+    .description('revoke a key; its contact stays')
+    .argument('<key>', 'key id, such as k2')
     .option('--json', JSON_HELP)
     .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
       setCode(await runKeyRevoke({ id, ...options }, createAdminDeps(findService(command))))
@@ -971,7 +969,6 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
     .description("manage a service's bots, contacts and keys, and the remotes you administer")
     .option('-s, --service <name>', 'the remote to manage (default: the local service)')
   addAdminBotCommands(admin, setCode)
-  addAdminKeyCommands(admin, setCode)
   addAdminRemoteCommands(admin, setCode)
   admin
     .command('rotate-key')

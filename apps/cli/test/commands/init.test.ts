@@ -575,7 +575,7 @@ test('single provider: no provider prompt and unchanged output', async () => {
     'Check state: jaypost status',
     savedLine(),
     CONTAINER_LINE,
-    'Admin commands: jaypost admin key create --help',
+    'Admin commands: jaypost admin bot --help',
     'Logs: logs for quadlet',
   ])
 })

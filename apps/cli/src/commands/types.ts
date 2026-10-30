@@ -430,7 +430,7 @@ export type AdminDeps = {
   /** Defaults to the current time; stamps a bot `bot add` writes straight to the registry. */
   readonly now?: () => Date
   readonly signal?: AbortSignal
-  /** The inbox: remotes, the local admin key, and where `key create --save` writes. */
+  /** The inbox: remotes, the local admin key, and where `key add --save` writes. */
   readonly inboxPath: string
   /** The remote `-s` names; undefined picks the target as `openAdmin` describes. */
   readonly service: string | undefined
@@ -456,19 +456,14 @@ export type BotAddArgs = AdminOutputArgs & {
 export type AdminRemoveArgs = AdminOutputArgs & { readonly id: string; readonly yes?: boolean }
 
 /**
- * Exactly one of `bot`, `pairing` and `sameAs` names the pairing the key points to. At most one of
- * `save` and `invite`; `as` only with `save`.
+ * `target` is a bot, contact or key id. `save` is `true` for a bare `--save` and the alias for
+ * `--save ALIAS`; at most one of `save` and `invite`.
  */
-export type KeyCreateArgs = AdminOutputArgs & {
-  readonly bot?: string
-  readonly pairing?: string
-  readonly sameAs?: string
+export type KeyAddArgs = AdminOutputArgs & {
+  readonly target: string
   readonly label?: string
-  readonly externalId?: string
   /** Also save the key to this machine's inbox as a bot. */
-  readonly save?: boolean
-  /** The alias `save` uses instead of the bot's label, display name or id. */
-  readonly as?: string
+  readonly save?: boolean | string
   /** Print a `jaypost inbox join` line for the person instead of the bare key; remotes only. */
   readonly invite?: boolean
 }

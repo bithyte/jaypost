@@ -325,7 +325,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     print(
       isNativeInstall(installed)
         ? `Admin key: ${resolveAdminKeyPath(installed.configFile ?? resolveConfigPath(env))}`
-        : 'Admin commands: jaypost admin key create --help',
+        : 'Admin commands: jaypost admin bot --help',
     )
     print(`Logs: ${target.logsHint(installed)}`)
     if (args.exposed === true && adminKey !== undefined) {

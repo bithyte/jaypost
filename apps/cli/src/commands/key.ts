@@ -1,4 +1,12 @@
-import { encodeInvite, findBot, saveBot, writeInbox } from '@jaypost/store'
+import {
+  BOT_ID_PREFIX,
+  CONTACT_ID_PREFIX,
+  KEY_ID_PREFIX,
+  encodeInvite,
+  findBot,
+  saveBot,
+  writeInbox,
+} from '@jaypost/store'
 import type { Inbox } from '@jaypost/store'
 import { isLoopbackEndpoint } from '@jaypost/client'
 import type { AdminCaller, AdminResult } from '@jaypost/client'
@@ -7,7 +15,7 @@ import { loadInbox, openAdmin, openAdminCaller } from './admin-access.ts'
 import { printResult, runAdminCommand } from './admin.ts'
 import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
 import { formatInvite } from './contact.ts'
-import type { AdminDeps, AdminIdArgs, KeyCreateArgs } from './types.ts'
+import type { AdminDeps, AdminIdArgs, KeyAddArgs } from './types.ts'
 
 /** Whether an inbox alias may be written: free, replacing it was confirmed, or not. */
 type AliasClaim = 'free' | 'taken' | 'declined'
@@ -16,6 +24,31 @@ type AliasClaim = 'free' | 'taken' | 'declined'
 type SavePlan =
   | { readonly kind: 'ready'; readonly inbox: Inbox; readonly alias: string }
   | { readonly kind: 'refused' }
+
+/** What `key add` was given: a bot (new contact), a contact, or a key whose contact to reuse. */
+type KeyAddTarget =
+  | { readonly kind: 'bot'; readonly botId: string }
+  | { readonly kind: 'contact'; readonly contactId: string }
+  | { readonly kind: 'sameAsKey'; readonly keyId: string }
+
+const KEY_TARGET_PATTERN = new RegExp(
+  `^(${BOT_ID_PREFIX}|${CONTACT_ID_PREFIX}|${KEY_ID_PREFIX})\\d+$`,
+)
+
+/** Reads a bot, contact or key id by its prefix; `undefined` for any other shape. */
+function parseKeyTarget(raw: string): KeyAddTarget | undefined {
+  const prefix = KEY_TARGET_PATTERN.exec(raw)?.[1]
+  switch (prefix) {
+    case BOT_ID_PREFIX:
+      return { kind: 'bot', botId: raw }
+    case CONTACT_ID_PREFIX:
+      return { kind: 'contact', contactId: raw }
+    case KEY_ID_PREFIX:
+      return { kind: 'sameAsKey', keyId: raw }
+    default:
+      return undefined
+  }
+}
 
 /** The pairing code and how to use it while the pairing waits; nothing once paired. */
 function formatPairingLines(created: CreatedKey): readonly string[] {
@@ -30,7 +63,7 @@ function formatPairingLines(created: CreatedKey): readonly string[] {
 /** The key, once, then the pairing code and how to use it while the pairing waits. */
 function formatCreatedKey(created: CreatedKey): string {
   return [
-    `Key ${created.id} (pairing ${created.contact}): ${created.key}`,
+    `Key ${created.id} (contact ${created.contact}): ${created.key}`,
     KEY_SHOWN_ONCE_NOTE,
     ...formatPairingLines(created),
   ].join('\n')
@@ -49,14 +82,14 @@ function formatInvitedKey(created: CreatedKey, invite: string, label: string | u
 
 /**
  * Checks `alias` against the inbox: free, or taken and replaced after a confirmation on a terminal.
- * Off a terminal a taken alias is refused with a hint to pick another with `--as`.
+ * Off a terminal a taken alias is refused with a hint to pick another with `--save ALIAS`.
  */
 async function claimAlias(inbox: Inbox, alias: string, deps: AdminDeps): Promise<AliasClaim> {
   if (findBot(inbox, alias) === undefined) {
     return 'free'
   }
   if (!deps.isInteractive) {
-    deps.printError(`a bot is already named "${alias}"; pick another with --as`)
+    deps.printError(`a bot is already named "${alias}"; pick another with --save ALIAS`)
     return 'taken'
   }
   return (await deps.prompt.confirm(`Replace "${alias}" in your inbox?`, false))
@@ -65,58 +98,55 @@ async function claimAlias(inbox: Inbox, alias: string, deps: AdminDeps): Promise
 }
 
 /** A lookup that found nothing, worded like the service's own unknown-id errors. */
-function toUnknown(kind: 'bot' | 'pairing' | 'key', id: string): AdminResult<never> {
+function toUnknown(kind: 'bot' | 'contact' | 'key', id: string): AdminResult<never> {
   return { kind: 'failed', reason: 'notFound', message: `unknown ${kind} "${id}"` }
 }
 
 /**
- * The bot the new key will belong to: `--bot`, else the bot of `--pairing`, else the bot of the
- * `--same-as` key. Asked before the key is made, so nothing is created for a refused alias.
+ * The bot the new key will belong to: the bot itself, the bot of the contact, or the bot of the
+ * key. Asked before the key is made, so nothing is created for a refused alias.
  */
 async function resolveTargetBot(
   caller: AdminCaller,
-  args: KeyCreateArgs,
+  target: KeyAddTarget,
 ): Promise<AdminResult<string>> {
-  if (args.bot !== undefined) {
-    return { kind: 'ok', value: args.bot }
-  }
-  if (args.pairing !== undefined) {
-    const { pairing } = args
-    const pairings = await caller.listContacts({})
-    if (pairings.kind === 'failed') {
-      return pairings
+  switch (target.kind) {
+    case 'bot':
+      return { kind: 'ok', value: target.botId }
+    case 'contact': {
+      const contacts = await caller.listContacts({})
+      if (contacts.kind === 'failed') {
+        return contacts
+      }
+      const found = contacts.value.contacts.find((each) => each.id === target.contactId)
+      return found === undefined
+        ? toUnknown('contact', target.contactId)
+        : { kind: 'ok', value: found.bot }
     }
-    const found = pairings.value.contacts.find((each) => each.id === pairing)
-    return found === undefined ? toUnknown('pairing', pairing) : { kind: 'ok', value: found.bot }
-  }
-  const { sameAs } = args
-  if (sameAs === undefined) {
-    return {
-      kind: 'failed',
-      reason: 'unexpected',
-      message: 'give exactly one of --bot, --pairing and --same-as',
+    case 'sameAsKey': {
+      const keys = await caller.listKeys({})
+      if (keys.kind === 'failed') {
+        return keys
+      }
+      const found = keys.value.keys.find((each) => each.id === target.keyId)
+      return found === undefined ? toUnknown('key', target.keyId) : { kind: 'ok', value: found.bot }
     }
   }
-  const keys = await caller.listKeys({})
-  if (keys.kind === 'failed') {
-    return keys
-  }
-  const found = keys.value.keys.find((each) => each.id === sameAs)
-  return found === undefined ? toUnknown('key', sameAs) : { kind: 'ok', value: found.bot }
 }
 
 /**
- * The alias `--save` gives the new key: `--as`, else its bot's label, else the bot's display
- * name, else its id.
+ * The alias `--save` gives the new key: `--save ALIAS`, else its bot's label, else the bot's
+ * display name, else its id.
  */
 async function resolveSaveAlias(
   caller: AdminCaller,
-  args: KeyCreateArgs,
+  args: KeyAddArgs,
+  target: KeyAddTarget,
 ): Promise<AdminResult<string>> {
-  if (args.as !== undefined) {
-    return { kind: 'ok', value: args.as }
+  if (typeof args.save === 'string') {
+    return { kind: 'ok', value: args.save }
   }
-  const botId = await resolveTargetBot(caller, args)
+  const botId = await resolveTargetBot(caller, target)
   if (botId.kind === 'failed') {
     return botId
   }
@@ -132,24 +162,26 @@ async function resolveSaveAlias(
 }
 
 /**
- * Creates an API key for a new pairing on `bot`, an existing `pairing`, or the pairing of the key
- * `sameAs`, and prints it once. `save` also writes it to the inbox as a bot; `invite` prints a
- * `jaypost inbox join` line holding it instead, for a remote only. The pairing code prints either way.
- * Returns 0, 1 on failure, 2 on bad flags.
+ * Adds an API key for a new contact on a bot, an existing contact, or the contact of a key, by
+ * the target's id, and prints it once. `save` also writes it to the inbox as a bot (under the
+ * alias when it's a string); `invite` prints a `jaypost inbox join` line holding it instead, for a
+ * remote only. The pairing code prints either way. Returns 0, 1 on failure, 2 on bad flags.
  */
-export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<number> {
+export function runKeyAdd(args: KeyAddArgs, deps: AdminDeps): Promise<number> {
   return runAdminCommand(deps, async () => {
-    const targets = [args.bot, args.pairing, args.sameAs].filter((target) => target !== undefined)
-    if (targets.length !== 1) {
-      deps.printError('give exactly one of --bot, --pairing and --same-as')
+    const target = parseKeyTarget(args.target)
+    if (target === undefined) {
+      deps.printError(
+        `key add needs a bot, contact or key id, such as b1, c2 or k3, got ${JSON.stringify(args.target)}`,
+      )
       return 2
     }
-    if (args.save === true && args.invite === true) {
+    if (args.save !== undefined && args.save !== false && args.invite === true) {
       deps.printError('give at most one of --save and --invite')
       return 2
     }
-    if (args.as !== undefined && args.save !== true) {
-      deps.printError('give --as only with --save')
+    if (args.save === '') {
+      deps.printError('--save needs a non-empty alias, or no value for the default')
       return 2
     }
     const opened = await openAdmin(deps)
@@ -173,16 +205,16 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       return 1
     }
     // Everything --save needs is settled before the key is made, so a refusal creates no key.
-    const save = args.save === true ? await prepareSave(opened.caller, args, deps) : undefined
+    const save =
+      args.save === undefined || args.save === false
+        ? undefined
+        : await prepareSave(opened.caller, args, target, deps)
     if (save?.kind === 'refused') {
       return 1
     }
     const result = await opened.caller.createKey({
-      ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
-      ...(args.sameAs === undefined ? {} : { sameAsKey: args.sameAs }),
+      ...toKeyOwner(target),
       ...(args.label === undefined ? {} : { label: args.label }),
-      ...(args.externalId === undefined ? {} : { externalId: args.externalId }),
     })
     if (result.kind === 'failed') {
       deps.printError(result.message)
@@ -212,13 +244,27 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
   })
 }
 
+/** The one `createKey` field the target sets. */
+function toKeyOwner(
+  target: KeyAddTarget,
+): { readonly bot: string } | { readonly contact: string } | { readonly sameAsKey: string } {
+  switch (target.kind) {
+    case 'bot':
+      return { bot: target.botId }
+    case 'contact':
+      return { contact: target.contactId }
+    case 'sameAsKey':
+      return { sameAsKey: target.keyId }
+  }
+}
+
 /**
  * Prints the created key: JSON on stdout with the shown-once note on stderr, so stdout stays
  * parseable, or `format()`'s lines.
  */
 function printCreatedKey(
   value: CreatedKey & { readonly invite?: string },
-  args: KeyCreateArgs,
+  args: KeyAddArgs,
   deps: AdminDeps,
   format: () => string,
 ): void {
@@ -236,7 +282,8 @@ function printCreatedKey(
  */
 async function prepareSave(
   caller: AdminCaller,
-  args: KeyCreateArgs,
+  args: KeyAddArgs,
+  target: KeyAddTarget,
   deps: AdminDeps,
 ): Promise<SavePlan> {
   const loaded = loadInbox(deps.inboxPath)
@@ -244,7 +291,7 @@ async function prepareSave(
     deps.printError(loaded.message)
     return { kind: 'refused' }
   }
-  const alias = await resolveSaveAlias(caller, args)
+  const alias = await resolveSaveAlias(caller, args, target)
   if (alias.kind === 'failed') {
     deps.printError(alias.message)
     return { kind: 'refused' }
@@ -258,7 +305,7 @@ async function prepareSave(
     : { kind: 'refused' }
 }
 
-/** Revokes a key; its open questions end with their timeout answer. Its pairing stays. */
+/** Revokes a key; its open questions end with their timeout answer. Its contact stays. */
 export function runKeyRevoke(args: AdminIdArgs, deps: AdminDeps): Promise<number> {
   return runAdminCommand(deps, async () => {
     const caller = await openAdminCaller(deps)

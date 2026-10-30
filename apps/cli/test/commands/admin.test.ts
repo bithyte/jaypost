@@ -30,7 +30,7 @@ import {
   runContactAdd,
   runContactList,
   runContactRemove,
-  runKeyCreate,
+  runKeyAdd,
   runKeyRevoke,
 } from '../../src/commands/index.ts'
 import type { AdminDeps, FetchStatus, Prompts } from '../../src/commands/index.ts'
@@ -187,9 +187,9 @@ function countOccurrences(text: string, part: string): number {
   return text.split(part).length - 1
 }
 
-test('key create prints the key once and the pairing code when pending', async () => {
+test('key add prints the key once and the pairing code when pending', async () => {
   const started = await start()
-  expect(await runKeyCreate({ bot: 'b1', label: 'ci' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'b1', label: 'ci' }, createDeps(remoteEnv(started)))).toBe(0)
   const printed = [...out, ...err].join('\n')
   const key = /jpk_[\w-]+/.exec(printed)?.[0]
   if (key === undefined) {
@@ -198,7 +198,7 @@ test('key create prints the key once and the pairing code when pending', async (
   expect(countOccurrences(printed, key)).toBe(1)
   expect(out).toEqual([
     [
-      `Key k2 (pairing c2): ${key}`,
+      `Key k2 (contact c2): ${key}`,
       "This key isn't shown again; store it now.",
       'Pairing code: PAIR-2222',
       'Say PAIR2222 to fake',
@@ -208,36 +208,25 @@ test('key create prints the key once and the pairing code when pending', async (
   expect(err).toEqual([])
 })
 
-test('key create for a paired pairing prints no code', async () => {
+test('key add for a paired contact prints no code', async () => {
   const started = await start()
-  expect(await runKeyCreate({ sameAs: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
   expect(out).toEqual([
     expect.stringMatching(
-      /^Key k2 \(pairing c1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
+      /^Key k2 \(contact c1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
     ),
   ])
 })
 
-test('key create --json prints the created key as JSON and the note on stderr', async () => {
+test('key add --json prints the created key as JSON and the note on stderr', async () => {
   const started = await start()
-  expect(await runKeyCreate({ pairing: 'c1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'c1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({
     id: 'k2',
     key: expect.stringMatching(/^jpk_/),
     contact: 'c1',
   })
   expect(err).toEqual(["This key isn't shown again; store it now."])
-})
-
-test('key create needs exactly one of --bot, --pairing and --same-as', async () => {
-  const deps = createDeps({ HOME: tmp })
-  expect(await runKeyCreate({}, deps)).toBe(2)
-  expect(await runKeyCreate({ bot: 'b1', pairing: 'c1' }, deps)).toBe(2)
-  expect(err).toEqual([
-    'give exactly one of --bot, --pairing and --same-as',
-    'give exactly one of --bot, --pairing and --same-as',
-  ])
-  expect(out).toEqual([])
 })
 
 test('JAYPOST_URL without JAYPOST_ADMIN_KEY fails with a hint and no request', async () => {
@@ -551,7 +540,7 @@ test('bot remove --yes skips the question', async () => {
 test('contact add prints the code and contact list shows it with key labels', async () => {
   const started = await start()
   const deps = createDeps(remoteEnv(started))
-  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci' }, deps)).toBe(0)
+  expect(await runKeyAdd({ target: 'k1', label: 'ci' }, deps)).toBe(0)
   out = []
   expect(await runContactAdd({ bot: 'b1' }, deps)).toBe(0)
   expect(await runContactList({ bot: 'b1' }, deps)).toBe(0)
@@ -568,7 +557,7 @@ test('contact add prints the code and contact list shows it with key labels', as
 test('contact list without a bot shows every bot and --json prints only the contacts body', async () => {
   const started = await start()
   const deps = createDeps(remoteEnv(started))
-  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci' }, deps)).toBe(0)
+  expect(await runKeyAdd({ target: 'k1', label: 'ci' }, deps)).toBe(0)
   out = []
   expect(await runContactList({ json: true }, deps)).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({

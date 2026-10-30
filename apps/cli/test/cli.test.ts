@@ -434,14 +434,15 @@ test('admin --help lists bot, remote, rotate-key and log, and no pairing', async
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
   expect(help).not.toMatch(/^\s+pairing\b/m)
+  expect(help).not.toMatch(/^\s+key\b/m)
   expect(help).toContain('-s, --service <name>')
 })
 
-test('admin bot --help lists add, list, remove and contact', async () => {
+test('admin bot --help lists add, list, remove, contact and key', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['admin', 'bot', '--help'])).toBe(0)
   const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
-  for (const command of ['add', 'list', 'remove', 'contact']) {
+  for (const command of ['add', 'list', 'remove', 'contact', 'key']) {
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
 })
@@ -499,11 +500,30 @@ test('jaypost admin bot contact remove -s x and jaypost admin -s x bot contact r
   expect(other.urls).toEqual([])
 })
 
-test('admin key create rejects --save with --invite and --as without --save with 2', async () => {
+test('admin bot key add --save b1 takes b1 as the alias and fails for the missing target', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['admin', 'bot', 'key', 'add', '--save', 'b1'])).toBe(2)
+})
+
+test('admin bot key add rejects --save with --invite with 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  expect(await main(['admin', 'key', 'create', '--bot', 'b1', '--save', '--invite'])).toBe(2)
-  expect(await main(['admin', 'key', 'create', '--bot', 'b1', '--as', 'ops'])).toBe(2)
+  expect(await main(['admin', 'bot', 'key', 'add', 'b1', '--save', '--invite'])).toBe(2)
+})
+
+test('admin bot key add takes no --as, --bot, --pairing, --same-as or --external-id', async () => {
+  vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  for (const flag of ['--as=x', '--bot=b1', '--pairing=c1', '--same-as=k1', '--external-id=x']) {
+    expect(await main(['admin', 'bot', 'key', 'add', 'b1', flag])).toBe(2)
+  }
+})
+
+test('admin key create is an unknown command', async () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  expect(await main(['admin', 'key', 'create', '--bot', 'b1'])).toBe(2)
+  expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toMatch(
+    /unknown command/,
+  )
 })
 
 test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['log'], ['status']])(

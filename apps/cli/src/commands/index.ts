@@ -5,7 +5,7 @@ export { runInboxDefault, runInboxList, runInboxRemove, runInboxRename } from '.
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
 export { runJoin } from './join.ts'
-export { runKeyCreate, runKeyRevoke } from './key.ts'
+export { runKeyAdd, runKeyRevoke } from './key.ts'
 export { runAdminLog, runLog } from './log.ts'
 export { runOwner } from './owner.ts'
 export { runPairApprover } from './pair-approver.ts'
@@ -40,7 +40,7 @@ export type {
   DirectSendDeps,
   InitArgs,
   InitDeps,
-  KeyCreateArgs,
+  KeyAddArgs,
   LogArgs,
   LogDeps,
   FetchStatus,
