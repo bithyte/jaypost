@@ -1,9 +1,9 @@
-import { encodeInvite, findBot, saveBot, writeBook } from '@jaypost/store'
-import type { Book } from '@jaypost/store'
+import { encodeInvite, findBot, saveBot, writeInbox } from '@jaypost/store'
+import type { Inbox } from '@jaypost/store'
 import { isLoopbackEndpoint } from '@jaypost/client'
 import type { AdminCaller, AdminResult } from '@jaypost/client'
 import type { CreatedKey, KeysBody } from '@jaypost/protocol'
-import { loadBook, openAdmin, openAdminCaller } from './admin-access.ts'
+import { loadInbox, openAdmin, openAdminCaller } from './admin-access.ts'
 import { formatTable, printResult, runAdminCommand } from './admin.ts'
 import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
 import { formatInvite } from './pairing.ts'
@@ -26,12 +26,12 @@ function formatKeys(body: KeysBody): string {
   )
 }
 
-/** Whether a book alias may be written: free, replacing it was confirmed, or not. */
+/** Whether an inbox alias may be written: free, replacing it was confirmed, or not. */
 type AliasClaim = 'free' | 'taken' | 'declined'
 
-/** The book and alias `--save` writes, or refused (reason printed) before any key is made. */
+/** The inbox and alias `--save` writes, or refused (reason printed) before any key is made. */
 type SavePlan =
-  | { readonly kind: 'ready'; readonly book: Book; readonly alias: string }
+  | { readonly kind: 'ready'; readonly inbox: Inbox; readonly alias: string }
   | { readonly kind: 'refused' }
 
 /** The pairing code and how to use it while the pairing waits; nothing once paired. */
@@ -53,30 +53,30 @@ function formatCreatedKey(created: CreatedKey): string {
   ].join('\n')
 }
 
-/** The `jaypost bots join` line to send in place of the key, then the pairing code as usual. */
+/** The `jaypost inbox join` line to send in place of the key, then the pairing code as usual. */
 function formatInvitedKey(created: CreatedKey, invite: string, label: string | undefined): string {
   return [
     `Send this to ${label ?? 'them'} (it holds their key, send it privately):`,
     '',
-    `  jaypost bots join ${invite}`,
+    `  jaypost inbox join ${invite}`,
     KEY_SHOWN_ONCE_NOTE,
     ...formatPairingLines(created),
   ].join('\n')
 }
 
 /**
- * Checks `alias` against the book: free, or taken and replaced after a confirmation on a terminal.
+ * Checks `alias` against the inbox: free, or taken and replaced after a confirmation on a terminal.
  * Off a terminal a taken alias is refused with a hint to pick another with `--as`.
  */
-async function claimAlias(book: Book, alias: string, deps: AdminDeps): Promise<AliasClaim> {
-  if (findBot(book, alias) === undefined) {
+async function claimAlias(inbox: Inbox, alias: string, deps: AdminDeps): Promise<AliasClaim> {
+  if (findBot(inbox, alias) === undefined) {
     return 'free'
   }
   if (!deps.isInteractive) {
     deps.printError(`a bot is already named "${alias}"; pick another with --as`)
     return 'taken'
   }
-  return (await deps.prompt.confirm(`Replace "${alias}" in your contacts?`, false))
+  return (await deps.prompt.confirm(`Replace "${alias}" in your inbox?`, false))
     ? 'free'
     : 'declined'
 }
@@ -161,8 +161,8 @@ function toUpdatedField(
 
 /**
  * Creates an API key for a new pairing on `bot`, an existing `pairing`, or the pairing of the key
- * `sameAs`, and prints it once. `save` also writes it to the book as a bot; `invite` prints a
- * `jaypost bots join` line holding it instead, for a remote only. The pairing code prints either way.
+ * `sameAs`, and prints it once. `save` also writes it to the inbox as a bot; `invite` prints a
+ * `jaypost inbox join` line holding it instead, for a remote only. The pairing code prints either way.
  * Returns 0, 1 on failure, 2 on bad flags.
  */
 export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<number> {
@@ -229,8 +229,8 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
     if (save === undefined) {
       return 0
     }
-    writeBook(deps.bookPath, saveBot(save.book, { alias: save.alias, url, key: created.key }))
-    const saved = `Saved as "${save.alias}" in your contacts.`
+    writeInbox(deps.inboxPath, saveBot(save.inbox, { alias: save.alias, url, key: created.key }))
+    const saved = `Saved as "${save.alias}" in your inbox.`
     if (args.json) {
       deps.printError(saved)
     } else {
@@ -259,7 +259,7 @@ function printCreatedKey(
 }
 
 /**
- * Reads the book and resolves the `--save` alias, checking it is free or, on a terminal, that
+ * Reads the inbox and resolves the `--save` alias, checking it is free or, on a terminal, that
  * replacing it is confirmed. `refused` once the reason is printed.
  */
 async function prepareSave(
@@ -267,7 +267,7 @@ async function prepareSave(
   args: KeyCreateArgs,
   deps: AdminDeps,
 ): Promise<SavePlan> {
-  const loaded = loadBook(deps.bookPath)
+  const loaded = loadInbox(deps.inboxPath)
   if (loaded.kind === 'failed') {
     deps.printError(loaded.message)
     return { kind: 'refused' }
@@ -277,12 +277,12 @@ async function prepareSave(
     deps.printError(alias.message)
     return { kind: 'refused' }
   }
-  const claim = await claimAlias(loaded.book, alias.value, deps)
+  const claim = await claimAlias(loaded.inbox, alias.value, deps)
   if (claim === 'declined') {
     deps.printError('Cancelled.')
   }
   return claim === 'free'
-    ? { kind: 'ready', book: loaded.book, alias: alias.value }
+    ? { kind: 'ready', inbox: loaded.inbox, alias: alias.value }
     : { kind: 'refused' }
 }
 

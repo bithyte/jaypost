@@ -1,4 +1,4 @@
-import { readBook, removeLocal, writeBook } from '@jaypost/store'
+import { readInbox, removeLocal, writeInbox } from '@jaypost/store'
 import { findExistingInstall, removeInstall } from '@jaypost/install'
 import { runStep } from '../progress/index.ts'
 import { PromptAborted } from './prompts.ts'
@@ -6,8 +6,8 @@ import type { UninstallDeps } from './types.ts'
 
 /**
  * Removes the service after asking whether to purge the credentials, owner and question log, then
- * drops the local service and its bots from the contact book and names the new default if it
- * moved. A book that can't be updated is only a note. Returns 0 on success or when nothing is
+ * drops the local service and its bots from the inbox and names the new default if it
+ * moved. An inbox that can't be updated is only a note. Returns 0 on success or when nothing is
  * installed, 1 on failure, 130 on interrupt.
  */
 export async function runUninstall(deps: UninstallDeps): Promise<number> {
@@ -49,25 +49,25 @@ export async function runUninstall(deps: UninstallDeps): Promise<number> {
     print('Uninstall failed. Check the service logs and try again.')
     return 1
   }
-  forgetLocal(deps.bookPath, print)
+  forgetLocal(deps.inboxPath, print)
   print('Uninstalled.')
   return 0
 }
 
-/** Drops the local service and its bots from the book; says when the default moved. Never throws. */
-function forgetLocal(bookPath: string, print: (text: string) => void): void {
+/** Drops the local service and its bots from the inbox; says when the default moved. Never throws. */
+function forgetLocal(inboxPath: string, print: (text: string) => void): void {
   try {
-    const book = readBook(bookPath)
-    const next = removeLocal(book)
-    if (next === book) {
+    const inbox = readInbox(inboxPath)
+    const next = removeLocal(inbox)
+    if (next === inbox) {
       return
     }
-    writeBook(bookPath, next)
-    if (next.default !== undefined && next.default !== book.default) {
+    writeInbox(inboxPath, next)
+    if (next.default !== undefined && next.default !== inbox.default) {
       print(`Default bot is now "${next.default}".`)
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    print(`Couldn't update the contact book: ${message}`)
+    print(`Couldn't update the inbox: ${message}`)
   }
 }

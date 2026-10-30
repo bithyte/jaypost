@@ -11,7 +11,7 @@ export {
   URL_ENV_VAR,
 } from './constants.ts'
 export {
-  resolveBookPath,
+  resolveInboxPath,
   resolveConfigDirectory,
   resolveConfigPath,
   resolveJaypostDirectory,

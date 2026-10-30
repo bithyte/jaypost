@@ -132,7 +132,7 @@ test("log reads GET /log with the bot's key", async () => {
   const { code, seen } = await run(
     { entries: [entry('a', '2026-10-19T06:00:00.000Z')], skippedCount: 0 },
     {},
-    { kind: 'token', token: KEY, source: 'book' },
+    { kind: 'token', token: KEY, source: 'inbox' },
   )
   expect(code).toBe(0)
   expect(seen).toHaveLength(1)
@@ -352,7 +352,7 @@ function adminDeps(env: NodeJS.ProcessEnv, over: Partial<AdminLogDeps> = {}): Ad
     printError: (text) => err.push(text),
     fetchStatus: async () => UNREACHABLE_STATUS,
     now: () => NOW,
-    bookPath: join(tmp, 'bots.json'),
+    inboxPath: join(tmp, 'inbox.json'),
     service: undefined,
     isInteractive: false,
     version: '1.0.0',

@@ -734,13 +734,13 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           type: 'http',
           scheme: 'bearer',
           description:
-            'An API key, such as the `key` of a bot in `~/.config/jaypost/bots.json`. A service installed without a token treats a call without the header as its first key.',
+            'An API key, such as the `key` of a bot in `~/.config/jaypost/inbox.json`. A service installed without a token treats a call without the header as its first key.',
         },
         adminKey: {
           type: 'http',
           scheme: 'bearer',
           description:
-            'The admin key, in `~/.config/jaypost/service/admin-key` on the machine running the service, and in `~/.config/jaypost/bots.json` on a machine that administers it. Only the admin routes take it.',
+            'The admin key, in `~/.config/jaypost/service/admin-key` on the machine running the service, and in `~/.config/jaypost/inbox.json` on a machine that administers it. Only the admin routes take it.',
         },
       },
       schemas: {

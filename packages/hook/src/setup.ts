@@ -41,7 +41,7 @@ export async function checkService(caller: Caller, deps: HookDeps): Promise<stri
     case 'httpTimeout':
       return isLoopbackEndpoint(endpoint.url)
         ? `jaypost isn't running on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`
-        : `jaypost isn't reachable on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Check the bot with \`jaypost bots\` (\`-b\` or JAYPOST_BOT picks another) and that the service there is running.`
+        : `jaypost isn't reachable on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Check the bot with \`jaypost inbox\` (\`-b\` or JAYPOST_BOT picks another) and that the service there is running.`
     case 'unusableToken':
     case 'unauthorized':
       return `jaypost can't use its API token (${result.message}), so permission prompts stay in the terminal. Run \`jaypost service install\`, or set JAYPOST_TOKEN in a container.`

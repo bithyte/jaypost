@@ -817,7 +817,7 @@ test('session start with an unreachable remote url says to check it', async () =
   expect(out).toEqual([
     JSON.stringify({
       systemMessage:
-        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check the bot with `jaypost bots` (`-b` or JAYPOST_BOT picks another) and that the service there is running.",
+        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check the bot with `jaypost inbox` (`-b` or JAYPOST_BOT picks another) and that the service there is running.",
     }),
   ])
 })

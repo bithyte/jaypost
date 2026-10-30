@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { beforeEach, expect, test, vi } from 'vite-plus/test'
-import { NO_AUTH, readBook } from '@jaypost/store'
+import { NO_AUTH, readInbox } from '@jaypost/store'
 import { TOKEN_REJECTED_MESSAGE } from '@jaypost/client'
 import { PromptAborted, runInit } from '../../src/commands/index.ts'
 import type { InitDeps } from '../../src/commands/index.ts'
@@ -17,7 +17,7 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 let tmp: string
 let paths: InstallPaths
-let bookPath: string
+let inboxPath: string
 let order: string[]
 let recording = createRecordingProgress()
 
@@ -28,7 +28,7 @@ function notes(): string[] {
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'init-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
-  bookPath = join(tmp, 'cfg', 'jaypost', 'bots.json')
+  inboxPath = join(tmp, 'cfg', 'jaypost', 'inbox.json')
   order = []
   recording = createRecordingProgress()
 })
@@ -50,7 +50,7 @@ function installedToken(target: Target): string | undefined {
 }
 
 function savedLine(): string {
-  return `Your bot is saved as "local" in ${bookPath}.`
+  return `Your bot is saved as "local" in ${inboxPath}.`
 }
 
 function wasAsked(d: InitDeps): boolean {
@@ -129,7 +129,7 @@ function deps(over: Partial<InitDeps> & { targets?: Record<TargetName, Target> }
     version: '1.2.3',
     env: {},
     platform: 'linux',
-    bookPath,
+    inboxPath,
     hostname: 'box.lan',
     ...over,
   }
@@ -776,7 +776,7 @@ test("service install reuses the token the existing install's service holds", as
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
   expect(notes()).toContain('Reusing the saved API token.')
   expect(wasAsked(d)).toBe(false)
-  expect(readBook(bookPath).bots).toEqual([
+  expect(readInbox(inboxPath).bots).toEqual([
     { alias: 'local', url: 'http://127.0.0.1:9000/', key: TOKEN },
   ])
   expect(notes().join('\n')).not.toContain(TOKEN)
@@ -801,7 +801,7 @@ test('answering no installs without a token and saves the seed without a key', a
   expect(d.wait).toHaveBeenCalledWith(expect.not.objectContaining({ token: expect.anything() }))
   expect(notes()).toContain(NO_TOKEN_LINE)
   expect(notes()).not.toContain(CONTAINER_LINE)
-  expect(readBook(bookPath).bots).toEqual([{ alias: 'local', url: 'http://127.0.0.1:9000/' }])
+  expect(readInbox(inboxPath).bots).toEqual([{ alias: 'local', url: 'http://127.0.0.1:9000/' }])
 })
 
 test('--token and --no-token skip the question', async () => {
@@ -908,11 +908,11 @@ test('a stale JAYPOST_TOKEN in the shell does not reach the wait', async () => {
   expect(token).not.toBe(OTHER_TOKEN)
 })
 
-test('service install writes local and the seed bot to the book before waiting for pairing', async () => {
+test('service install writes local and the seed bot to the inbox before waiting for pairing', async () => {
   const d = deps({
     wait: vi.fn(async () => {
-      const book = readBook(bookPath)
-      expect(book).toEqual({
+      const inbox = readInbox(inboxPath)
+      expect(inbox).toEqual({
         version: 1,
         default: 'local',
         local: { url: LOCAL_URL },
@@ -924,10 +924,10 @@ test('service install writes local and the seed bot to the book before waiting f
   })
   expect(await runInit({}, d)).toBe(0)
   expect(d.wait).toHaveBeenCalledTimes(1)
-  expect(statSync(bookPath).mode & 0o777).toBe(0o600)
+  expect(statSync(inboxPath).mode & 0o777).toBe(0o600)
 })
 
-test('service install saves the admin key to the book once the service answers', async () => {
+test('service install saves the admin key to the inbox once the service answers', async () => {
   const d = deps()
   expect(await runInit({ target: 'systemd' }, d)).toBe(0)
   expect(d.targets.systemd.readAdminKey).toHaveBeenCalledWith({
@@ -935,16 +935,16 @@ test('service install saves the admin key to the book once the service answers',
     port: 8787,
     version: '1.2.3',
   })
-  const book = readBook(bookPath)
-  expect(book.local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
-  expect(book.bots.map((bot) => bot.alias)).toEqual(['local'])
+  const inbox = readInbox(inboxPath)
+  expect(inbox.local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
+  expect(inbox.bots.map((bot) => bot.alias)).toEqual(['local'])
   expect(notes().join('\n')).not.toContain(ADMIN_KEY)
 })
 
 test('service install reads the admin key whatever the wait returned', async () => {
   const d = deps({ wait: vi.fn(async () => 'stopped' as const) })
   expect(await runInit({}, d)).toBe(1)
-  expect(readBook(bookPath).local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
+  expect(readInbox(inboxPath).local).toEqual({ url: LOCAL_URL, adminKey: ADMIN_KEY })
 })
 
 test('an unreadable admin key is a note, not a failed install', async () => {
@@ -954,18 +954,16 @@ test('an unreadable admin key is a note, not a failed install', async () => {
   })
   const d = deps({ targets })
   expect(await runInit({ target: 'quadlet' }, d)).toBe(0)
-  expect(notes()).toContain(
-    "Couldn't save the admin key to the contact book: admin key file missing",
-  )
-  expect(readBook(bookPath).local).toEqual({ url: LOCAL_URL })
+  expect(notes()).toContain("Couldn't save the admin key to the inbox: admin key file missing")
+  expect(readInbox(inboxPath).local).toEqual({ url: LOCAL_URL })
 })
 
-test('a rerun keeps a renamed seed bot and the other bots in the book', async () => {
+test('a rerun keeps a renamed seed bot and the other bots in the inbox', async () => {
   expect(await runInit({ token: true }, deps())).toBe(0)
-  const first = readBook(bookPath)
+  const first = readInbox(inboxPath)
   const key = first.bots[0]?.key
   writeFileSync(
-    bookPath,
+    inboxPath,
     JSON.stringify({
       ...first,
       default: 'other',
@@ -980,18 +978,18 @@ test('a rerun keeps a renamed seed bot and the other bots in the book', async ()
   targets.quadlet.readApiToken = vi.fn(async () => key)
   recording = createRecordingProgress()
   expect(await runInit({ target: 'quadlet' }, deps({ targets }))).toBe(0)
-  const book = readBook(bookPath)
-  expect(book.default).toBe('other')
-  expect(book.bots.map((bot) => bot.alias)).toEqual(['home', 'other'])
-  expect(notes()).toContain(`Your bot is saved as "home" in ${bookPath}.`)
+  const inbox = readInbox(inboxPath)
+  expect(inbox.default).toBe('other')
+  expect(inbox.bots.map((bot) => bot.alias)).toEqual(['home', 'other'])
+  expect(notes()).toContain(`Your bot is saved as "home" in ${inboxPath}.`)
 })
 
-test('a corrupt contact book fails the install before anything is installed', async () => {
-  mkdirSync(dirname(bookPath), { recursive: true })
-  writeFileSync(bookPath, '{nope')
+test('a corrupt inbox fails the install before anything is installed', async () => {
+  mkdirSync(dirname(inboxPath), { recursive: true })
+  writeFileSync(inboxPath, '{nope')
   const d = deps()
   expect(await runInit({}, d)).toBe(1)
-  expect(notes().join('\n')).toContain(`contact book ${JSON.stringify(bookPath)} isn't valid`)
+  expect(notes().join('\n')).toContain(`inbox ${JSON.stringify(inboxPath)} isn't valid`)
   expect(d.targets.quadlet.install).not.toHaveBeenCalled()
 })
 
@@ -1010,7 +1008,7 @@ test('service install --exposed passes exposed and prints the remote add line wi
     '',
     `  jaypost admin remote add box.lan http://box.lan:9100 ${ADMIN_KEY}`,
   ])
-  expect(readBook(bookPath).local).toEqual({ url: 'http://127.0.0.1:9100/', adminKey: ADMIN_KEY })
+  expect(readInbox(inboxPath).local).toEqual({ url: 'http://127.0.0.1:9100/', adminKey: ADMIN_KEY })
 })
 
 test('service install without --exposed passes no exposed flag and prints no remote line', async () => {

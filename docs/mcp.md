@@ -78,7 +78,7 @@ In a container or anywhere the package isn't installed, use `npx -y jaypost mcp`
 }
 ```
 
-The server talks to your default contact, or the one `-b ALIAS` (or `JAYPOST_BOT`) names. If the contact book isn't readable where the MCP server runs (a container, another user), set `JAYPOST_URL` and `JAYPOST_TOKEN` instead; when either is set the book isn't read. In a client's JSON, add an `env` block:
+The server talks to your default bot, or the one `-b ALIAS` (or `JAYPOST_BOT`) names. If the inbox isn't readable where the MCP server runs (a container, another user), set `JAYPOST_URL` and `JAYPOST_TOKEN` instead; when either is set the inbox isn't read. In a client's JSON, add an `env` block:
 
 ```json
 {
@@ -95,9 +95,9 @@ The server talks to your default contact, or the one `-b ALIAS` (or `JAYPOST_BOT
 }
 ```
 
-For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin key create` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/bots.json`.
+For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin key create` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/inbox.json`.
 
-The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the book isn't read), then the book's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a contact with `jaypost bots join` or `jaypost service install`.
+The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the inbox isn't read), then the inbox's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a bot to your inbox with `jaypost inbox join` or `jaypost service install`.
 
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 

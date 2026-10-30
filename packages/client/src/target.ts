@@ -4,8 +4,8 @@ import {
   findEnvValue,
   NO_CLIENT_TOKEN,
   PORT_ENV_VAR,
-  readBook,
-  resolveBookPath,
+  readInbox,
+  resolveInboxPath,
   resolveBotTarget,
   resolveEnvToken,
   TOKEN_ENV_VAR,
@@ -15,9 +15,9 @@ import { findEnvEndpoint, toLocalEndpoint } from './endpoint.ts'
 import type { ResolvedBot } from './types.ts'
 
 /**
- * The service and token a call goes to: the book bot named by `alias` or $JAYPOST_BOT, else env
- * mode (JAYPOST_URL, JAYPOST_TOKEN, JAYPOST_PORT; the book isn't read), else the book default. A
- * book key never goes to an env URL and an env token never goes to a book URL. Never throws: a
+ * The service and token a call goes to: the inbox bot named by `alias` or $JAYPOST_BOT, else env
+ * mode (JAYPOST_URL, JAYPOST_TOKEN, JAYPOST_PORT; the inbox isn't read), else the inbox default. A
+ * inbox key never goes to an env URL and an env token never goes to an inbox URL. Never throws: a
  * failure is an `invalid` endpoint carrying the message, with no token. Messages never hold a key.
  */
 export function resolveBot(env: NodeJS.ProcessEnv, alias: string | undefined): ResolvedBot {
@@ -25,20 +25,20 @@ export function resolveBot(env: NodeJS.ProcessEnv, alias: string | undefined): R
   if (name === undefined && hasEnvTarget(env)) {
     return resolveEnvBot(env)
   }
-  const path = resolveBookPath(env)
-  let book
+  const path = resolveInboxPath(env)
+  let inbox
   try {
-    book = readBook(path)
+    inbox = readInbox(path)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    // readBook names the file for bad contents; an I/O error needs the path added.
+    // readInbox names the file for bad contents; an I/O error needs the path added.
     return toFailure(
       message.includes(path)
         ? message
-        : `contact book ${JSON.stringify(path)} couldn't be read: ${message}`,
+        : `inbox ${JSON.stringify(path)} couldn't be read: ${message}`,
     )
   }
-  const target = resolveBotTarget(env, book, alias)
+  const target = resolveBotTarget(env, inbox, alias)
   switch (target.kind) {
     case 'env':
       return resolveEnvBot(env)
@@ -50,7 +50,7 @@ export function resolveBot(env: NodeJS.ProcessEnv, alias: string | undefined): R
         token:
           target.bot.key === undefined
             ? NO_CLIENT_TOKEN
-            : { kind: 'token', token: target.bot.key, source: 'book' },
+            : { kind: 'token', token: target.bot.key, source: 'inbox' },
         alias: target.bot.alias,
       }
   }

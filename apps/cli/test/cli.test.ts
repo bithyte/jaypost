@@ -20,7 +20,7 @@ import { VERSION } from '../src/constants.ts'
 
 let isolatedConfigHome = ''
 
-// A dev shell with JAYPOST_BOT exported must not reach the real contact book.
+// A dev shell with JAYPOST_BOT exported must not reach the real inbox.
 beforeEach(() => {
   isolatedConfigHome = mkdtempSync(join(tmpdir(), 'jaypost-cli-isolated-'))
   vi.stubEnv('XDG_CONFIG_HOME', isolatedConfigHome)
@@ -75,7 +75,7 @@ test('--help lists the commands under their groups and hides the moved and devel
     'Options:',
     'Set up:',
     'service',
-    'bots',
+    'inbox',
     'pair',
     'admin',
     'Ask and notify:',
@@ -282,13 +282,13 @@ test('ping uses JAYPOST_URL in env mode, over the install', async () => {
   expect(installListener.urls).toEqual([])
 })
 
-test('ping sends to the book default, and -b picks another bot', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+test('ping sends to the inbox default, and -b picks another bot', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-inbox-'))
   const first = await listenForRequests()
   const second = await listenForRequests()
   mkdirSync(join(directory, 'jaypost'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'bots.json'),
+    join(directory, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       default: 'home',
@@ -318,10 +318,10 @@ test('ping sends to the book default, and -b picks another bot', async () => {
 })
 
 test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-inbox-'))
   mkdirSync(join(directory, 'jaypost'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'bots.json'),
+    join(directory, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       default: 'home',
@@ -343,18 +343,23 @@ test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
       },
     )
     expect(result.status).toBe(1)
-    expect(result.stderr).toContain('no bot "nope" in your contacts; known: home')
+    expect(result.stderr).toContain('no bot "nope" in your inbox; known: home')
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
 })
 
-test('bots join with a garbage invite exits 1 without echoing it', () => {
+test('inbox join with a garbage invite exits 1 without echoing it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-join-'))
   try {
     const result = spawnSync(
       process.execPath,
-      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'bots', 'join', 'jpi_garbage-secret-text'],
+      [
+        join(import.meta.dirname, '..', 'src', 'cli.ts'),
+        'inbox',
+        'join',
+        'jpi_garbage-secret-text',
+      ],
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
@@ -369,7 +374,7 @@ test('bots join with a garbage invite exits 1 without echoing it', () => {
   }
 })
 
-test('admin remote list on an empty book prints No remotes.', () => {
+test('admin remote list on an empty inbox prints No remotes.', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-remote-'))
   try {
     const result = spawnSync(
@@ -387,19 +392,19 @@ test('admin remote list on an empty book prints No remotes.', () => {
   }
 })
 
-test('bots on an empty book says how to add one', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'jaypost-bots-'))
+test('inbox on an empty inbox says how to add one', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'jaypost-inbox-'))
   try {
     const result = spawnSync(
       process.execPath,
-      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'bots'],
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'inbox'],
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
       },
     )
     expect(result.status).toBe(0)
-    expect(result.stdout).toBe('No bots. Run "jaypost service install" or "jaypost bots join".\n')
+    expect(result.stdout).toBe('No bots. Run "jaypost service install" or "jaypost inbox join".\n')
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -437,7 +442,7 @@ test('jaypost admin key list -s x and jaypost admin -s x key list both reach the
   const x = await listenForRequests()
   mkdirSync(join(directory, 'jaypost'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'bots.json'),
+    join(directory, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       remotes: [
@@ -480,10 +485,10 @@ test('admin key create rejects --save with --invite and --as without --save with
 test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['log'], ['status']])(
   '%s -b with an unknown alias exits 1 and lists the known ones',
   (...command) => {
-    const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+    const directory = mkdtempSync(join(tmpdir(), 'cli-test-inbox-'))
     mkdirSync(join(directory, 'jaypost'), { recursive: true })
     writeFileSync(
-      join(directory, 'jaypost', 'bots.json'),
+      join(directory, 'jaypost', 'inbox.json'),
       JSON.stringify({
         version: 1,
         default: 'home',
@@ -504,7 +509,7 @@ test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['
         },
       )
       expect(result.status).toBe(1)
-      expect(result.stdout + result.stderr).toContain('no bot "nope" in your contacts; known: home')
+      expect(result.stdout + result.stderr).toContain('no bot "nope" in your inbox; known: home')
     } finally {
       rmSync(directory, { recursive: true, force: true })
     }
@@ -512,10 +517,10 @@ test.each([['request', 'Deploy?', '-o', 'Yes', '-d', 'No'], ['notify', 'hi'], ['
 )
 
 test('hook -b with an unknown alias says so in the session start message and exits 0', () => {
-  const directory = mkdtempSync(join(tmpdir(), 'cli-test-book-'))
+  const directory = mkdtempSync(join(tmpdir(), 'cli-test-inbox-'))
   mkdirSync(join(directory, 'jaypost'), { recursive: true })
   writeFileSync(
-    join(directory, 'jaypost', 'bots.json'),
+    join(directory, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       default: 'home',
@@ -536,7 +541,7 @@ test('hook -b with an unknown alias says so in the session start message and exi
     )
     // A hook never fails the session; it reports through its system message instead.
     expect(result.status).toBe(0)
-    expect(result.stdout).toContain('no bot \\"nope\\" in your contacts; known: home')
+    expect(result.stdout).toContain('no bot \\"nope\\" in your inbox; known: home')
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -864,9 +869,9 @@ test('valid vote and retry flags pass validation and reach the direct send', asy
   expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
 })
 
-test('a bad url in the contact book fails bots, ping -b and admin -s naming the file, with no stack', () => {
+test('a bad url in the inbox fails inbox, ping -b and admin -s naming the file, with no stack', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-badurl-'))
-  const path = join(directory, 'jaypost', 'bots.json')
+  const path = join(directory, 'jaypost', 'inbox.json')
   mkdirSync(join(directory, 'jaypost'), { recursive: true })
   const text = JSON.stringify({
     version: 1,
@@ -876,7 +881,7 @@ test('a bad url in the contact book fails bots, ping -b and admin -s naming the 
   writeFileSync(path, text)
   try {
     for (const args of [
-      ['bots'],
+      ['inbox'],
       ['ping', '-b', 'a'],
       ['admin', '-s', 'r', 'bot', 'list'],
       ['admin', 'remote', 'list'],
@@ -890,7 +895,7 @@ test('a bad url in the contact book fails bots, ping -b and admin -s naming the 
         },
       })
       expect(result.status).toBe(1)
-      expect(result.stderr).toContain(`contact book ${JSON.stringify(path)} isn't valid`)
+      expect(result.stderr).toContain(`inbox ${JSON.stringify(path)} isn't valid`)
       expect(result.stderr).not.toContain('not a url')
       expect(result.stderr).not.toContain('nope')
       expect(result.stderr).not.toMatch(/\n\s+at /)

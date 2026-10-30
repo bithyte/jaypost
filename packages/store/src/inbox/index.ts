@@ -1,8 +1,8 @@
 export {
-  BOOK_FILE_NAME,
-  BOOK_VERSION,
+  INBOX_FILE_NAME,
+  INBOX_VERSION,
   BOT_ENV_VAR,
-  EMPTY_BOOK,
+  EMPTY_INBOX,
   INVITE_PREFIX,
   INVITE_VERSION,
   LOCAL_ALIAS,
@@ -24,5 +24,5 @@ export {
 } from './operations.ts'
 export { resolveBotTarget } from './target.ts'
 export type { BotTarget } from './target.ts'
-export { readBook, writeBook } from './store.ts'
-export type { Book, BookBot, BookChange, BookLocal, BookRemote, Invite } from './types.ts'
+export { readInbox, writeInbox } from './store.ts'
+export type { Inbox, InboxBot, InboxChange, InboxLocal, InboxRemote, Invite } from './types.ts'

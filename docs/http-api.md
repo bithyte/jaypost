@@ -9,7 +9,7 @@ curl -s -X POST http://127.0.0.1:8787/request \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'
 ```
 
-`$JAYPOST_TOKEN` is an API key: the `key` of a bot in `~/.config/jaypost/bots.json`, or one from `jaypost admin key create`. A service installed with `--no-token` takes calls without the header.
+`$JAYPOST_TOKEN` is an API key: the `key` of a bot in `~/.config/jaypost/inbox.json`, or one from `jaypost admin key create`. A service installed with `--no-token` takes calls without the header.
 
 The request stays open until you tap a button (or reply, see below) or the timeout fires, then returns `200`:
 

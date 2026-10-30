@@ -163,10 +163,10 @@ async function startApi(
   return { port, service, messenger, notifier }
 }
 
-/** A contact book at `directory` with one bot, `home`, which is also the default. */
-function writeBook(port: number, key: string | undefined): void {
+/** An inbox at `directory` with one bot, `home`, which is also the default. */
+function writeInbox(port: number, key: string | undefined): void {
   writeFileSync(
-    join(directory, 'jaypost', 'bots.json'),
+    join(directory, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       default: 'home',
@@ -176,7 +176,7 @@ function writeBook(port: number, key: string | undefined): void {
   )
 }
 
-/** Connects `jaypost mcp`; with `bot` it picks that contact instead of the env url at `port`. */
+/** Connects `jaypost mcp`; with `bot` it picks that bot instead of the env url at `port`. */
 async function connect(
   port: number,
   extraEnv: Record<string, string> = {},
@@ -531,9 +531,9 @@ test('stdout carries only json-rpc', async () => {
   }
 })
 
-test('tool calls send the key of the contact book bot', async () => {
+test('tool calls send the key of the inbox bot', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: TOKEN } })
-  writeBook(port, TOKEN)
+  writeInbox(port, TOKEN)
   const client = await connect(port, {}, 'home')
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     content: [{ type: 'text', text: 'sent' }],
@@ -548,9 +548,9 @@ test('JAYPOST_TOKEN reaches the service', async () => {
   })
 })
 
-test('a wrong book key is rejected', async () => {
+test('a wrong inbox key is rejected', async () => {
   const { port } = await startApi({ auth: { kind: 'token', token: SECOND } })
-  writeBook(port, FIRST)
+  writeInbox(port, FIRST)
   const client = await connect(port, {}, 'home')
   expect(await client.callTool({ name: 'notify_user', arguments: NOTE })).toEqual({
     isError: true,

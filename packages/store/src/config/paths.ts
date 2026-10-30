@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { BOOK_FILE_NAME } from '../book/constants.ts'
+import { INBOX_FILE_NAME } from '../inbox/constants.ts'
 
 /** Env value, with an empty string counting as unset. */
 export function findEnvValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
@@ -15,9 +15,9 @@ export function resolveJaypostDirectory(env: NodeJS.ProcessEnv = process.env): s
   return join(base, 'jaypost')
 }
 
-/** Path of the contact book, bots.json, in the jaypost config root; ignores $JAYPOST_CONFIG. */
-export function resolveBookPath(env: NodeJS.ProcessEnv = process.env): string {
-  return join(resolveJaypostDirectory(env), BOOK_FILE_NAME)
+/** Path of the inbox, inbox.json, in the jaypost config root; ignores $JAYPOST_CONFIG. */
+export function resolveInboxPath(env: NodeJS.ProcessEnv = process.env): string {
+  return join(resolveJaypostDirectory(env), INBOX_FILE_NAME)
 }
 
 /**

@@ -1,14 +1,14 @@
 import { describeEndpoint } from '@jaypost/client'
-import { decodeInvite, findBot, saveBot, writeBook } from '@jaypost/store'
+import { decodeInvite, findBot, saveBot, writeInbox } from '@jaypost/store'
 import type { Progress } from '../progress/index.ts'
-import { loadBook } from './remote.ts'
-import type { BookDeps, FetchStatus, WaitForPairing } from './types.ts'
+import { loadInbox } from './remote.ts'
+import type { InboxDeps, FetchStatus, WaitForPairing } from './types.ts'
 
 /** What `join` takes; `as` is the alias to save under instead of the bot's name. */
 type JoinArgs = { readonly invite: string; readonly as?: string }
 
 /** Everything `runJoin` touches outside itself, injected for tests. */
-export type JoinDeps = BookDeps & {
+export type JoinDeps = InboxDeps & {
   readonly fetchStatus: FetchStatus
   readonly wait: WaitForPairing
   readonly progress: Progress
@@ -25,7 +25,7 @@ const STOPPED_MESSAGE = 'the service stopped answering; the key works once you s
 
 /**
  * Saves the bot an invite names after the service accepts its key. Nothing is saved when the
- * invite is bad, the book is corrupt, the service refuses or can't be reached, or a taken alias
+ * invite is bad, the inbox is corrupt, the service refuses or can't be reached, or a taken alias
  * isn't replaced. When the bot isn't paired yet, waits for the pairing code to be used; Ctrl-C
  * then keeps the saved entry and returns 130. Returns the exit code; no message holds the key or
  * the invite.
@@ -36,8 +36,8 @@ export async function runJoin(args: JoinArgs, deps: JoinDeps): Promise<number> {
     deps.printError(INVALID_INVITE_MESSAGE)
     return 1
   }
-  const book = loadBook(deps)
-  if (book === undefined) {
+  const inbox = loadInbox(deps)
+  if (inbox === undefined) {
     return 1
   }
   const url = new URL(invite.url)
@@ -51,23 +51,23 @@ export async function runJoin(args: JoinArgs, deps: JoinDeps): Promise<number> {
     return 1
   }
   const alias = args.as ?? fetched.status.displayName?.replace(/^@/, '') ?? url.host
-  if (findBot(book, alias) !== undefined) {
+  if (findBot(inbox, alias) !== undefined) {
     if (!deps.isInteractive) {
       deps.printError(
         `a bot is already named "${alias}"; pass --as <alias> to save it under another name`,
       )
       return 1
     }
-    if (!(await deps.prompt.confirm(`Replace "${alias}" in your contacts?`, false))) {
+    if (!(await deps.prompt.confirm(`Replace "${alias}" in your inbox?`, false))) {
       deps.printError('Cancelled.')
       return 1
     }
   }
-  const isFirst = book.bots.length === 0
-  const saved = saveBot(book, { alias, url: invite.url, key: invite.key })
-  writeBook(deps.bookPath, saved)
+  const isFirst = inbox.bots.length === 0
+  const saved = saveBot(inbox, { alias, url: invite.url, key: invite.key })
+  writeInbox(deps.inboxPath, saved)
   deps.print(
-    `Added ${alias} (${describeEndpoint(url)}) to your contacts${isFirst ? ', set as default.' : '.'}`,
+    `Added ${alias} (${describeEndpoint(url)}) to your inbox${isFirst ? ', set as default.' : '.'}`,
   )
   const tryLine = saved.default === alias ? 'Try: jaypost ping' : `Try: jaypost ping -b ${alias}`
   if (fetched.status.paired) {

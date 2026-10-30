@@ -5,14 +5,14 @@ import {
   findRemote,
   parseToken,
   PORT_ENV_VAR,
-  readBook,
+  readInbox,
   readConfigFile,
   resolveAdminKey,
   resolveAdminKeyPath,
   resolveConfigPath,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
-import type { Book, BookRemote } from '@jaypost/store'
+import type { Inbox, InboxRemote } from '@jaypost/store'
 import {
   ADMIN_KEY_REJECTED_MESSAGE,
   AdminCaller,
@@ -28,7 +28,7 @@ import type {
   AdminDeps,
   AdminEndpoint,
   AdminKeyLookup,
-  LoadedBook,
+  LoadedInbox,
   OpenedAdmin,
   ReachableEndpoint,
 } from './types.ts'
@@ -41,7 +41,7 @@ export function isNativeInstall(record: InstallRecord): boolean {
 }
 
 /** What finding the admin endpoint reads. */
-type AdminAccessDeps = Pick<AdminDeps, 'env' | 'paths' | 'targets' | 'bookPath' | 'service'>
+type AdminAccessDeps = Pick<AdminDeps, 'env' | 'paths' | 'targets' | 'inboxPath' | 'service'>
 
 /**
  * The admin caller for the service `resolveAdminEndpoint` picks; `noKey` for a service whose admin
@@ -63,7 +63,7 @@ export async function openAdmin(deps: AdminAccessDeps): Promise<OpenedAdmin> {
   return { kind: 'opened', caller, endpoint }
 }
 
-// What fixes a refused key depends on where the key came from: the book's remote, the install's
+// What fixes a refused key depends on where the key came from: the inbox's remote, the install's
 // saved copy, or the environment (then the default message applies).
 function describeRejectedKey(endpoint: ReachableEndpoint, envKey: string | undefined): string {
   if (envKey !== undefined) {
@@ -87,10 +87,10 @@ export async function openAdminCaller(deps: AdminDeps): Promise<AdminCaller | un
   return opened.caller
 }
 
-/** The book at `bookPath`, or failed with a message naming the file (never a value). */
-export function loadBook(bookPath: string): LoadedBook {
+/** The inbox at `inboxPath`, or failed with a message naming the file (never a value). */
+export function loadInbox(inboxPath: string): LoadedInbox {
   try {
-    return { kind: 'loaded', book: readBook(bookPath) }
+    return { kind: 'loaded', inbox: readInbox(inboxPath) }
   } catch (error) {
     return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
   }
@@ -99,19 +99,19 @@ export function loadBook(bookPath: string): LoadedBook {
 /**
  * Where the admin commands go: the remote `-s` names; else `JAYPOST_URL` with
  * `JAYPOST_ADMIN_KEY`; else the local install's port, with the key from `JAYPOST_ADMIN_KEY`, the
- * book, or the install's target (then saved to the book); else the book's only remote; else, with
+ * inbox, or the install's target (then saved to the inbox); else the inbox's only remote; else, with
  * no remotes, 127.0.0.1 on `JAYPOST_PORT` or the config's port with the key from
  * `JAYPOST_ADMIN_KEY` or the admin key file next to the config; else failed asking for `-s`.
- * A corrupt book fails naming it. Never throws; never quotes a key.
+ * A corrupt inbox fails naming it. Never throws; never quotes a key.
  */
 async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoint> {
-  const loaded = loadBook(deps.bookPath)
+  const loaded = loadInbox(deps.inboxPath)
   if (loaded.kind === 'failed') {
     return loaded
   }
-  const { book } = loaded
+  const { inbox } = loaded
   if (deps.service !== undefined) {
-    return resolveNamedRemote(book, deps.service)
+    return resolveNamedRemote(inbox, deps.service)
   }
   const { env, paths, targets } = deps
   const remote = findEnvEndpoint(env)
@@ -142,7 +142,7 @@ async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoin
       port: install.port,
       adminKey:
         envKey === undefined
-          ? await resolveInstallAdminKey(book, deps.bookPath, targets[install.target], install)
+          ? await resolveInstallAdminKey(inbox, deps.inboxPath, targets[install.target], install)
           : { kind: 'found', adminKey: envKey },
       install,
       configPath: isNativeInstall(install)
@@ -150,14 +150,14 @@ async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoin
         : undefined,
     }
   }
-  const [onlyRemote, ...otherRemotes] = book.remotes
+  const [onlyRemote, ...otherRemotes] = inbox.remotes
   if (onlyRemote !== undefined && otherRemotes.length === 0) {
     return toRemoteEndpoint(onlyRemote)
   }
   if (onlyRemote !== undefined) {
     return {
       kind: 'failed',
-      message: `several remotes; pick one with -s: ${book.remotes.map((each) => each.name).join(', ')}`,
+      message: `several remotes; pick one with -s: ${inbox.remotes.map((each) => each.name).join(', ')}`,
     }
   }
   const configPath = resolveConfigPath(env)
@@ -173,19 +173,19 @@ async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoin
 }
 
 /** The remote `-s` names, or failed listing the known names. */
-function resolveNamedRemote(book: Book, name: string): AdminEndpoint {
-  const remote = findRemote(book, name)
+function resolveNamedRemote(inbox: Inbox, name: string): AdminEndpoint {
+  const remote = findRemote(inbox, name)
   if (remote !== undefined) {
     return toRemoteEndpoint(remote)
   }
   const hint =
-    book.remotes.length === 0
+    inbox.remotes.length === 0
       ? 'add one with "jaypost admin remote add"'
-      : `known: ${book.remotes.map((each) => each.name).join(', ')}`
+      : `known: ${inbox.remotes.map((each) => each.name).join(', ')}`
   return { kind: 'failed', message: `no remote "${name}"; ${hint}` }
 }
 
-function toRemoteEndpoint(remote: BookRemote): AdminEndpoint {
+function toRemoteEndpoint(remote: InboxRemote): AdminEndpoint {
   return {
     kind: 'remote',
     name: remote.name,
@@ -195,16 +195,16 @@ function toRemoteEndpoint(remote: BookRemote): AdminEndpoint {
 }
 
 /**
- * The local install's admin key: the book's copy, else the target's, which is then saved to the
- * book so later commands skip the target.
+ * The local install's admin key: the inbox's copy, else the target's, which is then saved to the
+ * inbox so later commands skip the target.
  */
 async function resolveInstallAdminKey(
-  book: Book,
-  bookPath: string,
+  inbox: Inbox,
+  inboxPath: string,
   target: Target,
   record: InstallRecord,
 ): Promise<AdminKeyLookup> {
-  const saved = book.local?.adminKey
+  const saved = inbox.local?.adminKey
   if (saved !== undefined) {
     return { kind: 'found', adminKey: saved }
   }
@@ -212,11 +212,11 @@ async function resolveInstallAdminKey(
   if (read.kind === 'missing') {
     return read
   }
-  const url = book.local?.url ?? toLocalUrl(record.port).href
+  const url = inbox.local?.url ?? toLocalUrl(record.port).href
   try {
-    writeBook(bookPath, { ...book, local: { url, adminKey: read.adminKey } })
+    writeInbox(inboxPath, { ...inbox, local: { url, adminKey: read.adminKey } })
   } catch {
-    // The book only saves a lookup; the key just read works without it.
+    // The inbox only saves a lookup; the key just read works without it.
   }
   return read
 }

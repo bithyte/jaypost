@@ -13,7 +13,7 @@ const serviceUrl = z.string().transform((value, context) => {
 })
 
 /** Entries are loose so unknown fields survive a rewrite. */
-export const bookSchema = z.object({
+export const inboxSchema = z.object({
   version: z.literal(1),
   default: z.string().optional(),
   local: z.looseObject({ url: serviceUrl, adminKey: z.string().optional() }).optional(),

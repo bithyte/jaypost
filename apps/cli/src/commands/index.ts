@@ -1,7 +1,7 @@
 export { runAdminKeyRotate, runAdminKeyShow } from './admin.ts'
 export { formatWaitTitle } from './answer-wait.ts'
 export { runAudit } from './audit.ts'
-export { runBotsDefault, runBotsList, runBotsRemove, runBotsRename } from './bots.ts'
+export { runInboxDefault, runInboxList, runInboxRemove, runInboxRename } from './inbox.ts'
 export { runBotAdd, runBotList, runBotRemove } from './bot.ts'
 export { runInit } from './init.ts'
 export { runJoin } from './join.ts'
@@ -33,7 +33,7 @@ export type {
   AdminLogDeps,
   AdminOutputArgs,
   AdminRemoveArgs,
-  BookDeps,
+  InboxDeps,
   BotAddArgs,
   DirectSendDeps,
   InitArgs,

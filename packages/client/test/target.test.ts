@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
-import { resolveBookPath, writeBook } from '@jaypost/store'
-import type { Book } from '@jaypost/store'
+import { resolveInboxPath, writeInbox } from '@jaypost/store'
+import type { Inbox } from '@jaypost/store'
 import { resolveBot } from '../src/index.ts'
 
 const KEY = 'K'.repeat(43)
@@ -23,11 +23,11 @@ const envFor = (extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
   ...extra,
 })
 
-function saveBook(book: Book): void {
-  writeBook(resolveBookPath(envFor()), book)
+function saveInbox(inbox: Inbox): void {
+  writeInbox(resolveInboxPath(envFor()), inbox)
 }
 
-const BOOK: Book = {
+const INBOX: Inbox = {
   version: 1,
   default: 'home',
   remotes: [],
@@ -38,28 +38,28 @@ const BOOK: Book = {
 }
 
 test('resolveBot sends the named bot key to its url', () => {
-  saveBook(BOOK)
+  saveInbox(INBOX)
   const bot = resolveBot(envFor(), 'home')
   expect(bot).toEqual({
     endpoint: { kind: 'url', url: new URL('http://127.0.0.1:9000/') },
-    token: { kind: 'token', token: KEY, source: 'book' },
+    token: { kind: 'token', token: KEY, source: 'inbox' },
     alias: 'home',
   })
 })
 
 test('resolveBot with a keyless bot sends no token', () => {
-  saveBook(BOOK)
+  saveInbox(INBOX)
   expect(resolveBot(envFor(), 'open').token).toEqual({ kind: 'none' })
 })
 
 test('resolveBot with -b never uses JAYPOST_TOKEN', () => {
-  saveBook(BOOK)
+  saveInbox(INBOX)
   const bot = resolveBot(envFor({ JAYPOST_TOKEN: ENV_TOKEN }), 'home')
-  expect(bot.token).toEqual({ kind: 'token', token: KEY, source: 'book' })
+  expect(bot.token).toEqual({ kind: 'token', token: KEY, source: 'inbox' })
 })
 
-test('resolveBot in env mode never reads the book', () => {
-  saveBook(BOOK)
+test('resolveBot in env mode never reads the inbox', () => {
+  saveInbox(INBOX)
   const bot = resolveBot(envFor({ JAYPOST_TOKEN: ENV_TOKEN }), undefined)
   expect(bot).toEqual({
     endpoint: { kind: 'url', url: new URL('http://127.0.0.1:8787/') },
@@ -78,20 +78,20 @@ test('resolveBot in env mode uses JAYPOST_URL and a valid JAYPOST_PORT', () => {
 })
 
 test('resolveBot turns an unknown alias into an invalid endpoint listing the known ones', () => {
-  saveBook(BOOK)
+  saveInbox(INBOX)
   const bot = resolveBot(envFor(), 'nope')
   expect(bot).toEqual({
     endpoint: {
       kind: 'invalid',
-      message: 'no bot "nope" in your contacts; known: home, open',
+      message: 'no bot "nope" in your inbox; known: home, open',
     },
     token: { kind: 'none' },
     alias: undefined,
   })
 })
 
-test('resolveBot reports an unreadable book by its path, not its contents', () => {
-  const path = resolveBookPath(envFor())
+test('resolveBot reports an unreadable inbox by its path, not its contents', () => {
+  const path = resolveInboxPath(envFor())
   mkdirSync(path, { recursive: true })
   const bot = resolveBot(envFor(), 'home')
   expect(bot.endpoint.kind).toBe('invalid')
@@ -108,8 +108,8 @@ test.each([
     'bot missing url',
     JSON.stringify({ version: 1, remotes: [], bots: [{ alias: 'home', key: KEY }] }),
   ],
-])('resolveBot reports a corrupt book (%s) by its path without its contents', (_name, text) => {
-  const path = resolveBookPath(envFor())
+])('resolveBot reports a corrupt inbox (%s) by its path without its contents', (_name, text) => {
+  const path = resolveInboxPath(envFor())
   mkdirSync(join(path, '..'), { recursive: true })
   writeFileSync(path, text)
   const bot = resolveBot(envFor(), 'home')
@@ -119,8 +119,8 @@ test.each([
   expect(JSON.stringify(bot)).not.toContain(KEY)
 })
 
-test('resolveBot turns a bad url in the book into an invalid endpoint naming the file, never throwing', () => {
-  const path = resolveBookPath(envFor())
+test('resolveBot turns a bad url in the inbox into an invalid endpoint naming the file, never throwing', () => {
+  const path = resolveInboxPath(envFor())
   mkdirSync(join(path, '..'), { recursive: true })
   writeFileSync(
     path,
@@ -133,7 +133,7 @@ test('resolveBot turns a bad url in the book into an invalid endpoint naming the
   const bot = resolveBot(envFor(), 'home')
   expect(bot.endpoint).toEqual({
     kind: 'invalid',
-    message: `contact book ${JSON.stringify(path)} isn't valid: bots.0.url`,
+    message: `inbox ${JSON.stringify(path)} isn't valid: bots.0.url`,
   })
   expect(bot.token).toEqual({ kind: 'none' })
 })

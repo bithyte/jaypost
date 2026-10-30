@@ -16,13 +16,13 @@ On a service with several bots and people, each key points to a pairing and a pe
 
 ## Joining someone else's bot
 
-If someone runs a bot for you, they send an invite, a line starting `jaypost bots join jpi_`. Run it:
+If someone runs a bot for you, they send an invite, a line starting `jaypost inbox join jpi_`. Run it:
 
 ```
-jaypost bots join jpi_...
+jaypost inbox join jpi_...
 ```
 
-It saves the bot in your contacts (`--as ALIAS` names it; the default is the bot's name), prints the pairing code and link if you haven't paired, and waits. Pair as above. Ctrl-C leaves the contact saved; its key works once you're paired. `jaypost bots` lists your contacts and `-b ALIAS` picks one.
+It saves the bot in your inbox (`--as ALIAS` names it; the default is the bot's name), prints the pairing code and link if you haven't paired, and waits. Pair as above. Ctrl-C leaves the bot saved; its key works once you're paired. `jaypost inbox` lists the bots in your inbox and `-b ALIAS` picks one.
 
 ## Discord setup
 

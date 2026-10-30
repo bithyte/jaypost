@@ -75,7 +75,7 @@ test('status prints the bot and pairing for a remote bot without install lines',
     resolved: bot('https://relay.example.com/team', 'work', {
       kind: 'token',
       token: KEY,
-      source: 'book',
+      source: 'inbox',
     }),
     install: { record: RECORD, target: { isRunning } as unknown as Target },
     fetchStatus,
@@ -107,7 +107,7 @@ test('status with no bot and no install says how to get one', async () => {
     resolved: {
       endpoint: {
         kind: 'invalid',
-        message: 'no bot to send to; run "jaypost service install" or "jaypost bots join"',
+        message: 'no bot to send to; run "jaypost service install" or "jaypost inbox join"',
       },
       token: NO_CLIENT_TOKEN,
       alias: undefined,
@@ -116,7 +116,7 @@ test('status with no bot and no install says how to get one', async () => {
     fetchStatus,
   })
   expect(await runStatus(deps)).toBe(1)
-  expect(out).toEqual(['No bot. Run "jaypost service install" or "jaypost bots join".'])
+  expect(out).toEqual(['No bot. Run "jaypost service install" or "jaypost inbox join".'])
   expect(fetchStatus).not.toHaveBeenCalled()
 })
 
@@ -125,14 +125,14 @@ test('status prints the message of an unresolvable bot and returns 1', async () 
     resolved: {
       endpoint: {
         kind: 'invalid',
-        message: 'no bot "x" in your contacts; known: a, b',
+        message: 'no bot "x" in your inbox; known: a, b',
       },
       token: NO_CLIENT_TOKEN,
       alias: undefined,
     },
   })
   expect(await runStatus(deps)).toBe(1)
-  expect(out).toEqual(['no bot "x" in your contacts; known: a, b'])
+  expect(out).toEqual(['no bot "x" in your inbox; known: a, b'])
 })
 
 test('status for a local bot that is not running returns 1 with the logs hint', async () => {
@@ -183,7 +183,7 @@ test('status returns 1 when the service rejects the key, never printing it', asy
     resolved: bot('http://127.0.0.1:9000/', 'local', {
       kind: 'token',
       token: KEY,
-      source: 'book',
+      source: 'inbox',
     }),
     fetchStatus: vi.fn(async () => UNAUTHORIZED_STATUS),
   })

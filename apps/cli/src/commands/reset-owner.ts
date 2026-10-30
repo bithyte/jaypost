@@ -3,7 +3,7 @@ import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
-import { findLocalSeedBot, readBook, resolveEnvToken } from '@jaypost/store'
+import { findLocalSeedBot, readInbox, resolveEnvToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
 import { openAdmin } from './admin-access.ts'
@@ -23,12 +23,12 @@ type PairingLookup =
   | { readonly kind: 'failed'; readonly message: string }
 
 /**
- * Key 1's token: the local seed bot's key in the book, else `JAYPOST_TOKEN`, so a shell set up for
- * another key doesn't pick the pairing. Throws when the book can't be read, never quoting a key.
+ * Key 1's token: the local seed bot's key in the inbox, else `JAYPOST_TOKEN`, so a shell set up for
+ * another key doesn't pick the pairing. Throws when the inbox can't be read, never quoting a key.
  */
-function resolveSeedToken(env: NodeJS.ProcessEnv, bookPath: string): ClientToken {
-  const key = findLocalSeedBot(readBook(bookPath))?.key
-  return key === undefined ? resolveEnvToken(env) : { kind: 'token', token: key, source: 'book' }
+function resolveSeedToken(env: NodeJS.ProcessEnv, inboxPath: string): ClientToken {
+  const key = findLocalSeedBot(readInbox(inboxPath))?.key
+  return key === undefined ? resolveEnvToken(env) : { kind: 'token', token: key, source: 'inbox' }
 }
 
 /**
@@ -55,7 +55,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const { record } = existing
   let seedToken: ClientToken
   try {
-    seedToken = resolveSeedToken(deps.env, deps.bookPath)
+    seedToken = resolveSeedToken(deps.env, deps.inboxPath)
   } catch (error) {
     print(error instanceof Error ? error.message : String(error))
     return 1

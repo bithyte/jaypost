@@ -5,8 +5,8 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { decodeInvite, readBook, writeBook } from '@jaypost/store'
-import type { Book } from '@jaypost/store'
+import { decodeInvite, readInbox, writeInbox } from '@jaypost/store'
+import type { Inbox } from '@jaypost/store'
 import { resolveInstallPaths } from '@jaypost/install'
 import type { Target, TargetName } from '@jaypost/install'
 import { runKeyCreate } from '../../src/commands/index.ts'
@@ -50,7 +50,7 @@ const KEY_LINES = [
 ].join('\n')
 
 let tmp: string
-let bookPath: string
+let inboxPath: string
 let server: Server
 let url: string
 let seen: string[]
@@ -59,7 +59,7 @@ let err: string[]
 
 beforeEach(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'key-cli-'))
-  bookPath = join(tmp, 'bots.json')
+  inboxPath = join(tmp, 'inbox.json')
   seen = []
   out = []
   err = []
@@ -106,7 +106,7 @@ function createPrompts(over: Partial<Prompts> = {}): Prompts {
   }
 }
 
-/** Deps whose book holds the fake service as remote `x`, picked with -s. */
+/** Deps whose inbox holds the fake service as remote `x`, picked with -s. */
 function createDeps(over: Partial<AdminDeps> = {}): AdminDeps {
   return {
     env: { HOME: tmp },
@@ -117,37 +117,37 @@ function createDeps(over: Partial<AdminDeps> = {}): AdminDeps {
     print: (text) => out.push(text),
     printError: (text) => err.push(text),
     fetchStatus: async () => UNREACHABLE_STATUS,
-    bookPath,
+    inboxPath,
     service: 'x',
     isInteractive: false,
     ...over,
   }
 }
 
-function writeRemoteBook(bots: Book['bots'] = []): Book {
-  const book: Book = {
+function writeRemoteInbox(bots: Inbox['bots'] = []): Inbox {
+  const inbox: Inbox = {
     version: 1,
     ...(bots[0] === undefined ? {} : { default: bots[0].alias }),
     remotes: [{ name: 'x', url, adminKey: ADMIN_KEY }],
     bots,
   }
-  writeBook(bookPath, book)
-  return book
+  writeInbox(inboxPath, inbox)
+  return inbox
 }
 
-test('key create prints the key and leaves the book alone', async () => {
-  const book = writeRemoteBook()
+test('key create prints the key and leaves the inbox alone', async () => {
+  const inbox = writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2' }, createDeps())).toBe(0)
   expect(out).toEqual([KEY_LINES])
   expect(err).toEqual([])
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test("key create --save stores the key under the bot's label", async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ sameAs: 'k1', save: true }, createDeps())).toBe(0)
-  expect(out).toEqual([KEY_LINES, 'Saved as "Work" in your contacts.'])
-  expect(readBook(bookPath)).toEqual({
+  expect(out).toEqual([KEY_LINES, 'Saved as "Work" in your inbox.'])
+  expect(readInbox(inboxPath)).toEqual({
     version: 1,
     default: 'Work',
     remotes: [{ name: 'x', url, adminKey: ADMIN_KEY }],
@@ -157,31 +157,31 @@ test("key create --save stores the key under the bot's label", async () => {
 })
 
 test("key create --save --pairing finds the pairing's bot before making the key", async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ pairing: 'p2', save: true }, createDeps())).toBe(0)
-  expect(out.at(-1)).toBe('Saved as "Work" in your contacts.')
+  expect(out.at(-1)).toBe('Saved as "Work" in your inbox.')
   expect(seen).toEqual(['GET /admin/pairings', 'GET /admin/bots', 'POST /admin/keys'])
 })
 
 test('key create --save for an unknown pairing fails before making a key', async () => {
-  const book = writeRemoteBook()
+  const inbox = writeRemoteInbox()
   expect(await runKeyCreate({ pairing: 'p9', save: true }, createDeps())).toBe(1)
   expect(err).toEqual(['unknown pairing "p9"'])
   expect(seen).toEqual(['GET /admin/pairings'])
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test('key create --save keeps a label with spaces and unicode as the alias', async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', save: true, as: 'Équipe ops 🚀' }, createDeps())).toBe(0)
-  expect(readBook(bookPath).bots).toEqual([{ alias: 'Équipe ops 🚀', url, key: KEY }])
+  expect(readInbox(inboxPath).bots).toEqual([{ alias: 'Équipe ops 🚀', url, key: KEY }])
 })
 
 test('key create --save --as uses the alias and keeps the default', async () => {
-  writeRemoteBook([{ alias: 'home', url: 'http://127.0.0.1:1/' }])
+  writeRemoteInbox([{ alias: 'home', url: 'http://127.0.0.1:1/' }])
   expect(await runKeyCreate({ bot: 'b2', save: true, as: 'ops' }, createDeps())).toBe(0)
-  expect(out.at(-1)).toBe('Saved as "ops" in your contacts.')
-  expect(readBook(bookPath)).toEqual(
+  expect(out.at(-1)).toBe('Saved as "ops" in your inbox.')
+  expect(readInbox(inboxPath)).toEqual(
     expect.objectContaining({
       default: 'home',
       bots: [
@@ -193,57 +193,57 @@ test('key create --save --as uses the alias and keeps the default', async () => 
 })
 
 test('key create --save --as fails off a terminal when the alias is taken', async () => {
-  const book = writeRemoteBook([{ alias: 'ops', url: 'http://127.0.0.1:1/' }])
+  const inbox = writeRemoteInbox([{ alias: 'ops', url: 'http://127.0.0.1:1/' }])
   expect(await runKeyCreate({ bot: 'b2', save: true, as: 'OPS' }, createDeps())).toBe(1)
   expect(err).toEqual(['a bot is already named "OPS"; pick another with --as'])
   expect(seen).toEqual([])
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test('key create --save asks before replacing an alias on a terminal', async () => {
-  writeRemoteBook([{ alias: 'Work', url: 'http://127.0.0.1:1/' }])
+  writeRemoteInbox([{ alias: 'Work', url: 'http://127.0.0.1:1/' }])
   const confirm = vi.fn(async () => true)
   const deps = createDeps({ isInteractive: true, prompt: createPrompts({ confirm }) })
   expect(await runKeyCreate({ bot: 'b2', save: true }, deps)).toBe(0)
-  expect(confirm).toHaveBeenCalledWith('Replace "Work" in your contacts?', false)
-  expect(readBook(bookPath).bots).toEqual([{ alias: 'Work', url, key: KEY }])
+  expect(confirm).toHaveBeenCalledWith('Replace "Work" in your inbox?', false)
+  expect(readInbox(inboxPath).bots).toEqual([{ alias: 'Work', url, key: KEY }])
 })
 
 test('key create --save off a terminal with a taken label makes no key and prints nothing', async () => {
-  const book = writeRemoteBook([{ alias: 'work', url: 'http://127.0.0.1:1/' }])
+  const inbox = writeRemoteInbox([{ alias: 'work', url: 'http://127.0.0.1:1/' }])
   expect(await runKeyCreate({ bot: 'b2', save: true }, createDeps())).toBe(1)
   expect(out).toEqual([])
   expect(err).toEqual(['a bot is already named "Work"; pick another with --as'])
   expect(seen).toEqual(['GET /admin/bots'])
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test('key create --save declined on a terminal makes no key', async () => {
-  const book = writeRemoteBook([{ alias: 'Work', url: 'http://127.0.0.1:1/' }])
+  const inbox = writeRemoteInbox([{ alias: 'Work', url: 'http://127.0.0.1:1/' }])
   const confirm = vi.fn(async () => false)
   const deps = createDeps({ isInteractive: true, prompt: createPrompts({ confirm }) })
   expect(await runKeyCreate({ bot: 'b2', save: true }, deps)).toBe(1)
   expect(err).toEqual(['Cancelled.'])
   expect(out).toEqual([])
   expect(seen).toEqual(['GET /admin/bots'])
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test('key create --save --json keeps stdout parseable', async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', save: true, json: true }, createDeps())).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual(CREATED)
   expect(err).toEqual([
     "This key isn't shown again; store it now.",
-    'Saved as "Work" in your contacts.',
+    'Saved as "Work" in your inbox.',
   ])
 })
 
 test('key create --invite prints a join line that decodes to the remote url and key', async () => {
-  const book = writeRemoteBook()
+  const inbox = writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', label: 'alice', invite: true }, createDeps())).toBe(0)
   const printed = out.join('\n')
-  const invite = /jaypost bots join (jpi_\S+)/.exec(printed)?.[1]
+  const invite = /jaypost inbox join (jpi_\S+)/.exec(printed)?.[1]
   if (invite === undefined) {
     throw new Error(`no invite printed: ${printed}`)
   }
@@ -252,7 +252,7 @@ test('key create --invite prints a join line that decodes to the remote url and 
     [
       'Send this to alice (it holds their key, send it privately):',
       '',
-      `  jaypost bots join ${invite}`,
+      `  jaypost inbox join ${invite}`,
       "This key isn't shown again; store it now.",
       'Pairing code: PAIR-2222',
       'Say PAIR2222 to workbot',
@@ -261,17 +261,17 @@ test('key create --invite prints a join line that decodes to the remote url and 
   ])
   expect(printed).not.toContain(KEY)
   expect(printed).not.toContain(ADMIN_KEY)
-  expect(readBook(bookPath)).toEqual(book)
+  expect(readInbox(inboxPath)).toEqual(inbox)
 })
 
 test('key create --invite without a label sends it to them', async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', invite: true }, createDeps())).toBe(0)
   expect(out[0]?.split('\n')[0]).toBe('Send this to them (it holds their key, send it privately):')
 })
 
 test('key create --invite --json adds the invite to the created key', async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', invite: true, json: true }, createDeps())).toBe(0)
   const created = JSON.parse(out.join('\n'))
   expect(created).toEqual({ ...CREATED, invite: expect.stringMatching(/^jpi_/) })
@@ -303,17 +303,17 @@ test('key create --invite against a loopback JAYPOST_URL fails', async () => {
 })
 
 test('key create takes at most one of --save and --invite, and --as only with --save', async () => {
-  writeRemoteBook()
+  writeRemoteInbox()
   expect(await runKeyCreate({ bot: 'b2', save: true, invite: true }, createDeps())).toBe(2)
   expect(await runKeyCreate({ bot: 'b2', as: 'ops' }, createDeps())).toBe(2)
   expect(err).toEqual(['give at most one of --save and --invite', 'give --as only with --save'])
   expect(seen).toEqual([])
 })
 
-test('key create --save with a corrupt book fails before creating the key', async () => {
-  writeFileSync(bookPath, '[]')
+test('key create --save with a corrupt inbox fails before creating the key', async () => {
+  writeFileSync(inboxPath, '[]')
   expect(await runKeyCreate({ bot: 'b2', save: true }, createDeps({ service: undefined }))).toBe(1)
-  expect(err).toEqual([`contact book ${JSON.stringify(bookPath)} isn't valid: (root)`])
+  expect(err).toEqual([`inbox ${JSON.stringify(inboxPath)} isn't valid: (root)`])
   expect(seen).toEqual([])
-  expect(readFileSync(bookPath, 'utf8')).toBe('[]')
+  expect(readFileSync(inboxPath, 'utf8')).toBe('[]')
 })

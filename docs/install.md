@@ -5,7 +5,7 @@ Create a bot first and have the token ready: with [@BotFather](https://t.me/BotF
 1. Detects which targets work here (Podman Quadlet, Docker Compose, systemd, launchd on macOS) and asks where the bot should run. The first usable one in that order is the default (launchd is first on macOS). Or pass it: `service install quadlet`, `service install compose`, `service install systemd`, `service install launchd`. `--provider NAME` picks the chat app; `telegram` (the default) or `discord`.
 2. Asks for the bot token (input hidden) and checks it with the chat app. Port is 8787; use `--port N` to change it. It refuses a port that's already in use.
 3. Makes an API token. It asks first if you're upgrading an install that has none; `--token` and `--no-token` skip the question. It reuses the install's saved token.
-4. Installs and starts the service, and saves it and its bot in your contact book (`~/.config/jaypost/bots.json`, mode 0600). The bot becomes the default if the book has none.
+4. Installs and starts the service, and saves it and its bot in your inbox (`~/.config/jaypost/inbox.json`, mode 0600). The bot becomes the default if the inbox has none.
 5. Waits for pairing.
 
 `--exposed` makes the service listen on all interfaces over plain http instead of only this machine, and prints the `jaypost admin remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server).
@@ -40,7 +40,7 @@ If you downloaded the binary with a browser instead of curl, macOS may block it;
 
 `service install` copies the binary to `~/.local/bin/jaypost` and runs the service from there.
 
-Two things live under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `bots.json` is the client's contact book (mode 0600): every command that talks to a bot reads it, and nothing else there. `service/` belongs to the local service and its installer: `config.json`, `install.json`, `jaypost.db`, `admin-key`, and the `compose/` and `quadlet/` folders below. `install.json` records which target is installed, its port and version; it's what `status`, `pair reset-owner` and `service uninstall` read. The service's own copy of the API token goes in the target's `.env` or in `config.json` as listed below.
+Two things live under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `inbox.json` is the client's inbox (mode 0600): every command that talks to a bot reads it, and nothing else there. `service/` belongs to the local service and its installer: `config.json`, `install.json`, `jaypost.db`, `admin-key`, and the `compose/` and `quadlet/` folders below. `install.json` records which target is installed, its port and version; it's what `status`, `pair reset-owner` and `service uninstall` read. The service's own copy of the API token goes in the target's `.env` or in `config.json` as listed below.
 
 ## Podman Quadlet
 
@@ -98,7 +98,7 @@ Logs: `tail -f ~/Library/Logs/jaypost/jaypost.log`. They aren't rotated.
 
 ## Config
 
-Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/service/config.json`, else `~/.config/jaypost/service/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. Clients read `JAYPOST_TOKEN` too; without it they use the key in the contact book. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
+Config is read from `$JAYPOST_CONFIG`, else `$XDG_CONFIG_HOME/jaypost/service/config.json`, else `~/.config/jaypost/service/config.json`. The env vars `JAYPOST_PROVIDER`, `JAYPOST_BOT_TOKEN`, `JAYPOST_OWNER_ID`, `JAYPOST_PORT`, `JAYPOST_HOST` and `JAYPOST_TOKEN` override the file. `apiToken` in the file (or `JAYPOST_TOKEN`) is the token the service requires; without either, the API is open. Clients read `JAYPOST_TOKEN` too; without it they use the key in the inbox. `JAYPOST_PROVIDER` picks the chat app and defaults to `telegram`, and `discord` is the other. `JAYPOST_HOST` defaults to `127.0.0.1` (the container targets set `0.0.0.0` inside the container and publish only on `127.0.0.1`).
 
 The service keeps its bots, pairings and API keys in `jaypost.db` next to the config file (the data volume for containers), along with pending requests and the question log. The env vars and `config.json` only seed the first bot, pairing and key when the registry is empty; after that, change things with `jaypost admin bot`, `admin key` and `admin pairing` (see [Hosting](hosting.md)). Running `service install` again with a new bot token or settings re-seeds the first bot; the same values change nothing.
 
@@ -110,13 +110,13 @@ Only one instance can run per bot token; on Telegram two would fight over the up
 
 Earlier versions used `npm run onboard` and `deploy/install-service.sh`. `service install` recognizes that systemd unit as a legacy install, offers to replace it, and reuses the bot token and owner from the existing config. Stop any hand-run Docker container using the same bot token first. The old config file is kept and reused if you pick the systemd target.
 
-Re-running `service install` on an install without an API token asks whether to add one (default yes). Once it's on, curl, n8n and container callers get a 401 until they send `authorization: Bearer <token>`; the CLI, `mcp` and the Node client pick it up on their own from the contact book.
+Re-running `service install` on an install without an API token asks whether to add one (default yes). Once it's on, curl, n8n and container callers get a 401 until they send `authorization: Bearer <token>`; the CLI, `mcp` and the Node client pick it up on their own from the inbox.
 
-## Upgrading to the contact book
+## Upgrading to the inbox
 
-The CLI regrouped its commands and keeps the client's keys in a contact book. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin`, and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
+The CLI regrouped its commands and keeps the client's keys in an inbox. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin`, and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
 
-There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `bots.json`. `jaypost service update` doesn't write the book. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `service update` or `service install` rewrites the unit. An older CLI's `jaypost update` gets the new CLI onto the machine but can't finish, so run `jaypost service update` after it.
+There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `inbox.json`. `jaypost service update` doesn't write the inbox. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `service update` or `service install` rewrites the unit. An older CLI's `jaypost update` gets the new CLI onto the machine but can't finish, so run `jaypost service update` after it.
 
 A container install from before this release isn't detected by `service install`; stop or remove the old container first, or the new install fails with "Port 8787 is in use".
 
@@ -127,4 +127,4 @@ jaypost is the new name of `telegram-ask`. It doesn't read the old config, token
 1. Remove the old service with `telegram-ask uninstall`. Both default to port 8787, so jaypost can't start while the old one runs.
 2. Run `jaypost service install`. You can give it the same Telegram bot token, then pair again.
 3. Change `telegram-ask` to `jaypost` in your Claude Code hook and MCP configs.
-4. Clients now read `JAYPOST_TOKEN`, or the contact book at `~/.config/jaypost/bots.json`. Update scripts and containers that pass `TELEGRAM_ASK_TOKEN`.
+4. Clients now read `JAYPOST_TOKEN`, or the inbox at `~/.config/jaypost/inbox.json`. Update scripts and containers that pass `TELEGRAM_ASK_TOKEN`.

@@ -1,15 +1,15 @@
 import { AdminCaller, describeEndpoint } from '@jaypost/client'
 import {
   parseToken,
-  readBook,
+  readInbox,
   removeRemote,
   saveRemote,
   toServiceUrl,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
-import type { Book } from '@jaypost/store'
+import type { Inbox } from '@jaypost/store'
 import { formatTable } from './admin.ts'
-import type { BookDeps } from './types.ts'
+import type { InboxDeps } from './types.ts'
 
 /** What `remote add` takes; `adminKey` is checked against the service and never printed. */
 type RemoteAddArgs = {
@@ -26,7 +26,7 @@ type RemoteAddArgs = {
  */
 export async function runRemoteAdd(
   args: RemoteAddArgs,
-  deps: BookDeps & { readonly fetchTimeoutMs?: number },
+  deps: InboxDeps & { readonly fetchTimeoutMs?: number },
 ): Promise<number> {
   const serviceUrl = toServiceUrl(args.url)
   if (serviceUrl === undefined) {
@@ -38,12 +38,12 @@ export async function runRemoteAdd(
     deps.printError("that isn't a valid admin key")
     return 1
   }
-  const book = loadBook(deps)
-  if (book === undefined) {
+  const inbox = loadInbox(deps)
+  if (inbox === undefined) {
     return 1
   }
   // By name only, as saveRemote matches; findRemote would also match another remote's host.
-  if (book.remotes.some((remote) => remote.name.toLowerCase() === args.name.toLowerCase())) {
+  if (inbox.remotes.some((remote) => remote.name.toLowerCase() === args.name.toLowerCase())) {
     if (!deps.isInteractive) {
       deps.printError(`a remote is already named "${args.name}"`)
       return 1
@@ -64,50 +64,50 @@ export async function runRemoteAdd(
     deps.printError(checked.message)
     return 1
   }
-  writeBook(deps.bookPath, saveRemote(book, { name: args.name, url: serviceUrl, adminKey }))
+  writeInbox(deps.inboxPath, saveRemote(inbox, { name: args.name, url: serviceUrl, adminKey }))
   deps.print(`Added remote "${args.name}" (${describeEndpoint(url)}).`)
   return 0
 }
 
 /** Drops a remote; bots on its url stay. Returns the exit code. */
-export function runRemoteRemove(args: { readonly name: string }, deps: BookDeps): Promise<number> {
-  const book = loadBook(deps)
-  if (book === undefined) {
+export function runRemoteRemove(args: { readonly name: string }, deps: InboxDeps): Promise<number> {
+  const inbox = loadInbox(deps)
+  if (inbox === undefined) {
     return Promise.resolve(1)
   }
-  const change = removeRemote(book, args.name)
+  const change = removeRemote(inbox, args.name)
   if (change.kind === 'failed') {
     deps.printError(change.message)
     return Promise.resolve(1)
   }
-  writeBook(deps.bookPath, change.book)
+  writeInbox(deps.inboxPath, change.inbox)
   deps.print(`Removed remote "${args.name}".`)
   return Promise.resolve(0)
 }
 
 /** Prints each remote's name and url, never its admin key. Returns the exit code. */
-export function runRemoteList(deps: BookDeps): Promise<number> {
-  const book = loadBook(deps)
-  if (book === undefined) {
+export function runRemoteList(deps: InboxDeps): Promise<number> {
+  const inbox = loadInbox(deps)
+  if (inbox === undefined) {
     return Promise.resolve(1)
   }
-  if (book.remotes.length === 0) {
+  if (inbox.remotes.length === 0) {
     deps.print('No remotes.')
     return Promise.resolve(0)
   }
   deps.print(
     formatTable(
       ['NAME', 'URL'],
-      book.remotes.map((remote) => [remote.name, remote.url]),
+      inbox.remotes.map((remote) => [remote.name, remote.url]),
     ),
   )
   return Promise.resolve(0)
 }
 
-// A corrupt book is reported, not thrown; its message names the file, never a value.
-export function loadBook(deps: BookDeps): Book | undefined {
+// A corrupt inbox is reported, not thrown; its message names the file, never a value.
+export function loadInbox(deps: InboxDeps): Inbox | undefined {
   try {
-    return readBook(deps.bookPath)
+    return readInbox(deps.inboxPath)
   } catch (error) {
     deps.printError(error instanceof Error ? error.message : String(error))
     return undefined

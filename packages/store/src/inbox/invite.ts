@@ -11,7 +11,7 @@ export function encodeInvite(invite: Invite): string {
 
 /**
  * The invite in `raw`, or undefined when it is truncated, has another prefix or version, or carries
- * a bad url or key. Trims and strips a pasted `jaypost bots join `. Never throws.
+ * a bad url or key. Trims and strips a pasted `jaypost inbox join `. Never throws.
  */
 export function decodeInvite(raw: string): Invite | undefined {
   let text = raw.trim()

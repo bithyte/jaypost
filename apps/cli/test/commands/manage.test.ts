@@ -10,11 +10,11 @@ import {
   NO_CLIENT_TOKEN,
   openDatabase,
   RegistryStore,
-  readBook,
+  readInbox,
   resolveDatabasePath,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
-import type { Book, Registry } from '@jaypost/store'
+import type { Inbox, Registry } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import {
   LOCAL_KEY_REJECTED_MESSAGE,
@@ -44,7 +44,7 @@ type Mutable<T> = { -readonly [K in keyof T]: T[K] }
 
 let tmp: string
 let paths: InstallPaths
-let bookPath: string
+let inboxPath: string
 let order: string[]
 let out: string[]
 let recording = createRecordingProgress()
@@ -66,7 +66,7 @@ function notes(): string[] {
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'manage-'))
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
-  bookPath = join(tmp, 'cfg', 'jaypost', 'bots.json')
+  inboxPath = join(tmp, 'cfg', 'jaypost', 'inbox.json')
   order = []
   out = []
   recording = createRecordingProgress()
@@ -123,8 +123,8 @@ const INVITE = JSON.stringify({
 })
 const LOCAL_URL = 'http://127.0.0.1:9000/'
 
-/** A book with the local install on port 9000, its seed bot and a hosted bot. */
-function localBook(over: Partial<Book> = {}): Book {
+/** An inbox with the local install on port 9000, its seed bot and a hosted bot. */
+function localInbox(over: Partial<Inbox> = {}): Inbox {
   return {
     version: 1,
     default: 'local',
@@ -153,7 +153,7 @@ function base(over = {}) {
     print: (s: string) => out.push(s),
     progress: recording.progress,
     confirm: vi.fn(async () => true),
-    bookPath,
+    inboxPath,
     fetchStatus: vi.fn(async (): Promise<StatusFetch> => PAIRED_K1),
     sleep: vi.fn(async () => {}),
     ...over,
@@ -186,11 +186,11 @@ test('uninstall passes purge answer through and removes install.json', async () 
   }
 })
 
-test('service uninstall removes local and its bots from the book and names the new default', async () => {
+test('service uninstall removes local and its bots from the inbox and names the new default', async () => {
   seed()
-  writeBook(bookPath, localBook())
+  writeInbox(inboxPath, localInbox())
   expect(await runUninstall(base())).toBe(0)
-  expect(readBook(bookPath)).toEqual({
+  expect(readInbox(inboxPath)).toEqual({
     version: 1,
     default: 'work',
     remotes: [],
@@ -204,23 +204,23 @@ test('service uninstall removes local and its bots from the book and names the n
 
 test('service uninstall keeps a default on another service without naming it', async () => {
   seed()
-  writeBook(bookPath, localBook({ default: 'work' }))
+  writeInbox(inboxPath, localInbox({ default: 'work' }))
   expect(await runUninstall(base())).toBe(0)
-  expect(readBook(bookPath).default).toBe('work')
+  expect(readInbox(inboxPath).default).toBe('work')
   expect(notes()).not.toContain('Default bot is now "work".')
 })
 
-test('service uninstall with a corrupt book still removes the service and says why', async () => {
+test('service uninstall with a corrupt inbox still removes the service and says why', async () => {
   seed()
   mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
-  writeFileSync(bookPath, '{nope')
+  writeFileSync(inboxPath, '{nope')
   const d = base()
   expect(await runUninstall(d)).toBe(0)
   expect(d.targets.systemd.remove).toHaveBeenCalled()
   expect(notes()).toContain(
-    `Couldn't update the contact book: contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`,
+    `Couldn't update the inbox: inbox ${JSON.stringify(inboxPath)} isn't valid: not JSON`,
   )
-  expect(readFileSync(bookPath, 'utf8')).toBe('{nope')
+  expect(readFileSync(inboxPath, 'utf8')).toBe('{nope')
 })
 
 test('uninstall works on legacy install', async () => {
@@ -448,7 +448,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
     seen.push(await defaultFetchStatus(options.url, options.token))
     return 'paired' as const
   })
-  writeBook(bookPath, {
+  writeInbox(inboxPath, {
     version: 1,
     default: 'local',
     local: { url: `http://127.0.0.1:${port}/` },
@@ -865,7 +865,7 @@ test('reset-owner keeps the owner when the admin call fails after a stopped serv
 test("reset-owner uses the local seed bot's key over JAYPOST_TOKEN", async () => {
   const { port } = await seedResetStub()
   const envToken = 'E'.repeat(43)
-  writeBook(bookPath, {
+  writeInbox(inboxPath, {
     version: 1,
     local: { url: `http://127.0.0.1:${port}/` },
     remotes: [],
@@ -880,7 +880,7 @@ test("reset-owner uses the local seed bot's key over JAYPOST_TOKEN", async () =>
   expect(d.wait).toHaveBeenCalledWith(expect.objectContaining({ token: TOKEN }))
 })
 
-test('reset-owner falls back to JAYPOST_TOKEN when the book has no local seed key', async () => {
+test('reset-owner falls back to JAYPOST_TOKEN when the inbox has no local seed key', async () => {
   const { port } = await seedResetStub()
   const envToken = 'E'.repeat(43)
   const d = resetDeps({ env: { JAYPOST_TOKEN: envToken } })
@@ -888,12 +888,12 @@ test('reset-owner falls back to JAYPOST_TOKEN when the book has no local seed ke
   expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), envToken)
 })
 
-test('reset-owner with a corrupt book fails before prompting', async () => {
+test('reset-owner with a corrupt inbox fails before prompting', async () => {
   await seedResetStub()
   mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
-  writeFileSync(bookPath, '{nope')
+  writeFileSync(inboxPath, '{nope')
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(1)
-  expect(notes()).toEqual([`contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`])
+  expect(notes()).toEqual([`inbox ${JSON.stringify(inboxPath)} isn't valid: not JSON`])
   expect(d.confirm).not.toHaveBeenCalled()
 })

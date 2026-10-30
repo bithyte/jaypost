@@ -7,14 +7,14 @@ import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   loadSeed,
   openDatabase,
-  readBook,
+  readInbox,
   RegistryStore,
   resolveAdminKeyPath,
   resolveDatabasePath,
   writeAdminKeyFile,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
-import type { BookRemote, Registry } from '@jaypost/store'
+import type { InboxRemote, Registry } from '@jaypost/store'
 import { ADMIN_KEY_REJECTED_MESSAGE } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -47,7 +47,7 @@ const CODES = ['PAIR2222', 'PAIR3333', 'PAIR4444']
 const PROVIDERS = [createPairingFakeProvider(), createFakeProvider()] as const
 
 let tmp: string
-let bookPath: string
+let inboxPath: string
 let paths: InstallPaths
 let out: string[]
 let err: string[]
@@ -55,7 +55,7 @@ let running: RunningService | undefined
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'admin-cli-'))
-  bookPath = join(tmp, 'bots.json')
+  inboxPath = join(tmp, 'inbox.json')
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   out = []
   err = []
@@ -168,20 +168,20 @@ function createDeps(env: NodeJS.ProcessEnv, over: Partial<AdminDeps> = {}): Admi
     printError: (text) => err.push(text),
     fetchStatus: vi.fn<FetchStatus>(async () => UNREACHABLE_STATUS),
     now: () => new Date('2026-10-26T12:00:00Z'),
-    bookPath,
+    inboxPath,
     service: undefined,
     isInteractive: false,
     ...over,
   }
 }
 
-/** A book holding only `remotes`. */
-function writeRemotes(...remotes: readonly BookRemote[]): void {
-  writeBook(bookPath, { version: 1, remotes, bots: [] })
+/** An inbox holding only `remotes`. */
+function writeRemotes(...remotes: readonly InboxRemote[]): void {
+  writeInbox(inboxPath, { version: 1, remotes, bots: [] })
 }
 
 /** `started` as a remote named `name`. */
-function remoteOf(name: string, started: Started): BookRemote {
+function remoteOf(name: string, started: Started): InboxRemote {
   return { name, url: `http://127.0.0.1:${started.port}/`, adminKey: started.adminKey }
 }
 
@@ -693,18 +693,18 @@ test('admin -s with no remotes says how to add one', async () => {
   expect(err).toEqual(['no remote "x"; add one with "jaypost admin remote add"'])
 })
 
-test('admin without -s uses the local install and saves its admin key to the book', async () => {
+test('admin without -s uses the local install and saves its admin key to the inbox', async () => {
   const started = await start()
   writeRemotes({ name: 'other', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'o'.repeat(43)}` })
   writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
   const quadlet = fakeTarget('quadlet', async () => started.adminKey)
   const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
   expect(await runBotList({}, deps)).toBe(0)
-  expect(readBook(bookPath).local).toEqual({
+  expect(readInbox(inboxPath).local).toEqual({
     url: `http://127.0.0.1:${started.port}/`,
     adminKey: started.adminKey,
   })
-  expect(statSync(bookPath).mode & 0o777).toBe(0o600)
+  expect(statSync(inboxPath).mode & 0o777).toBe(0o600)
   expect(await runBotList({}, deps)).toBe(0)
   expect(quadlet.readAdminKey).toHaveBeenCalledTimes(1)
   expect(err).toEqual([])
@@ -726,11 +726,11 @@ test('admin without -s and two remotes asks for -s', async () => {
   expect(err).toEqual(['several remotes; pick one with -s: a, b'])
 })
 
-test('admin with a corrupt book fails naming it and leaves it alone', async () => {
-  writeFileSync(bookPath, '{not json')
+test('admin with a corrupt inbox fails naming it and leaves it alone', async () => {
+  writeFileSync(inboxPath, '{not json')
   expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
-  expect(err).toEqual([`contact book ${JSON.stringify(bookPath)} isn't valid: not JSON`])
-  expect(readFileSync(bookPath, 'utf8')).toBe('{not json')
+  expect(err).toEqual([`inbox ${JSON.stringify(inboxPath)} isn't valid: not JSON`])
+  expect(readFileSync(inboxPath, 'utf8')).toBe('{not json')
 })
 
 test('admin rotate-key writes the new key to the named remote', async () => {
@@ -738,22 +738,22 @@ test('admin rotate-key writes the new key to the named remote', async () => {
   writeRemotes(remoteOf('x', started))
   const deps = createDeps({ HOME: tmp }, { service: 'x' })
   expect(await runAdminKeyRotate({}, deps)).toBe(0)
-  const saved = readBook(bookPath).remotes[0]?.adminKey
+  const saved = readInbox(inboxPath).remotes[0]?.adminKey
   expect(saved).toMatch(/^jpa_/)
   expect(saved).not.toBe(started.adminKey)
   expect(out).toEqual([`New admin key: ${saved}`])
-  expect(err).toEqual(['The old admin key stopped working. Saved the new one in your contacts.'])
+  expect(err).toEqual(['The old admin key stopped working. Saved the new one in your inbox.'])
   expect(await runBotList({}, deps)).toBe(0)
 })
 
-test('admin rotate-key on the local install writes the new key to the book', async () => {
+test('admin rotate-key on the local install writes the new key to the inbox', async () => {
   const started = await start()
   writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
   const quadlet = fakeTarget('quadlet', async () => started.adminKey)
   const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
   expect(await runAdminKeyRotate({ json: true }, deps)).toBe(0)
   const { adminKey } = JSON.parse(out.join('\n'))
-  expect(readBook(bookPath).local).toEqual({
+  expect(readInbox(inboxPath).local).toEqual({
     url: `http://127.0.0.1:${started.port}/`,
     adminKey,
   })
@@ -774,7 +774,7 @@ test('a rejected remote admin key says to run remote add again, without a key', 
 test('a rejected saved local admin key says to run service install again', async () => {
   const started = await start()
   const wrong = `jpa_${'z'.repeat(43)}`
-  writeBook(bookPath, {
+  writeInbox(inboxPath, {
     version: 1,
     local: { url: `http://127.0.0.1:${started.port}/`, adminKey: wrong },
     remotes: [],

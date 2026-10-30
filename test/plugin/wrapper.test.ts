@@ -284,7 +284,7 @@ test('session start against the real cli reports a stopped service', async () =>
   const botPort = await freePort()
   await mkdir(join(configHome, 'jaypost'), { recursive: true })
   await writeFile(
-    join(configHome, 'jaypost', 'bots.json'),
+    join(configHome, 'jaypost', 'inbox.json'),
     JSON.stringify({
       version: 1,
       default: 'home',

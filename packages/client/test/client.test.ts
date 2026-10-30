@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { NO_AUTH, resolveBookPath, writeBook } from '@jaypost/store'
+import { NO_AUTH, resolveInboxPath, writeInbox } from '@jaypost/store'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import type { ApprovalRequest, NotifyRequest, RequestResult } from '@jaypost/core'
 import {
@@ -300,7 +300,7 @@ test('the token file is no longer consulted', async () => {
 
 test('Client with bot sends that bot key as the bearer token', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
-  writeBook(resolveBookPath(process.env), {
+  writeInbox(resolveInboxPath(process.env), {
     version: 1,
     remotes: [],
     bots: [{ alias: 'pal', url: `http://127.0.0.1:${port}/`, key: SECOND }],
@@ -312,14 +312,14 @@ test('Client with bot sends that bot key as the bearer token', async () => {
 
 test('Client with an unknown bot fails by name and sends nothing', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
-  writeBook(resolveBookPath(process.env), {
+  writeInbox(resolveInboxPath(process.env), {
     version: 1,
     remotes: [],
     bots: [{ alias: 'pal', url: `http://127.0.0.1:${port}/`, key: SECOND }],
   })
   const error = await new Client({ bot: 'ghost' }).notify({ text: 'x' }).catch((e: unknown) => e)
   expect(error).toBeInstanceOf(JaypostError)
-  expect(error).toHaveProperty('message', 'no bot "ghost" in your contacts; known: pal')
+  expect(error).toHaveProperty('message', 'no bot "ghost" in your inbox; known: pal')
   expect(seen.url).toBeUndefined()
 })
 

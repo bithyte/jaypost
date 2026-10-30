@@ -2,10 +2,10 @@ import {
   ADMIN_KEY_ENV_VAR,
   findEnvValue,
   findRemote,
-  readBook,
+  readInbox,
   resolveConfigPath,
   saveRemote,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
 import { readAdminKeyFile } from '@jaypost/install'
 import type { AdminResult } from '@jaypost/client'
@@ -82,8 +82,8 @@ export async function runAdminCommand(
 }
 
 /**
- * Asks the service for a new admin key, prints it and writes it to the book entry it went through
- * (`local` for the install, or the named remote). With `JAYPOST_URL` the book stays as it is and
+ * Asks the service for a new admin key, prints it and writes it to the inbox entry it went through
+ * (`local` for the install, or the named remote). With `JAYPOST_URL` the inbox stays as it is and
  * the admin has to update `JAYPOST_ADMIN_KEY`.
  */
 export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promise<number> {
@@ -94,20 +94,20 @@ export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promi
       return 1
     }
     const result = await opened.caller.rotateAdminKey()
-    // Printed before the book write, so a failed write can't lose the only copy of the new key.
+    // Printed before the inbox write, so a failed write can't lose the only copy of the new key.
     const code = printResult(result, args, deps, (value) => `New admin key: ${value.adminKey}`)
     if (result.kind === 'failed') {
       return code
     }
     const { endpoint } = opened
-    saveRotatedKey(endpoint, result.value.adminKey, deps.bookPath)
+    saveRotatedKey(endpoint, result.value.adminKey, deps.inboxPath)
     if (args.json) {
       return code
     }
     const isSaved =
       endpoint.kind === 'remote' ? endpoint.name !== undefined : endpoint.install !== undefined
     if (isSaved) {
-      deps.printError('The old admin key stopped working. Saved the new one in your contacts.')
+      deps.printError('The old admin key stopped working. Saved the new one in your inbox.')
     } else if (endpoint.kind === 'local') {
       deps.printError(
         'The old admin key stopped working. The service saved the new one to its admin key file, where commands on this machine find it.',
@@ -126,21 +126,21 @@ export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promi
 }
 
 /**
- * Writes `adminKey` to the book entry `endpoint` came from: the named remote, or `local` for the
- * install. `JAYPOST_URL` and a service run by hand have no entry, so the book stays as it is.
+ * Writes `adminKey` to the inbox entry `endpoint` came from: the named remote, or `local` for the
+ * install. `JAYPOST_URL` and a service run by hand have no entry, so the inbox stays as it is.
  */
-function saveRotatedKey(endpoint: ReachableEndpoint, adminKey: string, bookPath: string): void {
-  const book = readBook(bookPath)
+function saveRotatedKey(endpoint: ReachableEndpoint, adminKey: string, inboxPath: string): void {
+  const inbox = readInbox(inboxPath)
   if (endpoint.kind === 'remote') {
-    const remote = endpoint.name === undefined ? undefined : findRemote(book, endpoint.name)
+    const remote = endpoint.name === undefined ? undefined : findRemote(inbox, endpoint.name)
     if (remote !== undefined) {
-      writeBook(bookPath, saveRemote(book, { ...remote, adminKey }))
+      writeInbox(inboxPath, saveRemote(inbox, { ...remote, adminKey }))
     }
     return
   }
   if (endpoint.install !== undefined) {
-    const url = book.local?.url ?? toLocalUrl(endpoint.port).href
-    writeBook(bookPath, { ...book, local: { url, adminKey } })
+    const url = inbox.local?.url ?? toLocalUrl(endpoint.port).href
+    writeInbox(inboxPath, { ...inbox, local: { url, adminKey } })
   }
 }
 

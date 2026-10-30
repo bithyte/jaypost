@@ -1,4 +1,4 @@
-import type { Book, ClientToken, Exec } from '@jaypost/store'
+import type { Inbox, ClientToken, Exec } from '@jaypost/store'
 import type { AdminCaller, AttachmentSource, ResolvedBot, ServiceEndpoint } from '@jaypost/client'
 import type {
   MessageFormat,
@@ -30,9 +30,9 @@ export type Prompts = {
   ) => Promise<T>
 }
 
-/** What the contact book commands touch outside themselves, injected for tests. */
-export type BookDeps = {
-  readonly bookPath: string
+/** What the inbox commands touch outside themselves, injected for tests. */
+export type InboxDeps = {
+  readonly inboxPath: string
   readonly prompt: Prompts
   /** True on a terminal; only then may a command ask before overwriting. */
   readonly isInteractive: boolean
@@ -118,8 +118,8 @@ export type InitDeps = {
   readonly platform?: string
   /** IANA zone passed to container installs as `TZ`; omitted when unknown. */
   readonly timeZone?: string
-  /** The contact book; gets the local service and its seed bot. */
-  readonly bookPath: string
+  /** The inbox; gets the local service and its seed bot. */
+  readonly inboxPath: string
   /** This machine's name (`os.hostname()`), for the `remote add` line `--exposed` prints. */
   readonly hostname: string
 }
@@ -147,8 +147,8 @@ export type ResetOwnerDeps = {
   readonly wait: WaitForPairing
   readonly progress: Progress
   readonly signal?: AbortSignal
-  /** The contact book; the local seed bot's key is key 1's token, whose /status names the pairing. */
-  readonly bookPath: string
+  /** The inbox; the local seed bot's key is key 1's token, whose /status names the pairing. */
+  readonly inboxPath: string
   readonly fetchStatus: FetchStatus
   /** Delay between /status polls while the service starts; defaults to an abortable timer. */
   readonly sleep?: (delayMs: number) => Promise<void>
@@ -188,8 +188,8 @@ export type UninstallDeps = {
   readonly confirm: Prompts['confirm']
   readonly progress: Progress
   readonly signal?: AbortSignal
-  /** The contact book; loses the local service and its bots. */
-  readonly bookPath: string
+  /** The inbox; loses the local service and its bots. */
+  readonly inboxPath: string
 }
 
 /** Everything `runServiceStart` and `runServiceStop` touch outside themselves, injected for tests. */
@@ -361,14 +361,14 @@ export type AdminKeyLookup =
   | { readonly kind: 'missing'; readonly message: string }
 
 /**
- * Where the admin commands send their calls: a remote from the book or `JAYPOST_URL` (its key from
+ * Where the admin commands send their calls: a remote from the inbox or `JAYPOST_URL` (its key from
  * `JAYPOST_ADMIN_KEY`), or the service on this machine (an install, or none with the config's
  * port), or why none works.
  */
 export type AdminEndpoint =
   | {
       readonly kind: 'remote'
-      /** The book's name for the remote; undefined for `JAYPOST_URL`. */
+      /** The inbox's name for the remote; undefined for `JAYPOST_URL`. */
       readonly name: string | undefined
       readonly endpoint: ServiceEndpoint
       readonly adminKey: AdminKeyLookup
@@ -408,9 +408,9 @@ export type OpenedAdmin =
     }
   | { readonly kind: 'failed'; readonly message: string }
 
-/** The contact book, or why it can't be read (the message names the file, never a value). */
-export type LoadedBook =
-  | { readonly kind: 'loaded'; readonly book: Book }
+/** The inbox, or why it can't be read (the message names the file, never a value). */
+export type LoadedInbox =
+  | { readonly kind: 'loaded'; readonly inbox: Inbox }
   | { readonly kind: 'failed'; readonly message: string }
 
 /** Everything the admin commands touch outside themselves, injected for tests. */
@@ -430,11 +430,11 @@ export type AdminDeps = {
   /** Defaults to the current time; stamps a bot `bot add` writes straight to the registry. */
   readonly now?: () => Date
   readonly signal?: AbortSignal
-  /** The contact book: remotes, the local admin key, and where `key create --save` writes. */
-  readonly bookPath: string
+  /** The inbox: remotes, the local admin key, and where `key create --save` writes. */
+  readonly inboxPath: string
   /** The remote `-s` names; undefined picks the target as `openAdmin` describes. */
   readonly service: string | undefined
-  /** True on a terminal; only then may a command ask before replacing a book entry. */
+  /** True on a terminal; only then may a command ask before replacing an inbox entry. */
   readonly isInteractive: boolean
 }
 
@@ -465,11 +465,11 @@ export type KeyCreateArgs = AdminOutputArgs & {
   readonly sameAs?: string
   readonly label?: string
   readonly externalId?: string
-  /** Also save the key to this machine's book as a bot. */
+  /** Also save the key to this machine's inbox as a bot. */
   readonly save?: boolean
   /** The alias `save` uses instead of the bot's label, display name or id. */
   readonly as?: string
-  /** Print a `jaypost bots join` line for the person instead of the bare key; remotes only. */
+  /** Print a `jaypost inbox join` line for the person instead of the bare key; remotes only. */
   readonly invite?: boolean
 }
 

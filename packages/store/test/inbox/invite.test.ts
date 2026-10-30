@@ -1,5 +1,5 @@
 import { expect, test } from 'vite-plus/test'
-import { decodeInvite, encodeInvite } from '../../src/book/index.ts'
+import { decodeInvite, encodeInvite } from '../../src/inbox/index.ts'
 
 const KEY = `jpk_${'a'.repeat(43)}`
 const INVITE = { url: 'https://bots.example/', key: KEY }
@@ -12,10 +12,10 @@ test('decodeInvite reads what encodeInvite wrote', () => {
   expect(decodeInvite(encodeInvite(INVITE))).toEqual(INVITE)
 })
 
-test('decodeInvite accepts surrounding whitespace and a pasted "jaypost bots join " prefix', () => {
+test('decodeInvite accepts surrounding whitespace and a pasted "jaypost inbox join " prefix', () => {
   const invite = encodeInvite(INVITE)
   expect(decodeInvite(`  ${invite}\n`)).toEqual(INVITE)
-  expect(decodeInvite(`jaypost bots join ${invite}`)).toEqual(INVITE)
+  expect(decodeInvite(`jaypost inbox join ${invite}`)).toEqual(INVITE)
 })
 
 test('decodeInvite rejects a truncated invite, another prefix, v 2, a bad url and a bad key', () => {

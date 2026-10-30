@@ -5,16 +5,16 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
-import { readBook, writeBook } from '@jaypost/store'
+import { readInbox, writeInbox } from '@jaypost/store'
 import { runRemoteAdd, runRemoteList, runRemoteRemove } from '../../src/commands/index.ts'
-import type { BookDeps } from '../../src/commands/index.ts'
+import type { InboxDeps } from '../../src/commands/index.ts'
 
 const ADMIN_KEY = 'jpa_fixtureAdminKey1234567890abcdefghijklmnop'
 
 let server: Server
 let baseUrl: string
 let status: number
-let bookPath: string
+let inboxPath: string
 let out: string[]
 let errors: string[]
 let confirmed: string[]
@@ -22,7 +22,7 @@ let answer: boolean
 
 beforeEach(async () => {
   status = 200
-  bookPath = join(mkdtempSync(join(tmpdir(), 'remote-')), 'bots.json')
+  inboxPath = join(mkdtempSync(join(tmpdir(), 'remote-')), 'inbox.json')
   out = []
   errors = []
   confirmed = []
@@ -44,9 +44,9 @@ afterEach(async () => {
   await new Promise((resolve) => server.close(resolve))
 })
 
-function deps(isInteractive = false): BookDeps {
+function deps(isInteractive = false): InboxDeps {
   return {
-    bookPath,
+    inboxPath,
     isInteractive,
     prompt: {
       confirm: async (message) => {
@@ -64,14 +64,16 @@ function deps(isInteractive = false): BookDeps {
 
 test('remote add checks the admin key and saves the remote', async () => {
   expect(await runRemoteAdd({ name: 'home', url: baseUrl, adminKey: ADMIN_KEY }, deps())).toBe(0)
-  expect(readBook(bookPath).remotes).toEqual([{ name: 'home', url: baseUrl, adminKey: ADMIN_KEY }])
+  expect(readInbox(inboxPath).remotes).toEqual([
+    { name: 'home', url: baseUrl, adminKey: ADMIN_KEY },
+  ])
   expect(out).toEqual([`Added remote "home" (${new URL(baseUrl).host}).`])
 })
 
 test('remote add saves nothing when the service rejects the admin key', async () => {
   status = 401
   expect(await runRemoteAdd({ name: 'home', url: baseUrl, adminKey: ADMIN_KEY }, deps())).toBe(1)
-  expect(existsSync(bookPath)).toBe(false)
+  expect(existsSync(inboxPath)).toBe(false)
   expect(errors).toHaveLength(1)
   expect(errors.join('\n')).not.toContain(ADMIN_KEY)
 })
@@ -80,7 +82,7 @@ test('remote add rejects a bad url and a bad key without echoing the key', async
   expect(await runRemoteAdd({ name: 'a', url: 'ftp://x', adminKey: ADMIN_KEY }, deps())).toBe(1)
   expect(await runRemoteAdd({ name: 'a', url: baseUrl, adminKey: 'not a key!' }, deps())).toBe(1)
   expect(errors).toEqual(['"ftp://x" isn\'t an http or https URL', "that isn't a valid admin key"])
-  expect(existsSync(bookPath)).toBe(false)
+  expect(existsSync(inboxPath)).toBe(false)
 })
 
 test('remote add of an existing name fails off a terminal', async () => {
@@ -88,28 +90,28 @@ test('remote add of an existing name fails off a terminal', async () => {
   expect(await runRemoteAdd(first, deps())).toBe(0)
   expect(await runRemoteAdd({ ...first, url: 'http://other.example/' }, deps())).toBe(1)
   expect(errors).toEqual(['a remote is already named "home"'])
-  expect(readBook(bookPath).remotes[0]?.url).toBe(baseUrl)
+  expect(readInbox(inboxPath).remotes[0]?.url).toBe(baseUrl)
 })
 
 test('remote add of an existing name asks on a terminal and replaces on yes', async () => {
   const first = { name: 'home', url: 'http://other.example/', adminKey: ADMIN_KEY }
-  writeBook(bookPath, { version: 1, remotes: [first], bots: [] })
+  writeInbox(inboxPath, { version: 1, remotes: [first], bots: [] })
   answer = false
   expect(await runRemoteAdd({ ...first, url: baseUrl }, deps(true))).toBe(1)
   expect(confirmed).toEqual(['Replace remote "home"?'])
-  expect(readBook(bookPath).remotes[0]?.url).toBe('http://other.example/')
+  expect(readInbox(inboxPath).remotes[0]?.url).toBe('http://other.example/')
   answer = true
   expect(await runRemoteAdd({ ...first, url: baseUrl }, deps(true))).toBe(0)
-  expect(readBook(bookPath).remotes[0]?.url).toBe(baseUrl)
+  expect(readInbox(inboxPath).remotes[0]?.url).toBe(baseUrl)
 })
 
 test('remote add with a name equal to another remote host:port adds, not replaces', async () => {
   const other = { name: 'home', url: baseUrl, adminKey: ADMIN_KEY }
-  writeBook(bookPath, { version: 1, remotes: [other], bots: [] })
+  writeInbox(inboxPath, { version: 1, remotes: [other], bots: [] })
   const hostName = new URL(baseUrl).host
   expect(await runRemoteAdd({ ...other, name: hostName }, deps())).toBe(0)
   expect(errors).toEqual([])
-  expect(readBook(bookPath).remotes.map((remote) => remote.name)).toEqual(['home', hostName])
+  expect(readInbox(inboxPath).remotes.map((remote) => remote.name)).toEqual(['home', hostName])
 })
 
 test('remote list shows names and urls but no admin key', async () => {
@@ -130,9 +132,9 @@ test('remote remove drops the remote', async () => {
   await runRemoteAdd({ name: 'home', url: baseUrl, adminKey: ADMIN_KEY }, deps())
   out.length = 0
   expect(await runRemoteRemove({ name: 'home' }, deps())).toBe(0)
-  expect(readBook(bookPath).remotes).toEqual([])
+  expect(readInbox(inboxPath).remotes).toEqual([])
   expect(out).toEqual(['Removed remote "home".'])
-  expect(readFileSync(bookPath, 'utf8')).not.toContain(ADMIN_KEY)
+  expect(readFileSync(inboxPath, 'utf8')).not.toContain(ADMIN_KEY)
 })
 
 test('remote remove of an unknown name fails', async () => {

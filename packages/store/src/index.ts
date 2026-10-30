@@ -28,11 +28,11 @@ export {
 } from './auth/index.ts'
 export type { ApiAuth, ClientToken } from './auth/index.ts'
 export {
-  BOOK_FILE_NAME,
-  BOOK_VERSION,
+  INBOX_FILE_NAME,
+  INBOX_VERSION,
   BOT_ENV_VAR,
   decodeInvite,
-  EMPTY_BOOK,
+  EMPTY_INBOX,
   encodeInvite,
   findBot,
   findLocalSeedBot,
@@ -40,9 +40,9 @@ export {
   INVITE_PREFIX,
   INVITE_VERSION,
   LOCAL_ALIAS,
-  readBook,
+  readInbox,
   resolveBotTarget,
-  removeBot as removeBookBot,
+  removeBot as removeInboxBot,
   removeLocal,
   removeRemote,
   renameBot,
@@ -51,17 +51,17 @@ export {
   setDefaultBot,
   setLocal,
   toServiceUrl,
-  writeBook,
-} from './book/index.ts'
+  writeInbox,
+} from './inbox/index.ts'
 export type {
-  Book,
-  BookBot,
-  BookChange,
+  Inbox,
+  InboxBot,
+  InboxChange,
   BotTarget,
-  BookLocal,
-  BookRemote,
+  InboxLocal,
+  InboxRemote,
   Invite,
-} from './book/index.ts'
+} from './inbox/index.ts'
 export {
   DATABASE_FILE_NAME,
   openDatabase,
@@ -82,7 +82,7 @@ export {
   resolveApiToken,
   RESERVED_CONFIG_KEYS,
   RESERVED_ENV_VARS,
-  resolveBookPath,
+  resolveInboxPath,
   resolveConfigDirectory,
   resolveConfigPath,
   resolveJaypostDirectory,

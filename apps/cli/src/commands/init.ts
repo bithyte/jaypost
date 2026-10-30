@@ -5,11 +5,11 @@ import {
   LOCAL_ALIAS,
   NO_AUTH,
   parseToken,
-  readBook,
+  readInbox,
   resolveAdminKeyPath,
   resolveConfigPath,
   setLocal,
-  writeBook,
+  writeInbox,
 } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import { describeUnauthorized } from '@jaypost/client'
@@ -110,7 +110,7 @@ function describeInstallStep(name: TargetName): string {
 /**
  * Installs or replaces the service and waits for pairing. Reuses the API token the replaced
  * install's service holds. Right after the install is recorded, saves the local service and its
- * seed bot to the contact book; once the wait returns, adds the admin key to it (a failure there
+ * seed bot to the inbox; once the wait returns, adds the admin key to it (a failure there
  * is only a note). Returns 0 on success or when the user declines, 1 on failure, 130 on interrupt;
  * error text is shown with known secrets and the API token masked.
  */
@@ -138,8 +138,8 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
   if (args.exposed === true) {
     print(EXPOSED_WARNING)
   }
-  // Read first, so a corrupt book fails the run before anything changes.
-  const savedBook = readBook(deps.bookPath)
+  // Read first, so a corrupt inbox fails the run before anything changes.
+  const savedInbox = readInbox(deps.inboxPath)
   const detected = await detectTargets(
     deps.targets,
     resolveTargetOrder(deps.platform ?? process.platform),
@@ -264,8 +264,8 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     seen.push(auth.token)
   }
   const url = toLocalUrl(port).href
-  const book = setLocal(
-    savedBook,
+  const inbox = setLocal(
+    savedInbox,
     { url },
     { alias: LOCAL_ALIAS, url, ...(auth.kind === 'token' ? { key: auth.token } : {}) },
   )
@@ -293,7 +293,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
       })
       writeInstall(deps.paths.installFile, record)
       // Before the pairing wait, so an interrupted run still leaves a usable entry.
-      writeBook(deps.bookPath, book)
+      writeInbox(deps.inboxPath, inbox)
       return record
     },
     {
@@ -315,7 +315,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     print('Done. Try it: jaypost ping')
     print('Check state: jaypost status')
     print(
-      `Your bot is saved as "${findLocalSeedBot(book)?.alias ?? LOCAL_ALIAS}" in ${deps.bookPath}.`,
+      `Your bot is saved as "${findLocalSeedBot(inbox)?.alias ?? LOCAL_ALIAS}" in ${deps.inboxPath}.`,
     )
     print(
       auth.kind === 'token'
@@ -349,7 +349,7 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
 }
 
 /**
- * Reads the admin key the installed service wrote and adds it to the book's local entry; returns
+ * Reads the admin key the installed service wrote and adds it to the inbox's local entry; returns
  * it, or undefined after a note saying why it couldn't (a failure here doesn't fail the install).
  */
 async function saveAdminKey(
@@ -361,12 +361,12 @@ async function saveAdminKey(
   try {
     const adminKey = await readAdminKey()
     seen.push(adminKey)
-    const book = readBook(deps.bookPath)
-    writeBook(deps.bookPath, { ...book, local: { url, adminKey } })
+    const inbox = readInbox(deps.inboxPath)
+    writeInbox(deps.inboxPath, { ...inbox, local: { url, adminKey } })
     return adminKey
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    deps.progress.note(`Couldn't save the admin key to the contact book: ${redact(message, seen)}`)
+    deps.progress.note(`Couldn't save the admin key to the inbox: ${redact(message, seen)}`)
     return undefined
   }
 }

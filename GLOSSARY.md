@@ -7,7 +7,7 @@ jaypost lets agents, scripts and CI ask a person a question or notify them on a 
 ### Who is reached, and how
 
 **Bot**:
-One chat app account (a Telegram bot, a Discord bot) the service runs.
+One chat app account (a Telegram bot, a Discord bot) the service runs. On the client, a bot in the inbox is how you reach one: an alias with a service url and an API key.
 _Avoid_: Provider (that's the chat app kind), runtime, account
 
 **Person**:
@@ -38,23 +38,19 @@ _Avoid_: Token (the pre-registry name, kept only for the seed key's `apiToken` a
 **Admin key**:
 The secret that manages bots, pairings and keys. It can't ask or notify.
 
-**Contact book**:
-The client's `bots.json` in `~/.config/jaypost/` (mode 0600): the contacts, the remotes and the local service's entry, with their keys. Every command that talks to a bot reads it unless `JAYPOST_URL` or `JAYPOST_TOKEN` is set.
-_Avoid_: Config, token file
-
-**Contact**:
-One entry of the contact book: an alias for one API key on one service. The CLI lists them under `jaypost bots` and picks one with `-b`.
-_Avoid_: Bot (that's the chat app account), profile
+**Inbox**:
+The client's `inbox.json` in `~/.config/jaypost/` (mode 0600): the bots you reach, the remotes and the local service's entry, with their keys. Each bot in it is an alias for one API key on one service; the CLI lists them under `jaypost inbox` and picks one with `-b`. Every command that talks to a bot reads it unless `JAYPOST_URL` or `JAYPOST_TOKEN` is set.
+_Avoid_: Contact book, contact, config, token file, profile
 
 **Local service**:
 The service installed on this machine by `jaypost service install`. Its files live in `~/.config/jaypost/service/`.
 
 **Remote**:
-A service on another machine that you administer, saved in the contact book with its admin key by `jaypost admin remote add`. Admin commands pick one with `-s`.
+A service on another machine that you administer, saved in the inbox with its admin key by `jaypost admin remote add`. Admin commands pick one with `-s`.
 _Avoid_: Server, host
 
 **Invite**:
-One line, `jaypost bots join jpi_...`, that carries a service url and an API key (never the admin key) for someone else's `bots join`. Made with `jaypost admin key create --invite` on a remote.
+One line, `jaypost inbox join jpi_...`, that carries a service url and an API key (never the admin key) for someone else's `inbox join`. Made with `jaypost admin key create --invite` on a remote.
 _Avoid_: Pairing code (that's what a person sends the bot), token
 
 ### Storage and the install

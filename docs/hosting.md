@@ -11,9 +11,9 @@ The pieces:
 
 There are no user accounts and no signup; the admin hands out keys.
 
-## Contacts
+## Inbox
 
-Your machine keeps a contact book, `~/.config/jaypost/bots.json` (mode 0600). A **contact** is an alias for one API key on one service, and `jaypost bots` lists them. A **remote** is a service you administer from this machine: a name, a url and its admin key, added with `jaypost admin remote add`. `jaypost service install` adds the local service, its first bot and its admin key for you. `jaypost bots join` adds a bot someone else runs. Commands that talk to a bot use the default contact, or `-b ALIAS`; admin commands use `-s NAME`. Keys never print in `bots` or `admin remote list`. See [Commands](commands.md).
+Your machine keeps an inbox, `~/.config/jaypost/inbox.json` (mode 0600). Each bot in it is an alias for one API key on one service, and `jaypost inbox` lists them. A **remote** is a service you administer from this machine: a name, a url and its admin key, added with `jaypost admin remote add`. `jaypost service install` adds the local service, its first bot and its admin key for you. `jaypost inbox join` adds a bot someone else runs. Commands that talk to a bot use the default bot, or `-b ALIAS`; admin commands use `-s NAME`. Keys never print in `inbox` or `admin remote list`. See [Commands](commands.md).
 
 ## A VM or server
 
@@ -37,7 +37,7 @@ That line holds the admin key. Run it there, and every admin command works from 
 jaypost admin bot list -s myvm
 ```
 
-With one remote and no local service, `-s` can be left out. Without `--exposed` the service listens on 127.0.0.1 only, and everything here works from the VM itself, where the CLI finds the local admin key in the contact book. To reach a service without a book, set `JAYPOST_URL` and `JAYPOST_ADMIN_KEY`. A lone `JAYPOST_ADMIN_KEY` still wins over the book's key for the local service. For containers the install reads the admin key from the data volume (`jaypost admin-key show` runs inside).
+With one remote and no local service, `-s` can be left out. Without `--exposed` the service listens on 127.0.0.1 only, and everything here works from the VM itself, where the CLI finds the local admin key in the inbox. To reach a service without an inbox, set `JAYPOST_URL` and `JAYPOST_ADMIN_KEY`. A lone `JAYPOST_ADMIN_KEY` still wins over the inbox's key for the local service. For containers the install reads the admin key from the data volume (`jaypost admin-key show` runs inside).
 
 Admin changes apply to the running service, no restart needed. State lives in `~/.config/jaypost/service/` next to `config.json` (the data volume for containers): `jaypost.db` (bots, pairings, keys, pending requests and the question log) and `admin-key`. An install from before the db isn't read: run `jaypost service install` again, and it starts with an empty registry (the old json files are ignored).
 
@@ -66,12 +66,12 @@ jaypost admin key create --bot b2 --label alice --invite -s myvm
 It prints a line to send to the person, privately, since it holds their key:
 
 ```
-jaypost bots join jpi_eyJ1cmwiOi...
+jaypost inbox join jpi_eyJ1cmwiOi...
 ```
 
-They run it, and `bots join` saves the bot in their contacts and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
+They run it, and `inbox join` saves the bot in their inbox and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
 
-For a key that isn't going into a contact book, such as a CI secret or an app using `--external-id`, leave `--invite` off and `create` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own contacts instead, with `--as` to name it.
+For a key that isn't going into an inbox, such as a CI secret or an app using `--external-id`, leave `--invite` off and `create` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own inbox instead, with `--as` to name it.
 
 For someone already paired, or for a second workflow of the same person, share the pairing. It works right away, with no phone step:
 
@@ -125,7 +125,7 @@ jaypost admin log --key k5 --json
 jaypost admin rotate-key
 ```
 
-The old key stops working immediately, the new one is printed once and saved in your contacts (against a remote, add `-s NAME`). If a script or app holds the old one, update it first or it's locked out until you set the new one.
+The old key stops working immediately, the new one is printed once and saved in your inbox (against a remote, add `-s NAME`). If a script or app holds the old one, update it first or it's locked out until you set the new one.
 
 ## Reset a person
 

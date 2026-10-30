@@ -1,6 +1,6 @@
 import { expect, test } from 'vite-plus/test'
 import {
-  resolveBookPath,
+  resolveInboxPath,
   resolveConfigDirectory,
   resolveConfigPath,
   resolveJaypostDirectory,
@@ -17,9 +17,9 @@ test('resolveConfigPath defaults under jaypost/service', () => {
   )
 })
 
-test('resolveBookPath and resolveJaypostDirectory ignore JAYPOST_CONFIG', () => {
-  expect(resolveBookPath({ HOME: '/h' })).toBe('/h/.config/jaypost/bots.json')
-  expect(resolveBookPath({ HOME: '/h', XDG_CONFIG_HOME: '/x' })).toBe('/x/jaypost/bots.json')
+test('resolveInboxPath and resolveJaypostDirectory ignore JAYPOST_CONFIG', () => {
+  expect(resolveInboxPath({ HOME: '/h' })).toBe('/h/.config/jaypost/inbox.json')
+  expect(resolveInboxPath({ HOME: '/h', XDG_CONFIG_HOME: '/x' })).toBe('/x/jaypost/inbox.json')
   expect(resolveJaypostDirectory({ HOME: '/h', JAYPOST_CONFIG: '/c/config.json' })).toBe(
     '/h/.config/jaypost',
   )

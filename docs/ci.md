@@ -15,7 +15,7 @@ JAYPOST_OWNER_ID=...
 
 ## Through a service by URL
 
-If the runner can reach a jaypost service, it can use that one instead of direct mode, and the service keeps the only connection to the bot. Leave `JAYPOST_MODE` unset and point `send` at the service with an API key from `jaypost admin key create` (see [Hosting](hosting.md#share-a-bot-between-ci-workflows)); the contact book isn't read when these are set:
+If the runner can reach a jaypost service, it can use that one instead of direct mode, and the service keeps the only connection to the bot. Leave `JAYPOST_MODE` unset and point `send` at the service with an API key from `jaypost admin key create` (see [Hosting](hosting.md#share-a-bot-between-ci-workflows)); the inbox isn't read when these are set:
 
 ```
 JAYPOST_URL=https://jaypost.example.com
@@ -158,6 +158,6 @@ All of this works in service mode too, through the service's [`POST /vote`](http
 Other differences from service mode:
 
 - Notifications have no Dismiss button and aren't deleted automatically.
-- The config file and the contact book aren't read.
+- The config file and the inbox aren't read.
 - SIGINT and SIGTERM (a cancelled run) cancel a pending question, edit the message to the cancelled line and exit 1.
 - Pairing in `pair ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI.

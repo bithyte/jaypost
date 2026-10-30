@@ -22,8 +22,8 @@ export class JaypostError extends Error {
 /**
  * Asks questions and sends notifications through a running jaypost service, local or remote.
  * Calls throw `JaypostError` when the token lookup finds an unusable token, `JAYPOST_URL` is
- * unusable or the contact book can't name a bot. A `Client` with `bot` or no target options reads
- * the book once, at construction, and keeps that entry and key.
+ * unusable or the inbox can't name a bot. A `Client` with `bot` or no target options reads
+ * the inbox once, at construction, and keeps that entry and key.
  */
 export class Client {
   #caller: Caller
@@ -127,7 +127,7 @@ export class Client {
   }
 }
 
-// Without url, host, port or token the book decides; any of them is the explicit mode.
+// Without url, host, port or token the inbox decides; any of them is the explicit mode.
 function isBotMode(options: ClientOptions): boolean {
   return (
     options.url === undefined &&

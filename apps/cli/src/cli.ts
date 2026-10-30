@@ -12,7 +12,7 @@ import {
   MODE_ENV_VAR,
   parseSince,
   realExec,
-  resolveBookPath,
+  resolveInboxPath,
   resolveJaypostDirectory,
 } from '@jaypost/store'
 import {
@@ -52,10 +52,10 @@ import {
   runPairingList,
   runPairingRemove,
   runPing,
-  runBotsDefault,
-  runBotsList,
-  runBotsRemove,
-  runBotsRename,
+  runInboxDefault,
+  runInboxList,
+  runInboxRemove,
+  runInboxRename,
   runJoin,
   runRemoteAdd,
   runRemoteList,
@@ -78,7 +78,7 @@ import type { Progress } from './progress/index.ts'
 import type {
   AdminDeps,
   AdminLogArgs,
-  BookDeps,
+  InboxDeps,
   DirectSendDeps,
   InitArgs,
   LogArgs,
@@ -112,7 +112,7 @@ const BOT_FLAGS = '-b, --bot <alias>'
 const JSON_HELP = 'print the answer as JSON'
 
 const BOT_DESCRIPTION =
-  'contact book bot to use (default: JAYPOST_BOT, then JAYPOST_URL/JAYPOST_TOKEN, then the book default)'
+  'inbox bot to use (default: JAYPOST_BOT, then JAYPOST_URL/JAYPOST_TOKEN, then the inbox default)'
 
 function parsePort(rawPort: string): number {
   const port = DIGITS_PATTERN.test(rawPort) ? Number(rawPort) : NaN
@@ -333,7 +333,7 @@ function runInitCommand(args: InitArgs): Promise<number> {
         signal: controller.signal,
         version: VERSION,
         ...(timeZone === undefined ? {} : { timeZone }),
-        bookPath: resolveBookPath(process.env),
+        inboxPath: resolveInboxPath(process.env),
         hostname: os.hostname(),
       }),
     SETUP_SIGNALS,
@@ -477,7 +477,7 @@ function runResetOwnerCommand(): Promise<number> {
         wait: waitForPairing,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
-        bookPath: resolveBookPath(process.env),
+        inboxPath: resolveInboxPath(process.env),
         fetchStatus: defaultFetchStatus,
       }),
     SETUP_SIGNALS,
@@ -496,7 +496,7 @@ function runUninstallCommand(): Promise<number> {
         confirm: createClackPrompts(controller.signal).confirm,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
-        bookPath: resolveBookPath(process.env),
+        inboxPath: resolveInboxPath(process.env),
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
@@ -559,7 +559,7 @@ function addServiceCommands(program: Command, setCode: (code: number) => void): 
     )
   service
     .command('uninstall')
-    .description('remove the service and its entries in the contact book')
+    .description('remove the service and its entries in the inbox')
     .action(async () => {
       setCode(await runUninstallCommand())
     })
@@ -589,10 +589,10 @@ function addServiceCommands(program: Command, setCode: (code: number) => void): 
     })
 }
 
-/** What the `bots` and `admin remote` commands use; prompts abort with `signal`. */
-function createBookDeps(signal?: AbortSignal): BookDeps {
+/** What the `inbox` and `admin remote` commands use; prompts abort with `signal`. */
+function createInboxDeps(signal?: AbortSignal): InboxDeps {
   return {
-    bookPath: resolveBookPath(process.env),
+    inboxPath: resolveInboxPath(process.env),
     prompt: createClackPrompts(signal),
     isInteractive: process.stdin.isTTY === true,
     print: (text) => console.log(text),
@@ -614,7 +614,7 @@ function addAdminRemoteCommands(admin: Command, setCode: (code: number) => void)
     .action(async (name: string, url: string, adminKey: string) => {
       setCode(
         await runWithSignals(
-          (controller) => runRemoteAdd({ name, url, adminKey }, createBookDeps(controller.signal)),
+          (controller) => runRemoteAdd({ name, url, adminKey }, createInboxDeps(controller.signal)),
           SETUP_SIGNALS,
           SETUP_RERAISED,
         ),
@@ -625,31 +625,33 @@ function addAdminRemoteCommands(admin: Command, setCode: (code: number) => void)
     .description('forget a remote; its bots stay')
     .argument('<name>', 'the remote name')
     .action(async (name: string) => {
-      setCode(await runRemoteRemove({ name }, createBookDeps()))
+      setCode(await runRemoteRemove({ name }, createInboxDeps()))
     })
   remote
     .command('list')
     .description('show the remotes (names and urls, no keys)')
     .action(async () => {
-      setCode(await runRemoteList(createBookDeps()))
+      setCode(await runRemoteList(createInboxDeps()))
     })
 }
 
-/** The `bots` group: the contacts in your book; with no subcommand it lists them. */
-function addBotsCommands(program: Command, setCode: (code: number) => void): void {
-  const bots = program
-    .command('bots')
-    .description('list your contacts, join a bot, or set the default, rename and remove them')
+/** The `inbox` group: the bots in your inbox; with no subcommand it lists them. */
+function addInboxCommands(program: Command, setCode: (code: number) => void): void {
+  const inbox = program
+    .command('inbox')
+    .description(
+      'list the bots in your inbox, join one, or set the default, rename and remove them',
+    )
     .action(async () => {
-      setCode(await runBotsList(createBookDeps()))
+      setCode(await runInboxList(createInboxDeps()))
     })
-  bots
+  inbox
     .command('list')
     .description('show the bots (aliases and services, no keys)')
     .action(async () => {
-      setCode(await runBotsList(createBookDeps()))
+      setCode(await runInboxList(createInboxDeps()))
     })
-  bots
+  inbox
     .command('join')
     .description('save a bot from an invite and wait for its pairing code')
     .argument('<invite>', 'the invite (jpi_...) the service owner sent you')
@@ -661,7 +663,7 @@ function addBotsCommands(program: Command, setCode: (code: number) => void): voi
             runJoin(
               { invite, ...(options.as === undefined ? {} : { as: options.as }) },
               {
-                ...createBookDeps(controller.signal),
+                ...createInboxDeps(controller.signal),
                 fetchStatus: defaultFetchStatus,
                 wait: waitForPairing,
                 progress: createStderrProgress('plain'),
@@ -673,33 +675,33 @@ function addBotsCommands(program: Command, setCode: (code: number) => void): voi
         ),
       )
     })
-  bots
+  inbox
     .command('default')
     .description('make a bot the default')
     .argument('<alias>', 'the bot alias')
     .action(async (alias: string) => {
-      setCode(await runBotsDefault({ alias }, createBookDeps()))
+      setCode(await runInboxDefault({ alias }, createInboxDeps()))
     })
-  bots
+  inbox
     .command('rename')
     .description('give a bot a new alias')
     .argument('<alias>', 'the current alias')
     .argument('<new-alias>', 'the new alias')
     .action(async (alias: string, newAlias: string) => {
-      setCode(await runBotsRename({ alias, newAlias }, createBookDeps()))
+      setCode(await runInboxRename({ alias, newAlias }, createInboxDeps()))
     })
-  bots
+  inbox
     .command('remove')
-    .description('remove a bot from your contacts')
+    .description('remove a bot from your inbox')
     .argument('<alias>', 'the bot alias')
     .option('-y, --yes', 'skip the confirmation')
     .action(async (alias: string, options: { readonly yes?: boolean }) => {
       setCode(
         await runWithSignals(
           (controller) =>
-            runBotsRemove(
+            runInboxRemove(
               { alias, ...(options.yes === true ? { yes: true } : {}) },
-              createBookDeps(controller.signal),
+              createInboxDeps(controller.signal),
             ),
           SETUP_SIGNALS,
           SETUP_RERAISED,
@@ -791,7 +793,7 @@ function createAdminDeps(service: string | undefined, signal?: AbortSignal): Adm
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
     fetchStatus: defaultFetchStatus,
-    bookPath: resolveBookPath(process.env),
+    inboxPath: resolveInboxPath(process.env),
     service,
     isInteractive: process.stdin.isTTY === true,
     ...(signal === undefined ? {} : { signal }),
@@ -877,9 +879,9 @@ function addAdminKeyCommands(admin: Command, setCode: (code: number) => void): v
     .option('--same-as <key id>', 'for the pairing of this key')
     .option('--label <text>', 'a free-form label')
     .option('--external-id <id>', 'a free-form id from another system')
-    .option('--save', "also save the key to this machine's contacts")
-    .option('--as <alias>', "with --save, the contact's name (default: the bot's name)")
-    .option('--invite', 'print a jaypost bots join line to send instead of the key (remotes only)')
+    .option('--save', "also save the key to this machine's inbox")
+    .option('--as <alias>', "with --save, the bot's alias (default: the bot's name)")
+    .option('--invite', 'print a jaypost inbox join line to send instead of the key (remotes only)')
     .option('--json', JSON_HELP)
     .action(
       async (
@@ -1004,7 +1006,7 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
   addAdminRemoteCommands(admin, setCode)
   admin
     .command('rotate-key')
-    .description('replace the admin key, print the new one and save it to your contacts')
+    .description('replace the admin key, print the new one and save it to your inbox')
     .option('--json', JSON_HELP)
     .action(async (options: { readonly json?: boolean }, command: Command) => {
       setCode(await runAdminKeyRotate(options, createAdminDeps(findService(command))))
@@ -1054,8 +1056,8 @@ export async function main(argv: readonly string[]): Promise<number> {
   addServiceCommands(program, (serviceCode) => {
     code = serviceCode
   })
-  addBotsCommands(program, (botsCode) => {
-    code = botsCode
+  addInboxCommands(program, (inboxCode) => {
+    code = inboxCode
   })
   addPairCommands(program, (pairCode) => {
     code = pairCode

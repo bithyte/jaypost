@@ -1,6 +1,6 @@
 # Commands
 
-Commands that talk to a bot pick it from your [contact book](hosting.md#contacts): `-b ALIAS`, else `JAYPOST_BOT`, else env mode, else the book's default bot. Env mode is when `JAYPOST_URL` or `JAYPOST_TOKEN` is set (and neither `-b` nor `JAYPOST_BOT` is): the book isn't read at all, the url comes from `JAYPOST_URL` (a base URL, `http` or `https`, whose path goes in front of every API path, such as `https://jaypost.example.com/team`; without it the local `JAYPOST_HOST` and `JAYPOST_PORT` apply, default 127.0.0.1:8787) and the key from `JAYPOST_TOKEN`. A book key is never sent to an env URL, and an env token is never sent to a book URL. There is no `--port` on these commands; the book entry carries the port.
+Commands that talk to a bot pick it from your [inbox](hosting.md#inbox): `-b ALIAS`, else `JAYPOST_BOT`, else env mode, else the inbox's default bot. Env mode is when `JAYPOST_URL` or `JAYPOST_TOKEN` is set (and neither `-b` nor `JAYPOST_BOT` is): the inbox isn't read at all, the url comes from `JAYPOST_URL` (a base URL, `http` or `https`, whose path goes in front of every API path, such as `https://jaypost.example.com/team`; without it the local `JAYPOST_HOST` and `JAYPOST_PORT` apply, default 127.0.0.1:8787) and the key from `JAYPOST_TOKEN`. An inbox key is never sent to an env URL, and an env token is never sent to an inbox URL. There is no `--port` on these commands; the inbox entry carries the port.
 
 ## Setup
 
@@ -10,7 +10,7 @@ Commands that talk to a bot pick it from your [contact book](hosting.md#contacts
 jaypost service install [launchd|systemd|compose|quadlet] [--exposed] [--port N] [--provider NAME] [--token|--no-token]
 ```
 
-Installs or replaces the service on this machine and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. It saves the service and its bot in the contact book. `--exposed` listens on all interfaces over plain http instead of only this machine, and ends by printing the `jaypost admin remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server). See [Install](install.md).
+Installs or replaces the service on this machine and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. It saves the service and its bot in the inbox. `--exposed` listens on all interfaces over plain http instead of only this machine, and ends by printing the `jaypost admin remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server). See [Install](install.md).
 
 ### `jaypost service uninstall`
 
@@ -18,7 +18,7 @@ Installs or replaces the service on this machine and waits for pairing. The targ
 jaypost service uninstall
 ```
 
-Stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log. It also drops the service's entries from the contact book.
+Stops and removes the service, then asks whether to also delete the saved credentials, API token, paired owner and question log. It also drops the service's entries from the inbox.
 
 Answer no to keep them: `config.json` (systemd, launchd) or the target's `.env` and volume stay on disk, and a later `service install` finds them and reuses the bot token, API token and owner without asking. For systemd and launchd, `jaypost.db` (with the question log) stays.
 
@@ -44,21 +44,21 @@ jaypost service update
 
 Moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
 
-## Contacts
+## Inbox
 
-### `jaypost bots`
+### `jaypost inbox`
 
 ```
-jaypost bots
-jaypost bots join INVITE [--as ALIAS]
-jaypost bots default ALIAS
-jaypost bots rename ALIAS NEW
-jaypost bots remove ALIAS [-y]
+jaypost inbox
+jaypost inbox join INVITE [--as ALIAS]
+jaypost inbox default ALIAS
+jaypost inbox rename ALIAS NEW
+jaypost inbox remove ALIAS [-y]
 ```
 
-Lists your contacts (alias, service and the default; never keys), sets the default, renames one or removes one. Removing the default asks which contact takes over.
+Lists the bots in your inbox (alias, service and the default; never keys), sets the default, renames one or removes one. Removing the default asks which bot takes over.
 
-`join` saves a bot from an invite (`jpi_...`) someone sent you and waits for its pairing code if you haven't paired. `--as` names the contact; the default is the bot's name. See [Pairing](pairing.md#joining-someone-elses-bot).
+`join` saves a bot from an invite (`jpi_...`) someone sent you and waits for its pairing code if you haven't paired. `--as` sets its alias; the default is the bot's name. See [Pairing](pairing.md#joining-someone-elses-bot).
 
 ## Pairing
 
@@ -148,7 +148,7 @@ Prints the questions the chosen bot's key asked and how they ended. `--since` ta
 
 ## Admin
 
-These call the admin routes and need the admin key, except `admin remote`, which manages the remotes saved in your contact book. Every other one takes `-s NAME`, a [remote](#jaypost-admin-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it exits with an error asking for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one but `admin remote` takes `--json`. See [Hosting](hosting.md).
+These call the admin routes and need the admin key, except `admin remote`, which manages the remotes saved in your inbox. Every other one takes `-s NAME`, a [remote](#jaypost-admin-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it exits with an error asking for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the inbox's admin key for the local service. Every one but `admin remote` takes `--json`. See [Hosting](hosting.md).
 
 ### `jaypost admin bot`
 
@@ -169,7 +169,7 @@ jaypost admin key label ID [--label TEXT] [--external-id ID]
 jaypost admin key revoke ID
 ```
 
-`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own contact book (`--as` names it); `--invite` prints a `jaypost bots join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
+`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own inbox (`--as` names it); `--invite` prints a `jaypost inbox join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
 
 ### `jaypost admin pairing`
 
@@ -189,7 +189,7 @@ jaypost admin remote remove NAME
 jaypost admin remote list
 ```
 
-A remote is a service on another machine that you administer. `add` checks the admin key against the service and saves it, and asks before replacing a remote with the same name. `remove` forgets it; bots from that service stay in your contacts. `list` shows names and urls, never keys. See [Hosting](hosting.md).
+A remote is a service on another machine that you administer. `add` checks the admin key against the service and saves it, and asks before replacing a remote with the same name. `remove` forgets it; bots from that service stay in your inbox. `list` shows names and urls, never keys. See [Hosting](hosting.md).
 
 ### `jaypost admin rotate-key`
 
@@ -197,7 +197,7 @@ A remote is a service on another machine that you administer. `add` checks the a
 jaypost admin rotate-key
 ```
 
-Replaces the admin key; the old one stops working at once. The new one is printed and saved in your contact book.
+Replaces the admin key; the old one stops working at once. The new one is printed and saved in your inbox.
 
 ### `jaypost admin log`
 

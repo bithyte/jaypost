@@ -18,22 +18,22 @@ export type ClientOptions = {
   /**
    * Sent as a bearer token. Default: `JAYPOST_TOKEN`, looked up on every call (with `url`, `host`
    * or `port`). Throws a `RangeError` at construction if it isn't a valid token. Without `url`,
-   * `host`, `port` or `token`, the book entry and its key are fixed at construction instead.
+   * `host`, `port` or `token`, the inbox entry and its key are fixed at construction instead.
    */
   readonly token?: string
   /**
-   * A contact book alias: its url and key are used. Throws a `RangeError` at construction when
+   * An inbox alias: its url and key are used. Throws a `RangeError` at construction when
    * combined with `url`, `host`, `port` or `token`. Without any of them, $JAYPOST_BOT, else env
-   * mode, else the book's default.
+   * mode, else the inbox's default.
    */
   readonly bot?: string
 }
 
-/** What `resolveBot` found: where to send, with which token, and the book alias if any. */
+/** What `resolveBot` found: where to send, with which token, and the inbox alias if any. */
 export type ResolvedBot = {
   readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
-  /** The book alias, or undefined in env mode or on failure. */
+  /** The inbox alias, or undefined in env mode or on failure. */
   readonly alias: string | undefined
 }
 
