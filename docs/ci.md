@@ -2,7 +2,7 @@
 
 In CI there's usually no service to run. Set `JAYPOST_MODE=direct` and `jaypost send` talks to the chat app itself, using the provider, bot token and owner from env vars. `JAYPOST_MODE=service` is the default and uses the HTTP service as described above.
 
-Run `jaypost setup-ci` once on your machine (`--provider NAME` picks the chat app). It prints a pairing code, waits for you to send it to the bot, then prints the env vars to store as GitHub secrets. It writes no files.
+Run `jaypost pair ci` once on your machine (`--provider NAME` picks the chat app). It prints a pairing code, waits for you to send it to the bot, then prints the env vars to store as GitHub secrets. It writes no files.
 
 ```
 JAYPOST_MODE=direct
@@ -11,7 +11,7 @@ JAYPOST_BOT_TOKEN=...
 JAYPOST_OWNER_ID=...
 ```
 
-`setup-ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code.
+`pair ci` pairs only the owner. To add approvers, run `jaypost pair approver` (`--provider NAME` as above). It gives one pairing code per person and asks `Pair another?` after each, then prints the ids paired in that run as a comma list. Add them to your own list and to the approvers secret; GitHub can't show a secret's value back, so `pair approver` can't print the full list for you. On Discord, an approver must be in a server the bot is in before they DM the code.
 
 ## Through a service by URL
 
@@ -26,7 +26,7 @@ JAYPOST_TOKEN=...
 
 ## GitHub Action
 
-`uses: bithyte/jaypost@v0` asks or notifies the owner from a workflow, with no Node needed on the runner. Run `jaypost setup-ci` once to get the values for the three secrets (see above).
+`uses: bithyte/jaypost@v0` asks or notifies the owner from a workflow, with no Node needed on the runner. Run `jaypost pair ci` once to get the values for the three secrets (see above).
 
 ```yaml
 on: workflow_dispatch
@@ -160,4 +160,4 @@ Other differences from service mode:
 - Notifications have no Dismiss button and aren't deleted automatically.
 - The config file and the contact book aren't read.
 - SIGINT and SIGTERM (a cancelled run) cancel a pending question, edit the message to the cancelled line and exit 1.
-- Pairing in `setup-ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI.
+- Pairing in `pair ci` and running a direct session both clear the bot's commands: on Telegram the owner's command menu is set to empty, on Discord the bot's global slash commands are replaced with none. If the same bot backs a running jaypost service, its commands are gone until that service restarts. Use a separate bot for CI.

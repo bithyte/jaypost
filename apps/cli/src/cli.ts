@@ -581,7 +581,7 @@ function addServiceCommands(program: Command, setCode: (code: number) => void): 
     .action(() => runService(VERSION))
 }
 
-/** What the `remote` commands use; prompts abort with `signal`. */
+/** What the `bots` and `admin remote` commands use; prompts abort with `signal`. */
 function createBookDeps(signal?: AbortSignal): BookDeps {
   return {
     bookPath: resolveBookPath(process.env),
@@ -592,9 +592,9 @@ function createBookDeps(signal?: AbortSignal): BookDeps {
   }
 }
 
-/** The `remote` group: services on other machines this one administers. */
-function addRemoteCommands(program: Command, setCode: (code: number) => void): void {
-  const remote = program
+/** The `admin remote` group: services on other machines this one administers. */
+function addAdminRemoteCommands(admin: Command, setCode: (code: number) => void): void {
+  const remote = admin
     .command('remote')
     .description('add, list and remove services on other machines you administer')
   remote
@@ -631,7 +631,7 @@ function addRemoteCommands(program: Command, setCode: (code: number) => void): v
 function addBotsCommands(program: Command, setCode: (code: number) => void): void {
   const bots = program
     .command('bots')
-    .description('list your contacts, or set the default, rename and remove them')
+    .description('list your contacts, join a bot, or set the default, rename and remove them')
     .action(async () => {
       setCode(await runBotsList(createBookDeps()))
     })
@@ -640,6 +640,30 @@ function addBotsCommands(program: Command, setCode: (code: number) => void): voi
     .description('show the bots (aliases and services, no keys)')
     .action(async () => {
       setCode(await runBotsList(createBookDeps()))
+    })
+  bots
+    .command('join')
+    .description('save a bot from an invite and wait for its pairing code')
+    .argument('<invite>', 'the invite (jpi_...) the service owner sent you')
+    .option('--as <alias>', 'save the bot under this alias')
+    .action(async (invite: string, options: { readonly as?: string }) => {
+      setCode(
+        await runWithSignals(
+          (controller) =>
+            runJoin(
+              { invite, ...(options.as === undefined ? {} : { as: options.as }) },
+              {
+                ...createBookDeps(controller.signal),
+                fetchStatus: defaultFetchStatus,
+                wait: waitForPairing,
+                progress: createStderrProgress('plain'),
+                signal: controller.signal,
+              },
+            ),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
     })
   bots
     .command('default')
@@ -673,6 +697,49 @@ function addBotsCommands(program: Command, setCode: (code: number) => void): voi
           SETUP_RERAISED,
         ),
       )
+    })
+}
+
+/** The `pair` group: who answers, for CI (direct mode) and for the local service. */
+function addPairCommands(program: Command, setCode: (code: number) => void): void {
+  const pair = program
+    .command('pair')
+    .description('pair the owner or approvers for CI, or reset the owner of this machine')
+  pair
+    .command('ci')
+    .description('pair an owner for CI and print the env vars for direct mode')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      setCode(
+        await runSetupCiCommand(
+          options.provider === undefined ? {} : { provider: options.provider },
+        ),
+      )
+    })
+  pair
+    .command('approver')
+    .description('pair approvers for direct mode votes and print their ids')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      setCode(
+        await runPairApproverCommand(
+          options.provider === undefined ? {} : { provider: options.provider },
+        ),
+      )
+    })
+  pair
+    .command('reset-owner')
+    .description('clear the paired owner so a new one can pair')
+    .action(async () => {
+      setCode(await runResetOwnerCommand())
     })
 }
 
@@ -921,11 +988,12 @@ function addAdminPairingCommands(admin: Command, setCode: (code: number) => void
 function addAdminCommands(program: Command, setCode: (code: number) => void): void {
   const admin = program
     .command('admin')
-    .description("manage a service's bots, keys and pairings")
+    .description("manage a service's bots, keys and pairings, and the remotes you administer")
     .option('-s, --service <name>', 'the remote to manage (default: the local service)')
   addAdminBotCommands(admin, setCode)
   addAdminKeyCommands(admin, setCode)
   addAdminPairingCommands(admin, setCode)
+  addAdminRemoteCommands(admin, setCode)
   admin
     .command('rotate-key')
     .description('replace the admin key, print the new one and save it to your contacts')
@@ -970,7 +1038,10 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
   })
 }
 
-/** Maps the old `send request`, `send notify` and `test` spellings so existing scripts keep working. */
+/**
+ * Maps the old `send request`, `send notify`, `test`, `setup-ci` and `reset-owner` spellings so
+ * existing scripts keep working.
+ */
 function toCurrentArgv(argv: readonly string[]): readonly string[] {
   const [first, second] = argv
   if (first === 'send' && (second === 'request' || second === 'notify')) {
@@ -979,6 +1050,12 @@ function toCurrentArgv(argv: readonly string[]): readonly string[] {
   if (first === 'test') {
     return ['ping', ...argv.slice(1)]
   }
+  if (first === 'setup-ci') {
+    return ['pair', 'ci', ...argv.slice(1)]
+  }
+  if (first === 'reset-owner') {
+    return ['pair', 'reset-owner', ...argv.slice(1)]
+  }
   return argv
 }
 
@@ -986,131 +1063,10 @@ function toCurrentArgv(argv: readonly string[]): readonly string[] {
 export async function main(argv: readonly string[]): Promise<number> {
   let code = 0
   const program = new Command('jaypost').version(VERSION, '-v, --version').exitOverride()
+  program.commandsGroup('Set up:')
   addServiceCommands(program, (serviceCode) => {
     code = serviceCode
   })
-  addRemoteCommands(program, (remoteCode) => {
-    code = remoteCode
-  })
-  addBotsCommands(program, (botsCode) => {
-    code = botsCode
-  })
-  program
-    .command('join')
-    .description('save a bot from an invite and wait for its pairing code')
-    .argument('<invite>', 'the invite (jpi_...) the service owner sent you')
-    .option('--as <alias>', 'save the bot under this alias')
-    .action(async (invite: string, options: { readonly as?: string }) => {
-      code = await runWithSignals(
-        (controller) =>
-          runJoin(
-            { invite, ...(options.as === undefined ? {} : { as: options.as }) },
-            {
-              ...createBookDeps(controller.signal),
-              fetchStatus: defaultFetchStatus,
-              wait: waitForPairing,
-              progress: createStderrProgress('plain'),
-              signal: controller.signal,
-            },
-          ),
-        SETUP_SIGNALS,
-        SETUP_RERAISED,
-      )
-    })
-  program
-    .command('setup-ci')
-    .description('pair an owner for CI and print the env vars for direct mode')
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .action(async (options: { readonly provider?: string }) => {
-      code = await runSetupCiCommand(
-        options.provider === undefined ? {} : { provider: options.provider },
-      )
-    })
-  const pair = program.command('pair').description('pair someone with the bot for CI')
-  pair
-    .command('approver')
-    .description('pair approvers for direct mode votes and print their ids')
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .action(async (options: { readonly provider?: string }) => {
-      code = await runPairApproverCommand(
-        options.provider === undefined ? {} : { provider: options.provider },
-      )
-    })
-  program
-    .command('status')
-    .description('show the bot and its pairing state')
-    .option(BOT_FLAGS, BOT_DESCRIPTION)
-    .action(async (options: { readonly bot?: string }) => {
-      code = await runStatusCommand(options.bot)
-    })
-  program
-    .command('log')
-    .description('show the questions the service asked and how they ended')
-    .option(
-      '--since <when>',
-      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
-      parseSinceOption,
-    )
-    .option('--project <name>', 'only questions from this project', parseProjectOption)
-    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
-    .option('--json', 'print one JSON entry per line')
-    .option(BOT_FLAGS, BOT_DESCRIPTION)
-    .action(
-      async (options: {
-        readonly since?: Date
-        readonly project?: string
-        readonly limit?: number
-        readonly json?: boolean
-        readonly bot?: string
-      }) => {
-        code = await runLogCommand(
-          {
-            ...(options.since === undefined ? {} : { since: options.since }),
-            ...(options.project === undefined ? {} : { project: options.project }),
-            ...(options.limit === undefined ? {} : { limit: options.limit }),
-            ...(options.json === undefined ? {} : { json: options.json }),
-          },
-          options.bot,
-        )
-      },
-    )
-  program
-    .command('ping')
-    .description('send a test message to check the service and pairing')
-    .option(BOT_FLAGS, BOT_DESCRIPTION)
-    .action(async (options: { readonly bot?: string }) => {
-      const resolved = resolveBot(process.env, options.bot)
-      const progress = createStderrProgress()
-      const runLive = (controller: AbortController) =>
-        runPing({
-          endpoint: resolved.endpoint,
-          token: resolved.token,
-          progress,
-          providers: PROVIDERS,
-          signal: controller.signal,
-          print: createAnswerPrint(progress),
-          printError: (text) => console.error(text),
-        })
-      // Off a terminal there's no signal handler, as before: a signal ends the process.
-      code =
-        progress.mode === 'live'
-          ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
-          : await runLive(new AbortController())
-    })
-  program
-    .command('reset-owner')
-    .description('clear the paired owner so a new one can pair')
-    .action(async () => {
-      code = await runResetOwnerCommand()
-    })
   program
     .command('update')
     .description('update the service or this CLI to the latest release')
@@ -1119,30 +1075,16 @@ export async function main(argv: readonly string[]): Promise<number> {
     .action(async (options: { readonly finish?: boolean }) => {
       code = await runUpdateCommand(options.finish === true)
     })
-  program
-    .command('mcp')
-    .description('run an MCP server on stdin/stdout for agents')
-    .option(BOT_FLAGS, BOT_DESCRIPTION)
-    .action(async (options: { readonly bot?: string }) => {
-      const resolved = resolveBot(process.env, options.bot)
-      code = await runMcp({
-        version: VERSION,
-        endpoint: resolved.endpoint,
-        readToken: () => resolved.token,
-      })
-    })
-  program
-    .command('openapi')
-    .description('print the OpenAPI spec of the HTTP API, or write it to a file')
-    .argument('[file]', 'file to write; prints to stdout without one')
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
-    .action((file: string | undefined, options: { readonly port?: number }) => {
-      code = runOpenApiCommand(file, options.port)
-    })
+  addBotsCommands(program, (botsCode) => {
+    code = botsCode
+  })
+  addPairCommands(program, (pairCode) => {
+    code = pairCode
+  })
+  addAdminCommands(program, (adminCode) => {
+    code = adminCode
+  })
+  program.commandsGroup('Ask and notify:')
   const request = program
     .command('request')
     .description('ask a question and print the answer')
@@ -1355,9 +1297,93 @@ export async function main(argv: readonly string[]): Promise<number> {
         )
       },
     )
-  addAdminCommands(program, (adminCode) => {
-    code = adminCode
-  })
+  program
+    .command('mcp')
+    .description('run an MCP server on stdin/stdout for agents')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
+      code = await runMcp({
+        version: VERSION,
+        endpoint: resolved.endpoint,
+        readToken: () => resolved.token,
+      })
+    })
+  program.commandsGroup('Check:')
+  program
+    .command('status')
+    .description('show the bot and its pairing state')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      code = await runStatusCommand(options.bot)
+    })
+  program
+    .command('ping')
+    .description('send a test message to check the service and pairing')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
+      const progress = createStderrProgress()
+      const runLive = (controller: AbortController) =>
+        runPing({
+          endpoint: resolved.endpoint,
+          token: resolved.token,
+          progress,
+          providers: PROVIDERS,
+          signal: controller.signal,
+          print: createAnswerPrint(progress),
+          printError: (text) => console.error(text),
+        })
+      // Off a terminal there's no signal handler, as before: a signal ends the process.
+      code =
+        progress.mode === 'live'
+          ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
+          : await runLive(new AbortController())
+    })
+  program
+    .command('log')
+    .description('show the questions the service asked and how they ended')
+    .option(
+      '--since <when>',
+      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
+      parseSinceOption,
+    )
+    .option('--project <name>', 'only questions from this project', parseProjectOption)
+    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
+    .option('--json', 'print one JSON entry per line')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(
+      async (options: {
+        readonly since?: Date
+        readonly project?: string
+        readonly limit?: number
+        readonly json?: boolean
+        readonly bot?: string
+      }) => {
+        code = await runLogCommand(
+          {
+            ...(options.since === undefined ? {} : { since: options.since }),
+            ...(options.project === undefined ? {} : { project: options.project }),
+            ...(options.limit === undefined ? {} : { limit: options.limit }),
+            ...(options.json === undefined ? {} : { json: options.json }),
+          },
+          options.bot,
+        )
+      },
+    )
+  // For developers; docs/http-api.md points to it.
+  program
+    .command('openapi', { hidden: true })
+    .description('print the OpenAPI spec of the HTTP API, or write it to a file')
+    .argument('[file]', 'file to write; prints to stdout without one')
+    .option(
+      '--port <n>',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
+    .action((file: string | undefined, options: { readonly port?: number }) => {
+      code = runOpenApiCommand(file, options.port)
+    })
   // Runs inside containers to read or clear the owner in the data volume.
   program
     .command('owner', { hidden: true })

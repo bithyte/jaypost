@@ -690,7 +690,7 @@ test('admin commands pick the remote named by -s', async () => {
 
 test('admin -s with no remotes says how to add one', async () => {
   expect(await runBotList({}, createDeps({ HOME: tmp }, { service: 'x' }))).toBe(1)
-  expect(err).toEqual(['no remote "x"; add one with "jaypost remote add"'])
+  expect(err).toEqual(['no remote "x"; add one with "jaypost admin remote add"'])
 })
 
 test('admin without -s uses the local install and saves its admin key to the book', async () => {
@@ -766,7 +766,7 @@ test('a rejected remote admin key says to run remote add again, without a key', 
   writeRemotes({ ...remoteOf('home', started), adminKey: wrong })
   expect(await runBotList({}, createDeps({ HOME: tmp }, { service: 'home' }))).toBe(1)
   expect(err).toEqual([
-    'jaypost service rejected the admin key saved for remote "home"; run "jaypost remote add home URL NEWKEY" again with the current key',
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
   ])
   expect(err.join('')).not.toContain(wrong)
 })

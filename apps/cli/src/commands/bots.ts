@@ -12,7 +12,7 @@ export function runBotsList(deps: BookDeps): Promise<number> {
     return Promise.resolve(1)
   }
   if (book.bots.length === 0) {
-    deps.print('No bots. Run "jaypost service install" or "jaypost join".')
+    deps.print('No bots. Run "jaypost service install" or "jaypost bots join".')
     return Promise.resolve(0)
   }
   deps.print(

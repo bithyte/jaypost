@@ -53,12 +53,12 @@ function formatCreatedKey(created: CreatedKey): string {
   ].join('\n')
 }
 
-/** The `jaypost join` line to send in place of the key, then the pairing code as usual. */
+/** The `jaypost bots join` line to send in place of the key, then the pairing code as usual. */
 function formatInvitedKey(created: CreatedKey, invite: string, label: string | undefined): string {
   return [
     `Send this to ${label ?? 'them'} (it holds their key, send it privately):`,
     '',
-    `  jaypost join ${invite}`,
+    `  jaypost bots join ${invite}`,
     KEY_SHOWN_ONCE_NOTE,
     ...formatPairingLines(created),
   ].join('\n')
@@ -162,7 +162,7 @@ function toUpdatedField(
 /**
  * Creates an API key for a new pairing on `bot`, an existing `pairing`, or the pairing of the key
  * `sameAs`, and prints it once. `save` also writes it to the book as a bot; `invite` prints a
- * `jaypost join` line holding it instead, for a remote only. The pairing code prints either way.
+ * `jaypost bots join` line holding it instead, for a remote only. The pairing code prints either way.
  * Returns 0, 1 on failure, 2 on bad flags.
  */
 export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<number> {
@@ -197,7 +197,7 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
       opened.endpoint.name === undefined &&
       isLoopbackEndpoint(endpoint.url)
     if (args.invite === true && (opened.endpoint.kind !== 'remote' || isLocalInDisguise)) {
-      deps.printError('invites need a remote; add one with "jaypost remote add" and use -s')
+      deps.printError('invites need a remote; add one with "jaypost admin remote add" and use -s')
       return 1
     }
     // Everything --save needs is settled before the key is made, so a refusal creates no key.

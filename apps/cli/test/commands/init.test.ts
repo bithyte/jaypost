@@ -1008,7 +1008,7 @@ test('service install --exposed passes exposed and prints the remote add line wi
   expect(all.slice(-3)).toEqual([
     'To manage this service from another machine, run there:',
     '',
-    `  jaypost remote add box.lan http://box.lan:9100 ${ADMIN_KEY}`,
+    `  jaypost admin remote add box.lan http://box.lan:9100 ${ADMIN_KEY}`,
   ])
   expect(readBook(bookPath).local).toEqual({ url: 'http://127.0.0.1:9100/', adminKey: ADMIN_KEY })
 })

@@ -4,7 +4,7 @@ Two ways in: the plugin, which sets everything up in one install, or the hook an
 
 ## Plugin
 
-The plugin wires Claude Code to jaypost without editing settings. You need jaypost installed and `jaypost service install` (or `jaypost join`) done first; the plugin doesn't install or pair anything.
+The plugin wires Claude Code to jaypost without editing settings. You need jaypost installed and `jaypost service install` (or `jaypost bots join`) done first; the plugin doesn't install or pair anything.
 
 ```
 /plugin marketplace add bithyte/claude-plugins

@@ -82,7 +82,7 @@ test('bots lists aliases with the default marked and no keys', async () => {
 
 test('bots on an empty book says how to add one', async () => {
   expect(await runBotsList(deps())).toBe(0)
-  expect(out).toEqual(['No bots. Run "jaypost service install" or "jaypost join".'])
+  expect(out).toEqual(['No bots. Run "jaypost service install" or "jaypost bots join".'])
 })
 
 test('bots default switches the default', async () => {

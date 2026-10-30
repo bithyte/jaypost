@@ -331,7 +331,9 @@ async function runInitInner(args: InitArgs, deps: InitDeps, seen: string[]): Pro
     if (args.exposed === true && adminKey !== undefined) {
       print('To manage this service from another machine, run there:')
       print('')
-      print(`  jaypost remote add ${deps.hostname} http://${deps.hostname}:${port} ${adminKey}`)
+      print(
+        `  jaypost admin remote add ${deps.hostname} http://${deps.hostname}:${port} ${adminKey}`,
+      )
     }
     return 0
   }

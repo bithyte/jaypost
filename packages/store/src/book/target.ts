@@ -36,7 +36,7 @@ export function resolveBotTarget(
   }
   return {
     kind: 'failed',
-    message: 'no bot to send to; run "jaypost service install" or "jaypost join"',
+    message: 'no bot to send to; run "jaypost service install" or "jaypost bots join"',
   }
 }
 

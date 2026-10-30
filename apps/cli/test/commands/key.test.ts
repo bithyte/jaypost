@@ -243,7 +243,7 @@ test('key create --invite prints a join line that decodes to the remote url and 
   const book = writeRemoteBook()
   expect(await runKeyCreate({ bot: 'b2', label: 'alice', invite: true }, createDeps())).toBe(0)
   const printed = out.join('\n')
-  const invite = /jaypost join (jpi_\S+)/.exec(printed)?.[1]
+  const invite = /jaypost bots join (jpi_\S+)/.exec(printed)?.[1]
   if (invite === undefined) {
     throw new Error(`no invite printed: ${printed}`)
   }
@@ -252,7 +252,7 @@ test('key create --invite prints a join line that decodes to the remote url and 
     [
       'Send this to alice (it holds their key, send it privately):',
       '',
-      `  jaypost join ${invite}`,
+      `  jaypost bots join ${invite}`,
       "This key isn't shown again; store it now.",
       'Pairing code: PAIR-2222',
       'Say PAIR2222 to workbot',
@@ -285,7 +285,7 @@ test('key create --invite against the local service fails', async () => {
     service: undefined,
   })
   expect(await runKeyCreate({ bot: 'b2', invite: true }, deps)).toBe(1)
-  expect(err).toEqual(['invites need a remote; add one with "jaypost remote add" and use -s'])
+  expect(err).toEqual(['invites need a remote; add one with "jaypost admin remote add" and use -s'])
   expect(seen).toEqual([])
   expect(out).toEqual([])
 })
@@ -297,7 +297,7 @@ test('key create --invite against a loopback JAYPOST_URL fails', async () => {
     service: undefined,
   })
   expect(await runKeyCreate({ bot: 'b2', invite: true }, deps)).toBe(1)
-  expect(err).toEqual(['invites need a remote; add one with "jaypost remote add" and use -s'])
+  expect(err).toEqual(['invites need a remote; add one with "jaypost admin remote add" and use -s'])
   expect(seen).toEqual([])
   expect(out).toEqual([])
 })

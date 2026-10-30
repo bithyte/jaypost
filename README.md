@@ -39,7 +39,7 @@ Check it works:
 jaypost ping
 ```
 
-Someone else runs a bot for you? They send an invite, and `jaypost join jpi_...` adds it to your contacts (see [Pairing](docs/pairing.md#joining-someone-elses-bot)).
+Someone else runs a bot for you? They send an invite, and `jaypost bots join jpi_...` adds it to your contacts (see [Pairing](docs/pairing.md#joining-someone-elses-bot)).
 
 Using Claude Code? Install the plugin and permission prompts go to your phone:
 

@@ -63,6 +63,47 @@ test('init is an unknown command', async () => {
   }
 })
 
+test('--help lists the commands under their groups and hides the moved and developer ones', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['--help'])).toBe(0)
+  const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
+  const lines = [...help.matchAll(/^([A-Z][a-z ]+:|  [a-z][a-z-]*)/gm)].map((match) =>
+    (match[1] ?? '').trim(),
+  )
+  expect(lines).toEqual([
+    'Usage:',
+    'Options:',
+    'Set up:',
+    'service',
+    'update',
+    'bots',
+    'pair',
+    'admin',
+    'Ask and notify:',
+    'request',
+    'notify',
+    'hook',
+    'mcp',
+    'Check:',
+    'status',
+    'ping',
+    'log',
+    'Commands:',
+    'help',
+  ])
+})
+
+test('join and remote are unknown top-level commands', async () => {
+  const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+  for (const command of ['join', 'remote']) {
+    write.mockClear()
+    expect(await main([command])).toBe(2)
+    expect(write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')).toContain(
+      `unknown command '${command}'`,
+    )
+  }
+})
+
 test('service --help lists install, uninstall, start, stop and run', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['service', '--help'])).toBe(0)
@@ -97,28 +138,39 @@ test('service install --help lists --token and --no-token', async () => {
   expect(help).toContain('--no-token')
 })
 
-test('setup-ci --help lists --provider', async () => {
+test('pair ci --help lists --provider', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
-  expect(await main(['setup-ci', '--help'])).toBe(0)
+  expect(await main(['pair', 'ci', '--help'])).toBe(0)
   expect(write.mock.calls.map((call) => String(call[0])).join('')).toContain('--provider <name>')
 })
 
-test('setup-ci --provider nope exits 2', async () => {
+test('pair ci --provider nope exits 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['setup-ci', '--provider', 'nope'])).toBe(2)
+  expect(await main(['pair', 'ci', '--provider', 'nope'])).toBe(2)
 })
 
-test('setup-ci --approvers-only exits 2', async () => {
+test('pair ci --approvers-only exits 2', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-  expect(await main(['setup-ci', '--approvers-only'])).toBe(2)
+  expect(await main(['pair', 'ci', '--approvers-only'])).toBe(2)
 })
 
-test('pair --help lists approver', async () => {
+test('pair --help lists ci, approver and reset-owner', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['pair', '--help'])).toBe(0)
   const help = write.mock.calls.map((call) => String(call[0])).join('')
   expect(help).toContain('Usage: jaypost pair')
-  expect(help).toMatch(/^\s+approver\b/m)
+  for (const command of ['ci', 'approver', 'reset-owner']) {
+    expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
+  }
+})
+
+test('the old setup-ci and reset-owner spellings reach pair ci and pair reset-owner', async () => {
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+  expect(await main(['setup-ci', '--help'])).toBe(0)
+  expect(await main(['reset-owner', '--help'])).toBe(0)
+  const help = write.mock.calls.map((call) => String(call[0])).join('')
+  expect(help).toContain('Usage: jaypost pair ci')
+  expect(help).toContain('Usage: jaypost pair reset-owner')
 })
 
 test('pair approver --provider nope exits 2', async () => {
@@ -307,12 +359,12 @@ test('ping -b with an unknown alias exits 1 and lists the known ones', () => {
   }
 })
 
-test('join with a garbage invite exits 1 without echoing it', () => {
+test('bots join with a garbage invite exits 1 without echoing it', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-join-'))
   try {
     const result = spawnSync(
       process.execPath,
-      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'join', 'jpi_garbage-secret-text'],
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'bots', 'join', 'jpi_garbage-secret-text'],
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
@@ -327,12 +379,12 @@ test('join with a garbage invite exits 1 without echoing it', () => {
   }
 })
 
-test('remote list on an empty book prints No remotes.', () => {
+test('admin remote list on an empty book prints No remotes.', () => {
   const directory = mkdtempSync(join(tmpdir(), 'jaypost-remote-'))
   try {
     const result = spawnSync(
       process.execPath,
-      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'remote', 'list'],
+      [join(import.meta.dirname, '..', 'src', 'cli.ts'), 'admin', 'remote', 'list'],
       {
         encoding: 'utf8',
         env: { PATH: process.env.PATH, HOME: directory, XDG_CONFIG_HOME: directory },
@@ -357,7 +409,7 @@ test('bots on an empty book says how to add one', () => {
       },
     )
     expect(result.status).toBe(0)
-    expect(result.stdout).toBe('No bots. Run "jaypost service install" or "jaypost join".\n')
+    expect(result.stdout).toBe('No bots. Run "jaypost service install" or "jaypost bots join".\n')
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -379,11 +431,11 @@ test('jaypost key list is an unknown command', async () => {
   }
 })
 
-test('admin --help lists bot, key, pairing, rotate-key and log', async () => {
+test('admin --help lists bot, key, pairing, remote, rotate-key and log', async () => {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
   expect(await main(['admin', '--help'])).toBe(0)
   const help = write.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('')
-  for (const command of ['bot', 'key', 'pairing', 'rotate-key', 'log']) {
+  for (const command of ['bot', 'key', 'pairing', 'remote', 'rotate-key', 'log']) {
     expect(help).toMatch(new RegExp(`^\\s+${command}\\b`, 'm'))
   }
   expect(help).toContain('-s, --service <name>')
@@ -851,7 +903,7 @@ test('a bad url in the contact book fails bots, ping -b and admin -s naming the 
       ['bots'],
       ['ping', '-b', 'a'],
       ['admin', '-s', 'r', 'bot', 'list'],
-      ['remote', 'list'],
+      ['admin', 'remote', 'list'],
     ]) {
       const result = spawnSync(process.execPath, ['apps/cli/src/cli.ts', ...args], {
         encoding: 'utf8',

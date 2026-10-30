@@ -27,7 +27,7 @@ export async function runStatus(deps: StatusDeps): Promise<number> {
     const isNoBot = install === undefined && resolved.endpoint.message.startsWith(NO_BOT_MESSAGE)
     print(
       isNoBot
-        ? 'No bot. Run "jaypost service install" or "jaypost join".'
+        ? 'No bot. Run "jaypost service install" or "jaypost bots join".'
         : resolved.endpoint.message,
     )
     return 1

@@ -8,7 +8,7 @@ Create a bot first and have the token ready: with [@BotFather](https://t.me/BotF
 4. Installs and starts the service, and saves it and its bot in your contact book (`~/.config/jaypost/bots.json`, mode 0600). The bot becomes the default if the book has none.
 5. Waits for pairing.
 
-`--exposed` makes the service listen on all interfaces over plain http instead of only this machine, and prints the `jaypost remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server).
+`--exposed` makes the service listen on all interfaces over plain http instead of only this machine, and prints the `jaypost admin remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server).
 
 If it finds an existing install it offers to replace it, reusing the saved bot token and owner (no re-pairing). If there's no install but a bot token was kept by `service uninstall`, it reuses that (and the owner) too. If `service install` fails partway, run it again; the old install record and saved bot token are kept until the new install succeeds.
 
@@ -40,7 +40,7 @@ If you downloaded the binary with a browser instead of curl, macOS may block it;
 
 `service install` copies the binary to `~/.local/bin/jaypost` and runs the service from there.
 
-Two things live under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `bots.json` is the client's contact book (mode 0600): every command that talks to a bot reads it, and nothing else there. `service/` belongs to the local service and its installer: `config.json`, `install.json`, `jaypost.db`, `admin-key`, and the `compose/` and `quadlet/` folders below. `install.json` records which target is installed, its port and version; it's what `status`, `reset-owner` and `service uninstall` read. The service's own copy of the API token goes in the target's `.env` or in `config.json` as listed below.
+Two things live under `~/.config/jaypost/` (or `$XDG_CONFIG_HOME/jaypost/`). `bots.json` is the client's contact book (mode 0600): every command that talks to a bot reads it, and nothing else there. `service/` belongs to the local service and its installer: `config.json`, `install.json`, `jaypost.db`, `admin-key`, and the `compose/` and `quadlet/` folders below. `install.json` records which target is installed, its port and version; it's what `status`, `pair reset-owner` and `service uninstall` read. The service's own copy of the API token goes in the target's `.env` or in `config.json` as listed below.
 
 ## Podman Quadlet
 

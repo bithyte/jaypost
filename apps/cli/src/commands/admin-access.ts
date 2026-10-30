@@ -180,7 +180,7 @@ function resolveNamedRemote(book: Book, name: string): AdminEndpoint {
   }
   const hint =
     book.remotes.length === 0
-      ? 'add one with "jaypost remote add"'
+      ? 'add one with "jaypost admin remote add"'
       : `known: ${book.remotes.map((each) => each.name).join(', ')}`
   return { kind: 'failed', message: `no remote "${name}"; ${hint}` }
 }

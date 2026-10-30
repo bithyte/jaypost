@@ -10,7 +10,7 @@ Commands that talk to a bot pick it from your [contact book](hosting.md#contacts
 jaypost service install [launchd|systemd|compose|quadlet] [--exposed] [--port N] [--provider NAME] [--token|--no-token]
 ```
 
-Installs or replaces the service on this machine and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. It saves the service and its bot in the contact book. `--exposed` listens on all interfaces over plain http instead of only this machine, and ends by printing the `jaypost remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server). See [Install](install.md).
+Installs or replaces the service on this machine and waits for pairing. The target picks where it runs; without one it asks. `--provider` is `telegram` (default) or `discord`, `--port` defaults to 8787, and `--token`/`--no-token` answer the API token question up front. It saves the service and its bot in the contact book. `--exposed` listens on all interfaces over plain http instead of only this machine, and ends by printing the `jaypost admin remote add` line to run on your own machine; see [Hosting](hosting.md#a-vm-or-server). See [Install](install.md).
 
 ### `jaypost service uninstall`
 
@@ -36,59 +36,6 @@ jaypost service run
 
 `start` and `stop` start or stop the installed service through its target. `run` runs the service in the foreground; the installed services use this.
 
-### `jaypost remote`
-
-```
-jaypost remote add NAME URL ADMIN_KEY
-jaypost remote remove NAME
-jaypost remote list
-```
-
-A remote is a service on another machine that you administer. `add` checks the admin key against the service and saves it, and asks before replacing a remote with the same name. `remove` forgets it; bots from that service stay in your contacts. `list` shows names and urls, never keys. See [Hosting](hosting.md).
-
-### `jaypost join`
-
-```
-jaypost join INVITE [--as ALIAS]
-```
-
-Saves a bot from an invite (`jpi_...`) someone sent you and waits for its pairing code if you haven't paired. `--as` names the contact; the default is the bot's name. See [Pairing](pairing.md#joining-someone-elses-bot).
-
-### `jaypost bots`
-
-```
-jaypost bots
-jaypost bots default ALIAS
-jaypost bots rename ALIAS NEW
-jaypost bots remove ALIAS [-y]
-```
-
-Lists your contacts (alias, service and the default; never keys), sets the default, renames one or removes one. Removing the default asks which contact takes over.
-
-### `jaypost status`
-
-```
-jaypost status [-b ALIAS]
-```
-
-Shows the target, version, port, where the token comes from (never its value), whether the service is running, and pairing state (with the code and instructions if unpaired).
-
-### `jaypost ping`
-
-```
-jaypost ping [-b ALIAS]
-```
-
-Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
-
-### `jaypost reset-owner`
-
-```
-jaypost reset-owner
-```
-
-Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md).
-
 ### `jaypost update`
 
 ```
@@ -96,6 +43,48 @@ jaypost update
 ```
 
 Moves the install to the latest version, then hands off to the new CLI to finish. A binary install swaps its copy of the binary for the latest release; an npm install runs `npm i -g`; Quadlet and Compose installs rebuild the image and restart the service.
+
+## Contacts
+
+### `jaypost bots`
+
+```
+jaypost bots
+jaypost bots join INVITE [--as ALIAS]
+jaypost bots default ALIAS
+jaypost bots rename ALIAS NEW
+jaypost bots remove ALIAS [-y]
+```
+
+Lists your contacts (alias, service and the default; never keys), sets the default, renames one or removes one. Removing the default asks which contact takes over.
+
+`join` saves a bot from an invite (`jpi_...`) someone sent you and waits for its pairing code if you haven't paired. `--as` names the contact; the default is the bot's name. See [Pairing](pairing.md#joining-someone-elses-bot).
+
+## Pairing
+
+### `jaypost pair ci`
+
+```
+jaypost pair ci [--provider NAME]
+```
+
+Pairs an owner and prints the env vars for CI. Add approvers with `jaypost pair approver`. See [CI](ci.md). `jaypost setup-ci` still works as the old name.
+
+### `jaypost pair approver`
+
+```
+jaypost pair approver [--provider NAME]
+```
+
+Pairs approvers for direct mode votes, one code per person, asking `Pair another?` after each. Prints the new ids as a comma list to add to your approvers list and the `JAYPOST_APPROVERS` secret. See [CI](ci.md).
+
+### `jaypost pair reset-owner`
+
+```
+jaypost pair reset-owner
+```
+
+Resets the pairing of the install's key (through the service, no restart needed), drops the owner from the install's inputs and waits for a new pairing. It only works on this machine's install, so it refuses while `JAYPOST_URL` is set; `JAYPOST_ADMIN_KEY` wins over the install's admin key, as for the admin commands. See [Pairing](pairing.md). `jaypost reset-owner` still works as the old name.
 
 ## Asking and notifying
 
@@ -131,6 +120,24 @@ jaypost hook [-b ALIAS] [--project NAME] [--timeout S]
 
 A Claude Code hook that sends permission prompts to your chat app and takes your reply to a finished turn as the next prompt. `--project` sets the `[name]` line (default: the project folder), `--timeout` is how long to wait for an answer (default 300, or 3600 for a finished turn). See [Claude Code](claude-code.md#hook-manual-setup).
 
+## Checking a bot
+
+### `jaypost status`
+
+```
+jaypost status [-b ALIAS]
+```
+
+Shows the target, version, port, where the token comes from (never its value), whether the service is running, and pairing state (with the code and instructions if unpaired).
+
+### `jaypost ping`
+
+```
+jaypost ping [-b ALIAS]
+```
+
+Sends "Ping from jaypost" as a notification. In a terminal it confirms with a "Sent to Telegram" (or Discord) line on stderr; otherwise it prints `Sent. Check your chat app.` `jaypost test` still works as the old name.
+
 ### `jaypost log`
 
 ```
@@ -141,7 +148,7 @@ Prints the questions the chosen bot's key asked and how they ended. `--since` ta
 
 ## Admin
 
-These call the admin routes and need the admin key. Every one takes `-s NAME`, a [remote](#jaypost-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it exits with an error asking for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one takes `--json`. See [Hosting](hosting.md).
+These call the admin routes and need the admin key, except `admin remote`, which manages the remotes saved in your contact book. Every other one takes `-s NAME`, a [remote](#jaypost-admin-remote). Without it the target is `JAYPOST_URL` plus `JAYPOST_ADMIN_KEY` when both are set, else the service on this machine, else the only remote; with several remotes and no local service it exits with an error asking for `-s`. A lone `JAYPOST_ADMIN_KEY` still replaces the book's admin key for the local service. Every one but `admin remote` takes `--json`. See [Hosting](hosting.md).
 
 ### `jaypost admin bot`
 
@@ -162,7 +169,7 @@ jaypost admin key label ID [--label TEXT] [--external-id ID]
 jaypost admin key revoke ID
 ```
 
-`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own contact book (`--as` names it); `--invite` prints a `jaypost join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
+`create` prints the new key once, with a pairing code when `--bot` made a new pairing. `--save` also adds the key to your own contact book (`--as` names it); `--invite` prints a `jaypost bots join` line to send to someone instead of the key, and works on remotes only. They can't be combined. `list` never shows key values. `label` sets the free-form fields; an empty value clears one. `revoke` leaves the pairing alone.
 
 ### `jaypost admin pairing`
 
@@ -173,6 +180,16 @@ jaypost admin pairing remove ID [-y]
 ```
 
 `create` makes a pairing with no key (an approver invite) and prints its code. `remove` revokes the pairing's keys too.
+
+### `jaypost admin remote`
+
+```
+jaypost admin remote add NAME URL ADMIN_KEY
+jaypost admin remote remove NAME
+jaypost admin remote list
+```
+
+A remote is a service on another machine that you administer. `add` checks the admin key against the service and saves it, and asks before replacing a remote with the same name. `remove` forgets it; bots from that service stay in your contacts. `list` shows names and urls, never keys. See [Hosting](hosting.md).
 
 ### `jaypost admin rotate-key`
 
@@ -190,24 +207,6 @@ jaypost admin log [--since WHEN] [--project NAME] [-n N | --limit N] [--bot ID] 
 
 Prints every bot's questions, or the ones of one `--bot`, `--pairing` or `--key`. If the local service doesn't answer, it reads the first bot's log from the files on disk and says so; `--bot` needs the service running. Flags otherwise as for [`log`](#jaypost-log).
 
-## CI
-
-### `jaypost setup-ci`
-
-```
-jaypost setup-ci [--provider NAME]
-```
-
-Pairs an owner and prints the env vars for CI. Add approvers with `jaypost pair approver`. See [CI](ci.md).
-
-### `jaypost pair approver`
-
-```
-jaypost pair approver [--provider NAME]
-```
-
-Pairs approvers for direct mode votes, one code per person, asking `Pair another?` after each. Prints the new ids as a comma list to add to your approvers list and the `JAYPOST_APPROVERS` secret. See [CI](ci.md).
-
 ## Other
 
 ### `jaypost openapi`
@@ -216,4 +215,4 @@ Pairs approvers for direct mode votes, one code per person, asking `Pair another
 jaypost openapi [FILE] [--port N]
 ```
 
-Prints the API's OpenAPI spec, or writes it to `FILE`. See [OpenAPI spec](http-api.md#openapi-spec).
+Prints the API's OpenAPI spec, or writes it to `FILE`. It's left out of `jaypost --help`. See [OpenAPI spec](http-api.md#openapi-spec).

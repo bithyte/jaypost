@@ -34,6 +34,6 @@ test('resolveBotTarget lists the known aliases for an unknown one', () => {
 test('resolveBotTarget on an empty book with no env says how to add a bot', () => {
   expect(resolveBotTarget({}, EMPTY_BOOK, undefined)).toEqual({
     kind: 'failed',
-    message: 'no bot to send to; run "jaypost service install" or "jaypost join"',
+    message: 'no bot to send to; run "jaypost service install" or "jaypost bots join"',
   })
 })

@@ -77,7 +77,7 @@ test('join saves the bot under its display name and makes it the default on an e
 })
 
 test('join accepts a pasted join command with whitespace', async () => {
-  expect(await runJoin({ invite: `  jaypost join ${INVITE}\n` }, deps())).toBe(0)
+  expect(await runJoin({ invite: `  jaypost bots join ${INVITE}\n` }, deps())).toBe(0)
   expect(readBook(bookPath).bots).toHaveLength(1)
 })
 

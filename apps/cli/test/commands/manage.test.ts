@@ -541,7 +541,7 @@ test('reset-owner with JAYPOST_URL set refuses before anything else', async () =
   const d = resetDeps({ env: { JAYPOST_URL: 'https://jaypost.example' } })
   expect(await runResetOwner(d)).toBe(1)
   expect(notes()).toEqual([
-    "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run reset-owner again.",
+    "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run jaypost pair reset-owner again.",
   ])
   expect(d.fetchStatus).not.toHaveBeenCalled()
   expect(d.confirm).not.toHaveBeenCalled()

@@ -50,11 +50,11 @@ _Avoid_: Bot (that's the chat app account), profile
 The service installed on this machine by `jaypost service install`. Its files live in `~/.config/jaypost/service/`.
 
 **Remote**:
-A service on another machine that you administer, saved in the contact book with its admin key by `jaypost remote add`. Admin commands pick one with `-s`.
+A service on another machine that you administer, saved in the contact book with its admin key by `jaypost admin remote add`. Admin commands pick one with `-s`.
 _Avoid_: Server, host
 
 **Invite**:
-One line, `jaypost join jpi_...`, that carries a service url and an API key (never the admin key) for someone else's `join`. Made with `jaypost admin key create --invite` on a remote.
+One line, `jaypost bots join jpi_...`, that carries a service url and an API key (never the admin key) for someone else's `bots join`. Made with `jaypost admin key create --invite` on a remote.
 _Avoid_: Pairing code (that's what a person sends the bot), token
 
 ### Storage and the install

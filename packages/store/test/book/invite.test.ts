@@ -12,10 +12,10 @@ test('decodeInvite reads what encodeInvite wrote', () => {
   expect(decodeInvite(encodeInvite(INVITE))).toEqual(INVITE)
 })
 
-test('decodeInvite accepts surrounding whitespace and a pasted "jaypost join " prefix', () => {
+test('decodeInvite accepts surrounding whitespace and a pasted "jaypost bots join " prefix', () => {
   const invite = encodeInvite(INVITE)
   expect(decodeInvite(`  ${invite}\n`)).toEqual(INVITE)
-  expect(decodeInvite(`jaypost join ${invite}`)).toEqual(INVITE)
+  expect(decodeInvite(`jaypost bots join ${invite}`)).toEqual(INVITE)
 })
 
 test('decodeInvite rejects a truncated invite, another prefix, v 2, a bad url and a bad key', () => {

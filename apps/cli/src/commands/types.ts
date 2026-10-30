@@ -469,7 +469,7 @@ export type KeyCreateArgs = AdminOutputArgs & {
   readonly save?: boolean
   /** The alias `save` uses instead of the bot's label, display name or id. */
   readonly as?: string
-  /** Print a `jaypost join` line for the person instead of the bare key; remotes only. */
+  /** Print a `jaypost bots join` line for the person instead of the bare key; remotes only. */
   readonly invite?: boolean
 }
 

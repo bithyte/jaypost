@@ -17,7 +17,7 @@ export const SEND_FAILED_MESSAGE = "couldn't send the message to the user"
 export const FETCH_GRACE_MS = 30_000
 /** Shown when the service answers 401 and no token was sent. */
 export const TOKEN_REQUIRED_MESSAGE =
-  'jaypost service needs a token; set JAYPOST_TOKEN to the service token, or add the bot to your contacts with jaypost join'
+  'jaypost service needs a token; set JAYPOST_TOKEN to the service token, or add the bot to your contacts with jaypost bots join'
 /** Shown when the service answers 401 to a token that was sent. */
 export const TOKEN_REJECTED_MESSAGE =
   'jaypost service rejected the token; check JAYPOST_TOKEN or the bot key, or run jaypost service install again if the service token changed'
@@ -54,7 +54,7 @@ export const ADMIN_KEY_REJECTED_MESSAGE =
   'jaypost service rejected the admin key; check JAYPOST_ADMIN_KEY, or the admin key file if the key was rotated'
 /** The 401 message for a remote saved in the contact book; its saved key is what the service refused. */
 export function toRemoteKeyRejectedMessage(name: string): string {
-  return `jaypost service rejected the admin key saved for remote ${JSON.stringify(name)}; run "jaypost remote add ${name} URL NEWKEY" again with the current key`
+  return `jaypost service rejected the admin key saved for remote ${JSON.stringify(name)}; run "jaypost admin remote add ${name} URL NEWKEY" again with the current key`
 }
 /** The 401 message for the local install; JAYPOST_ADMIN_KEY would override the saved key. */
 export const LOCAL_KEY_REJECTED_MESSAGE =

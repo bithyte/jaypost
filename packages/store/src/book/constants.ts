@@ -14,5 +14,5 @@ export const BOT_ENV_VAR = 'JAYPOST_BOT'
 
 export const LOCAL_ALIAS = 'local'
 
-/** Prefix a pasted invite may carry from the `jaypost join` command line. */
-export const JOIN_COMMAND_PREFIX = 'jaypost join '
+/** Prefix a pasted invite may carry from the `jaypost bots join` command line. */
+export const JOIN_COMMAND_PREFIX = 'jaypost bots join '

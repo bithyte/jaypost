@@ -13,7 +13,7 @@ There are no user accounts and no signup; the admin hands out keys.
 
 ## Contacts
 
-Your machine keeps a contact book, `~/.config/jaypost/bots.json` (mode 0600). A **contact** is an alias for one API key on one service, and `jaypost bots` lists them. A **remote** is a service you administer from this machine: a name, a url and its admin key, added with `jaypost remote add`. `jaypost service install` adds the local service, its first bot and its admin key for you. `jaypost join` adds a bot someone else runs. Commands that talk to a bot use the default contact, or `-b ALIAS`; admin commands use `-s NAME`. Keys never print in `bots` or `remote list`. See [Commands](commands.md).
+Your machine keeps a contact book, `~/.config/jaypost/bots.json` (mode 0600). A **contact** is an alias for one API key on one service, and `jaypost bots` lists them. A **remote** is a service you administer from this machine: a name, a url and its admin key, added with `jaypost admin remote add`. `jaypost service install` adds the local service, its first bot and its admin key for you. `jaypost bots join` adds a bot someone else runs. Commands that talk to a bot use the default contact, or `-b ALIAS`; admin commands use `-s NAME`. Keys never print in `bots` or `admin remote list`. See [Commands](commands.md).
 
 ## A VM or server
 
@@ -28,7 +28,7 @@ The service then listens on all interfaces (0.0.0.0) over plain http, so keys cr
 It ends by printing the line to run on your own machine, with the VM's hostname as a best guess (fix it if you reach the service through a proxy url):
 
 ```
-jaypost remote add myvm http://myvm:8787 jpa_...
+jaypost admin remote add myvm http://myvm:8787 jpa_...
 ```
 
 That line holds the admin key. Run it there, and every admin command works from that machine:
@@ -66,10 +66,10 @@ jaypost admin key create --bot b2 --label alice --invite -s myvm
 It prints a line to send to the person, privately, since it holds their key:
 
 ```
-jaypost join jpi_eyJ1cmwiOi...
+jaypost bots join jpi_eyJ1cmwiOi...
 ```
 
-They run it, and `join` saves the bot in their contacts and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
+They run it, and `bots join` saves the bot in their contacts and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
 
 For a key that isn't going into a contact book, such as a CI secret or an app using `--external-id`, leave `--invite` off and `create` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own contacts instead, with `--as` to name it.
 
@@ -129,7 +129,7 @@ The old key stops working immediately, the new one is printed once and saved in 
 
 ## Reset a person
 
-`jaypost reset-owner` resets the pairing of the install's key (`p1` after an upgrade) through `POST /admin/pairings/:id/reset`. The person is forgotten, the pairing gets a fresh code and its keys keep working once someone pairs again. The keys' open questions end with their timeout option. It also removes the owner from the install's inputs, so a restart can't pair them again: the `owner` in `config.json` for systemd and launchd, the owner line in `.env` for containers. A container whose old service saved the owner into `/data/config.json` keeps it there until you run `jaypost owner clear` inside the container or edit the file.
+`jaypost pair reset-owner` resets the pairing of the install's key (`p1` after an upgrade) through `POST /admin/pairings/:id/reset`. The person is forgotten, the pairing gets a fresh code and its keys keep working once someone pairs again. The keys' open questions end with their timeout option. It also removes the owner from the install's inputs, so a restart can't pair them again: the `owner` in `config.json` for systemd and launchd, the owner line in `.env` for containers. A container whose old service saved the owner into `/data/config.json` keeps it there until you run `jaypost owner clear` inside the container or edit the file.
 
 ## What isn't built
 
@@ -137,4 +137,4 @@ The old key stops working immediately, the new one is printed once and saved in 
 - No quotas or rate limits per key.
 - No per-key voter lists; `/vote` uses the rule above for every key.
 - No user accounts, signup or web UI; only the admin adds bots, and an app on top of the admin API can add the rest.
-- Direct mode, `setup-ci` and the GitHub Action are unchanged; they don't use any of this.
+- Direct mode, `pair ci` and the GitHub Action are unchanged; they don't use any of this.

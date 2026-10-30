@@ -97,7 +97,7 @@ The server talks to your default contact, or the one `-b ALIAS` (or `JAYPOST_BOT
 
 For a container, `export JAYPOST_TOKEN=<an API key>` and then `-e JAYPOST_TOKEN` (name only) does the same; a `-e NAME=value` would show the token in `ps`. Keys come from `jaypost admin key create` (see [Hosting](hosting.md)) or the `key` of a bot in `~/.config/jaypost/bots.json`.
 
-The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the book isn't read), then the book's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a contact with `jaypost join` or `jaypost service install`.
+The bot comes from `-b`, then `JAYPOST_BOT`, then `JAYPOST_URL`/`JAYPOST_TOKEN` (the book isn't read), then the book's default. `JAYPOST_URL` reaches a service by URL, on another host or behind a reverse proxy; without it, env mode uses `JAYPOST_HOST` and `JAYPOST_PORT`, then 127.0.0.1:8787. Add a contact with `jaypost bots join` or `jaypost service install`.
 
 The service has to be running. A call made while it's down returns an error to the agent; the MCP server stays up, so the next call works once the service is back.
 

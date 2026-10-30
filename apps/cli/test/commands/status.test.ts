@@ -107,7 +107,7 @@ test('status with no bot and no install says how to get one', async () => {
     resolved: {
       endpoint: {
         kind: 'invalid',
-        message: 'no bot to send to; run "jaypost service install" or "jaypost join"',
+        message: 'no bot to send to; run "jaypost service install" or "jaypost bots join"',
       },
       token: NO_CLIENT_TOKEN,
       alias: undefined,
@@ -116,7 +116,7 @@ test('status with no bot and no install says how to get one', async () => {
     fetchStatus,
   })
   expect(await runStatus(deps)).toBe(1)
-  expect(out).toEqual(['No bot. Run "jaypost service install" or "jaypost join".'])
+  expect(out).toEqual(['No bot. Run "jaypost service install" or "jaypost bots join".'])
   expect(fetchStatus).not.toHaveBeenCalled()
 })
 

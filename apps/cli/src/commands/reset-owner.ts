@@ -43,7 +43,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const print = deps.progress.note
   if (findEnvEndpoint(deps.env) !== undefined) {
     print(
-      "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run reset-owner again.",
+      "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run jaypost pair reset-owner again.",
     )
     return 1
   }
