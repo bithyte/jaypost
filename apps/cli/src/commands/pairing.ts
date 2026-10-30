@@ -1,4 +1,4 @@
-import type { PairingInvite, PairingsBody } from '@jaypost/protocol'
+import type { ContactInvite, ContactsBody } from '@jaypost/protocol'
 import { openAdminCaller } from './admin-access.ts'
 import { formatCount, formatTable, printResult, runAdminCommand } from './admin.ts'
 import type { AdminDeps, AdminRemoveArgs, PairingCreateArgs, PairingListArgs } from './types.ts'
@@ -8,13 +8,13 @@ export function formatInvite(code: string, instructions: string | undefined): st
   return [`Pairing code: ${code}`, ...(instructions === undefined ? [] : [instructions])].join('\n')
 }
 
-function formatPairings(body: PairingsBody): string {
-  if (body.pairings.length === 0) {
+function formatPairings(body: ContactsBody): string {
+  if (body.contacts.length === 0) {
     return 'No pairings.'
   }
   return formatTable(
     ['ID', 'BOT', 'STATE', 'PERSON', 'CODE', 'KEYS'],
-    body.pairings.map((pairing) => [
+    body.contacts.map((pairing) => [
       pairing.id,
       pairing.bot,
       pairing.state,
@@ -25,8 +25,8 @@ function formatPairings(body: PairingsBody): string {
   )
 }
 
-function formatCreatedPairing(invite: PairingInvite): string {
-  const { pairing } = invite
+function formatCreatedPairing(invite: ContactInvite): string {
+  const { contact: pairing } = invite
   if (invite.code === undefined) {
     return `Pairing ${pairing.id} on bot ${pairing.bot} is ready.`
   }
@@ -44,7 +44,7 @@ export function runPairingCreate(args: PairingCreateArgs, deps: AdminDeps): Prom
       return 1
     }
     return printResult(
-      await caller.createPairing({ bot: args.bot }),
+      await caller.createContact({ bot: args.bot }),
       args,
       deps,
       formatCreatedPairing,
@@ -59,7 +59,7 @@ export function runPairingList(args: PairingListArgs, deps: AdminDeps): Promise<
     if (caller === undefined) {
       return 1
     }
-    const result = await caller.listPairings(args.bot === undefined ? {} : { bot: args.bot })
+    const result = await caller.listContacts(args.bot === undefined ? {} : { bot: args.bot })
     return printResult(result, args, deps, formatPairings)
   })
 }
@@ -75,12 +75,12 @@ export function runPairingRemove(args: AdminRemoveArgs, deps: AdminDeps): Promis
       return 1
     }
     if (!args.yes) {
-      const listed = await caller.listPairings({})
+      const listed = await caller.listContacts({})
       if (listed.kind === 'failed') {
         deps.printError(listed.message)
         return 1
       }
-      const pairing = listed.value.pairings.find((candidate) => candidate.id === args.id)
+      const pairing = listed.value.contacts.find((candidate) => candidate.id === args.id)
       if (pairing === undefined) {
         deps.printError(`unknown pairing ${JSON.stringify(args.id)}`)
         return 1
@@ -91,7 +91,7 @@ export function runPairingRemove(args: AdminRemoveArgs, deps: AdminDeps): Promis
         return 0
       }
     }
-    return printResult(await caller.removePairing(args.id), args, deps, ({ removedKeys }) => {
+    return printResult(await caller.removeContact(args.id), args, deps, ({ removedKeys }) => {
       const ids = removedKeys.length === 0 ? '' : ` (${removedKeys.join(', ')})`
       return `Removed pairing ${args.id} and revoked ${formatCount(removedKeys.length, 'key')}${ids}.`
     })

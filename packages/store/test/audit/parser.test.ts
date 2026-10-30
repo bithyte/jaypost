@@ -162,9 +162,9 @@ test('selectAuditEntries filters by since (inclusive) and exact project, then ke
   ).toEqual(['4'])
 })
 
-test('the entry takes key and pairing from the asked line', () => {
+test('the entry takes key and contact from the asked line', () => {
   const raw =
-    asked('a', '2026-10-18T10:00:00.000Z', { key: 'k1', pairing: 'p1' }) +
+    asked('a', '2026-10-18T10:00:00.000Z', { key: 'k1', contact: 'c1' }) +
     asked('b', '2026-10-18T11:00:00.000Z') +
     settled('a', '2026-10-18T10:00:05.000Z', 'answered', 'Approve')
   const { entries, skippedCount } = parseAuditLog(raw, NOW)
@@ -180,10 +180,10 @@ test('the entry takes key and pairing from the asked line', () => {
     answer: 'Approve',
     settledAt: '2026-10-18T10:00:05.000Z',
     key: 'k1',
-    pairing: 'p1',
+    contact: 'c1',
   })
   expect(Object.hasOwn(entries[1] ?? {}, 'key')).toBe(false)
-  expect(Object.hasOwn(entries[1] ?? {}, 'pairing')).toBe(false)
+  expect(Object.hasOwn(entries[1] ?? {}, 'contact')).toBe(false)
 })
 
 test('an asked line with a non-string key is skipped', () => {
@@ -191,17 +191,17 @@ test('an asked line with a non-string key is skipped', () => {
   expect(parseAuditLog(raw, NOW)).toEqual({ entries: [], skippedCount: 1 })
 })
 
-test('selectAuditEntries filters by key and pairing', () => {
+test('selectAuditEntries filters by key and contact', () => {
   const askedAt = '2026-10-18T10:00:00.000Z'
   const entries: AuditEntry[] = [
-    { ...entry('a', askedAt), key: 'k1', pairing: 'p1' },
-    { ...entry('b', askedAt), key: 'k2', pairing: 'p2' },
+    { ...entry('a', askedAt), key: 'k1', contact: 'c1' },
+    { ...entry('b', askedAt), key: 'k2', contact: 'c2' },
     entry('c', askedAt),
   ]
   const ids = (filter: Parameters<typeof selectAuditEntries>[1]) =>
     selectAuditEntries(entries, filter).map((item) => item.id)
   expect(ids({ key: 'k1' })).toEqual(['a'])
-  expect(ids({ pairing: 'p2' })).toEqual(['b'])
+  expect(ids({ contact: 'c2' })).toEqual(['b'])
   expect(ids({})).toEqual(['a', 'b', 'c'])
 })
 

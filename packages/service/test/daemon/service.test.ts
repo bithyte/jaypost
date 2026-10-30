@@ -201,7 +201,7 @@ const REFUSED_WRITES = ['bots', 'contacts', 'keys'].flatMap((table) =>
   })),
 )
 
-/** Makes every bot, pairing and key write fail until the returned function runs. */
+/** Makes every bot, contact and key write fail until the returned function runs. */
 function refuseRegistryWrites(configPath: string): () => void {
   const database = openDatabase(resolveDatabasePath(configPath))
   for (const { table, event, name } of REFUSED_WRITES) {
@@ -282,7 +282,7 @@ test('an upgraded install keeps its token, owner and quiet hours as key 1 on bot
   expect(await getStatus(url, TOKEN)).toEqual({
     paired: true,
     key: 'k1',
-    pairing: 'c1',
+    contact: 'c1',
     state: 'running',
     provider: 'fakepair',
     displayName: 'fake',
@@ -327,7 +327,7 @@ test('a request saved by the previous run is expired at start', async () => {
   expect(readState(configPath).requests).toEqual([])
 })
 
-test('two keys on one pairing share the person; a key on another pairing reaches its own', async () => {
+test('two keys on one contact share the person; a key on another contact reaches its own', async () => {
   const provider = createPairingFakeProvider()
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath })
@@ -347,7 +347,7 @@ test('two keys on one pairing share the person; a key on another pairing reaches
   ])
 })
 
-test('someone already paired who redeems another code gets that key on their pairing', async () => {
+test('someone already paired who redeems another code gets that key on their contact', async () => {
   const provider = createPairingFakeProvider()
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath })
@@ -356,9 +356,9 @@ test('someone already paired who redeems another code gets that key on their pai
     throw new Error('no key')
   }
   expect(runtime.handlers?.pair?.('u1', CODE)).toBe('paired')
-  expect(await getStatus(url, created.key)).toMatchObject({ paired: true, pairing: 'c1' })
+  expect(await getStatus(url, created.key)).toMatchObject({ paired: true, contact: 'c1' })
   const registry = readRegistry(configPath)
-  expect(registry.contacts.map((pairing) => pairing.id)).toEqual(['c1'])
+  expect(registry.contacts.map((contact) => contact.id)).toEqual(['c1'])
   expect(registry.keys).toMatchObject([
     { id: 'k1', contactId: 'c1' },
     { id: 'k2', contactId: 'c1' },
@@ -392,7 +392,7 @@ test('an unpaired key gets 503 and its code from /status', async () => {
   expect(created).toEqual({
     id: 'k2',
     key: expect.stringMatching(/^jpk_/),
-    pairing: 'c2',
+    contact: 'c2',
     code: 'K7QM-4XPD',
     instructions: 'Say K7QM4XPD to fake',
   })
@@ -406,7 +406,7 @@ test('an unpaired key gets 503 and its code from /status', async () => {
   expect(await getStatus(url, created.key)).toEqual({
     paired: false,
     key: 'k2',
-    pairing: 'c2',
+    contact: 'c2',
     state: 'running',
     provider: 'fakepair',
     displayName: 'fake',
@@ -442,7 +442,7 @@ test('GET /log only returns the caller key lines', async () => {
   }
   const otherLog = await read('', other.key)
   expect(otherLog).toMatchObject({
-    entries: [{ key: 'k2', pairing: 'c1', status: 'answered', answer: 'Approve' }],
+    entries: [{ key: 'k2', contact: 'c1', status: 'answered', answer: 'Approve' }],
     skippedCount: 0,
   })
   expect(otherLog.entries).toHaveLength(1)
@@ -480,14 +480,14 @@ test("a key's /log has no bot field", async () => {
       status: 'answered',
       answer: 'Approve',
       key: 'k1',
-      pairing: 'c1',
+      contact: 'c1',
     },
   ])
 })
 
 test('a tokenless install treats no token as key 1 and a wrong token as 401', async () => {
   const { url } = await start(createFakeProvider())
-  expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1', pairing: 'c1' })
+  expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1', contact: 'c1' })
   const error = muteConsole()
   const wrong = await call(url, 'GET', '/status', { token: WRONG })
   error.mockRestore()
@@ -545,7 +545,7 @@ test('a bot with rejected credentials shows failed in /status and the others kee
   expect(await getStatus(url, WRONG)).toEqual({
     paired: true,
     key: 'k1',
-    pairing: 'c1',
+    contact: 'c1',
     state: 'failed',
     error: 'fake said no',
     provider: 'fake',
@@ -555,7 +555,7 @@ test('a bot with rejected credentials shows failed in /status and the others kee
   const refused = await post(url, '/request', REQUEST, WRONG)
   expect(refused.status).toBe(503)
   expect(await refused.json()).toEqual({ error: 'bot unavailable' })
-  expect(await getStatus(url, TOKEN)).toMatchObject({ key: 'k2', pairing: 'c2', state: 'running' })
+  expect(await getStatus(url, TOKEN)).toMatchObject({ key: 'k2', contact: 'c2', state: 'running' })
   expect((await post(url, '/request/async', REQUEST, TOKEN)).status).toBe(202)
   expect(runtime.sent).toHaveLength(1)
   expect(readAudit(configPath, 'b2')).toHaveLength(1)
@@ -598,13 +598,13 @@ test('a blocking question open at a fatal error is answered at once and settled 
   expect(settled).toMatchObject([{ outcome: 'rejected', answer: 'Decline' }])
 })
 
-test("a late code on an abandoned runtime can't take over a pairing already claimed", async () => {
+test("a late code on an abandoned runtime can't take over a contact already claimed", async () => {
   const provider = createPairingFakeProvider()
   const log = vi.fn()
   const configPath = createConfigPath(provider, { fakeOwner: 'u1', apiToken: TOKEN })
   const { url, runtime } = await start(provider, { configPath, log })
-  const created = requireRunning().hub.createPairing({ bot: 'b1' })
-  expect(created).toMatchObject({ pairing: { id: 'c2', state: 'pending' } })
+  const created = requireRunning().hub.createContact({ bot: 'b1' })
+  expect(created).toMatchObject({ contact: { id: 'c2', state: 'pending' } })
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
   runtime.handlers?.fatal('connection lost')
   await vi.advanceTimersByTimeAsync(5_000)
@@ -633,7 +633,7 @@ test('the api answers while a bot is still starting', async () => {
   expect(await getStatus(url)).toEqual({
     paired: true,
     key: 'k1',
-    pairing: 'c1',
+    contact: 'c1',
     state: 'starting',
     provider: 'fake',
     maxAttachmentBytes: 0,
@@ -745,7 +745,7 @@ test('fake without pairing is paired from start', async () => {
   expect(await getStatus(url)).toEqual({
     paired: true,
     key: 'k1',
-    pairing: 'c1',
+    contact: 'c1',
     state: 'running',
     provider: 'fake',
     displayName: 'fake',
@@ -767,7 +767,7 @@ test('pairing fake: unpaired status, pair, then paired and saved', async () => {
   expect(await getStatus(url)).toEqual({
     paired: false,
     key: 'k1',
-    pairing: 'c1',
+    contact: 'c1',
     state: 'running',
     provider: 'fakepair',
     displayName: 'fake',
@@ -777,7 +777,7 @@ test('pairing fake: unpaired status, pair, then paired and saved', async () => {
     maxTextLength: 100,
   })
   expect(runtime.handlers?.pair?.('u1', 'k7qm-4xpd')).toBe('paired')
-  expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1', pairing: 'c1' })
+  expect(await getStatus(url)).toMatchObject({ paired: true, key: 'k1', contact: 'c1' })
   expect(readRegistry(configPath).contacts).toMatchObject([{ id: 'c1', person: 'u1' }])
   expect(readRegistry(configPath).contacts[0]).not.toHaveProperty('code')
   const otherLines = log.mock.calls.filter(([line]) => !String(line).includes('Not paired.'))
@@ -882,13 +882,13 @@ test('notifications go out silently while muted and ping again after /unmute', a
   expect(silent).toEqual([false, true, false])
 })
 
-test('/mute is saved to the pairing and a restarted service is still muted', async () => {
+test('/mute is saved to the contact and a restarted service is still muted', async () => {
   const { provider, silent } = createSilentProvider()
   const configPath = createConfigPath(provider)
   const first = await start(provider, { configPath })
   expect(first.runtime.handlers?.command('mute', '2h', undefined)).toMatch(/^Muted until /)
-  const [pairing] = readRegistry(configPath).contacts
-  const drift = new Date(pairing?.mutedUntil ?? 0).getTime() - (Date.now() + 2 * 3_600_000)
+  const [contact] = readRegistry(configPath).contacts
+  const drift = new Date(contact?.mutedUntil ?? 0).getTime() - (Date.now() + 2 * 3_600_000)
   expect(Math.abs(drift)).toBeLessThan(60_000)
   await stopRunning()
   const second = await start(provider, { configPath })
@@ -897,7 +897,7 @@ test('/mute is saved to the pairing and a restarted service is still muted', asy
   expect(silent).toEqual([true])
 })
 
-test('/quiet off removes quietHours from the pairing', async () => {
+test('/quiet off removes quietHours from the contact', async () => {
   const { provider } = createSilentProvider()
   const { runtime, configPath } = await start(provider)
   runtime.handlers?.command('quiet', '23-8', undefined)
@@ -1098,6 +1098,6 @@ test('an answered request is written to the bot audit log with its key', async (
   await response
   const records = readAudit(configPath)
   expect(records).toHaveLength(2)
-  expect(records[0]).toMatchObject({ event: 'asked', id, key: 'k1', pairing: 'c1' })
+  expect(records[0]).toMatchObject({ event: 'asked', id, key: 'k1', contact: 'c1' })
   expect(records[1]).toMatchObject({ event: 'settled', id, outcome: 'answered', answer: 'Approve' })
 })

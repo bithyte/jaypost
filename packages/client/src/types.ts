@@ -316,6 +316,6 @@ export type LogFilter = {
 /** What `AdminCaller.readLog` narrows every bot's log to; absent fields don't filter. */
 export type AdminLogFilter = LogFilter & {
   readonly bot?: string
-  readonly pairing?: string
+  readonly contact?: string
   readonly key?: string
 }

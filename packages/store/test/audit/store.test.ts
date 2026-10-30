@@ -26,7 +26,7 @@ const REQUEST = {
   timeoutSeconds: 300,
   attachment: undefined,
 }
-const CALLER = { key: 'k1', pairing: 'p1' }
+const CALLER = { key: 'k1', contact: 'c1' }
 
 let directory: string
 const log = vi.fn()
@@ -62,7 +62,7 @@ test('logs a settled question with its answer', () => {
           answer: 'Approve',
           settledAt: settledAt.toISOString(),
           key: 'k1',
-          pairing: 'p1',
+          contact: 'c1',
         },
       },
     ],

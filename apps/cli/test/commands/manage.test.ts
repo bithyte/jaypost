@@ -118,7 +118,7 @@ function seed(target: TargetName = 'systemd', port = 9000) {
 const TOKEN = 'T'.repeat(43)
 const ADMIN_KEY = 'A'.repeat(43)
 const INVITE = JSON.stringify({
-  pairing: { id: 'p1', bot: 'b1', state: 'pending', code: 'ABCD-EFGH', keys: ['k1'] },
+  contact: { id: 'c1', bot: 'b1', state: 'pending', code: 'ABCD-EFGH', keys: ['k1'] },
   code: 'ABCD-EFGH',
 })
 const LOCAL_URL = 'http://127.0.0.1:9000/'
@@ -142,7 +142,7 @@ function answered(status: StatusInfo) {
   return { kind: 'answered' as const, status }
 }
 
-const PAIRED_K1 = answered({ paired: true, key: 'k1', pairing: 'p1' })
+const PAIRED_K1 = answered({ paired: true, key: 'k1', contact: 'c1' })
 
 function base(over = {}) {
   return {
@@ -466,7 +466,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
   expect(await runResetOwner(d)).toBe(0)
   expect(seen).toEqual([
     answered(
-      expect.objectContaining({ paired: false, code: 'PAIR-2222', key: 'k1', pairing: 'c1' }),
+      expect.objectContaining({ paired: false, code: 'PAIR-2222', key: 'k1', contact: 'c1' }),
     ),
   ])
   const registry = readRegistry(configPath)
@@ -507,13 +507,13 @@ test('reset-owner yes: resets the pairing with the admin key and waits, with no 
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Telegram account. It resets pairing p1 (key k1). Continue?',
+    'This unlinks your Telegram account. It resets pairing c1 (key k1). Continue?',
     false,
   )
   expect(d.fetchStatus).toHaveBeenCalledTimes(1)
   expect(d.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), undefined)
   expect(seen).toEqual([
-    { url: 'POST /admin/pairings/p1/reset', authorization: `Bearer ${ADMIN_KEY}` },
+    { url: 'POST /admin/contacts/c1/reset', authorization: `Bearer ${ADMIN_KEY}` },
   ])
   expect(d.wait).toHaveBeenCalledWith(
     expect.objectContaining({ url: new URL(`http://127.0.0.1:${port}/`) }),
@@ -532,7 +532,7 @@ test('reset-owner resets with JAYPOST_ADMIN_KEY over the install key', async () 
   const d = resetDeps({ env: { JAYPOST_ADMIN_KEY: envKey } })
   expect(await runResetOwner(d)).toBe(0)
   expect(seen).toEqual([
-    { url: 'POST /admin/pairings/p1/reset', authorization: `Bearer ${envKey}` },
+    { url: 'POST /admin/contacts/c1/reset', authorization: `Bearer ${envKey}` },
   ])
   expect(d.targets.systemd.readAdminKey).not.toHaveBeenCalled()
 })
@@ -552,27 +552,27 @@ test('reset-owner on a container drops the owner from its inputs without clearOw
   seed('compose', stub.port)
   const d = resetDeps()
   expect(await runResetOwner(d)).toBe(0)
-  expect(stub.seen.map((request) => request.url)).toEqual(['POST /admin/pairings/p1/reset'])
+  expect(stub.seen.map((request) => request.url)).toEqual(['POST /admin/contacts/c1/reset'])
   expect(d.targets.compose.forgetSeedOwner).toHaveBeenCalled()
   expect(d.targets.compose.clearOwner).not.toHaveBeenCalled()
 })
 
 test('reset-owner names the pairing for a key other than k1', async () => {
   await seedResetStub()
-  const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', pairing: 'p4' }))
+  const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', contact: 'c4' }))
   const d = resetDeps({ fetchStatus, confirm: vi.fn(async () => false) })
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Telegram account. It resets pairing p4 (key k7). Continue?',
+    'This unlinks your Telegram account. It resets pairing c4 (key k7). Continue?',
     false,
   )
 })
 
 test('reset-owner resets the pairing /status names for the token', async () => {
   const { seen } = await seedResetStub()
-  const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', pairing: 'p4' }))
+  const fetchStatus = vi.fn(async () => answered({ paired: true, key: 'k7', contact: 'c4' }))
   expect(await runResetOwner(resetDeps({ fetchStatus }))).toBe(0)
-  expect(seen.map((request) => request.url)).toEqual(['POST /admin/pairings/p4/reset'])
+  expect(seen.map((request) => request.url)).toEqual(['POST /admin/contacts/c4/reset'])
 })
 
 test('reset-owner starts a stopped service first and waits for /status', async () => {
@@ -591,7 +591,7 @@ test('reset-owner starts a stopped service first and waits for /status', async (
   expect(fetchStatus).toHaveBeenCalledTimes(3)
   expect(d.sleep).toHaveBeenCalledTimes(2)
   expect(d.sleep).toHaveBeenCalledWith(POLL_INTERVAL_MS)
-  expect(seen.map((request) => request.url)).toEqual(['POST /admin/pairings/p1/reset'])
+  expect(seen.map((request) => request.url)).toEqual(['POST /admin/contacts/c1/reset'])
   expect(recording.events).toEqual([
     'plan:Starting the service|Clearing the owner|Waiting for the service to start|Waiting for pairing',
     'start:Starting the service',
@@ -642,7 +642,7 @@ test('reset-owner confirm text comes from the provider', async () => {
   })
   expect(await runResetOwner(d)).toBe(0)
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Fake account. It resets pairing p1 (key k1). Continue?',
+    'This unlinks your Fake account. It resets pairing c1 (key k1). Continue?',
     false,
   )
 })
@@ -854,12 +854,12 @@ test('reset-owner prompt interrupted while reading /status -> 130 before the pro
 })
 
 test('reset-owner keeps the owner when the admin call fails after a stopped service', async () => {
-  await seedResetStub(404, '{"error":"unknown pairing p1"}')
+  await seedResetStub(404, '{"error":"unknown pairing c1"}')
   const target = fake('systemd', false)
   const d = resetDeps({ targets: targets({ systemd: target }) })
   expect(await runResetOwner(d)).toBe(1)
   expect(order).toEqual(['start'])
-  expect(notes()).toEqual(['unknown pairing p1'])
+  expect(notes()).toEqual(['unknown pairing c1'])
 })
 
 test("reset-owner uses the local seed bot's key over JAYPOST_TOKEN", async () => {

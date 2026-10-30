@@ -141,7 +141,7 @@ test('a line without a key on the seed bot is the seed key', () => {
 })
 
 test('a keyed line or a line on another bot is not the seed key', () => {
-  expect(isSeedLine(REGISTRY, 'b1', createEntry({ key: 'k2', pairing: 'c1' }))).toBe(false)
+  expect(isSeedLine(REGISTRY, 'b1', createEntry({ key: 'k2', contact: 'c1' }))).toBe(false)
   expect(isSeedLine(REGISTRY, 'b2', createEntry({}))).toBe(false)
   const { seed: _seed, ...unseeded } = REGISTRY
   expect(isSeedLine(unseeded, 'b1', createEntry({}))).toBe(false)

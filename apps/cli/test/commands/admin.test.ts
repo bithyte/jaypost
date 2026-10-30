@@ -226,7 +226,7 @@ test('key create --json prints the created key as JSON and the note on stderr', 
   expect(JSON.parse(out.join('\n'))).toEqual({
     id: 'k2',
     key: expect.stringMatching(/^jpk_/),
-    pairing: 'c1',
+    contact: 'c1',
   })
   expect(err).toEqual(["This key isn't shown again; store it now."])
 })
@@ -502,7 +502,7 @@ test('with no install the admin key file and port come from the config', async (
         provider: 'fakepair',
         displayName: 'fake',
         state: 'running',
-        pairingCount: 1,
+        contactCount: 1,
         keyCount: 1,
       },
     ],

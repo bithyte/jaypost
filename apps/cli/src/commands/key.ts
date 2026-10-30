@@ -18,7 +18,7 @@ function formatKeys(body: KeysBody): string {
     body.keys.map((key) => [
       key.id,
       key.bot,
-      key.pairing,
+      key.contact,
       key.label,
       key.externalId,
       key.createdAt.slice(0, 10),
@@ -47,7 +47,7 @@ function formatPairingLines(created: CreatedKey): readonly string[] {
 /** The key, once, then the pairing code and how to use it while the pairing waits. */
 function formatCreatedKey(created: CreatedKey): string {
   return [
-    `Key ${created.id} (pairing ${created.pairing}): ${created.key}`,
+    `Key ${created.id} (pairing ${created.contact}): ${created.key}`,
     KEY_SHOWN_ONCE_NOTE,
     ...formatPairingLines(created),
   ].join('\n')
@@ -99,11 +99,11 @@ async function resolveTargetBot(
   }
   if (args.pairing !== undefined) {
     const { pairing } = args
-    const pairings = await caller.listPairings({})
+    const pairings = await caller.listContacts({})
     if (pairings.kind === 'failed') {
       return pairings
     }
-    const found = pairings.value.pairings.find((each) => each.id === pairing)
+    const found = pairings.value.contacts.find((each) => each.id === pairing)
     return found === undefined ? toUnknown('pairing', pairing) : { kind: 'ok', value: found.bot }
   }
   const { sameAs } = args
@@ -207,7 +207,7 @@ export function runKeyCreate(args: KeyCreateArgs, deps: AdminDeps): Promise<numb
     }
     const result = await opened.caller.createKey({
       ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { pairing: args.pairing }),
+      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
       ...(args.sameAs === undefined ? {} : { sameAsKey: args.sameAs }),
       ...(args.label === undefined ? {} : { label: args.label }),
       ...(args.externalId === undefined ? {} : { externalId: args.externalId }),
@@ -295,7 +295,7 @@ export function runKeyList(args: KeyListArgs, deps: AdminDeps): Promise<number> 
     }
     const result = await caller.listKeys({
       ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { pairing: args.pairing }),
+      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
     })
     return printResult(result, args, deps, formatKeys)
   })

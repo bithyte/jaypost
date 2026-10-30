@@ -147,7 +147,7 @@ test('200 with outcome', async () => {
     attachment: undefined,
     deleteAfter: undefined,
     reaskOnTimeout: false,
-    caller: { key: 'k1', pairing: 'p1' },
+    caller: { key: 'k1', contact: 'c1' },
   })
 })
 
@@ -603,7 +603,7 @@ function toRoute(
   const key = options.key ?? 'k1'
   return {
     kind: 'key',
-    caller: { key, pairing: 'p1' },
+    caller: { key, contact: 'c1' },
     person: options.person,
     bot,
     status: () => ({ paired: options.person !== undefined, code: 'ABCD-EFGH', key }),
@@ -657,11 +657,11 @@ test('a router with several bots sends each call to the bot its token picks', as
   error.mockRestore()
   expect(askFirst.mock.calls[0]?.[0]).toMatchObject({
     recipient: 'u1',
-    caller: { key: 'k1', pairing: 'p1' },
+    caller: { key: 'k1', contact: 'c1' },
   })
   expect(askSecond.mock.calls[0]?.[0]).toMatchObject({
     recipient: 'u2',
-    caller: { key: 'k2', pairing: 'p1' },
+    caller: { key: 'k2', contact: 'c1' },
   })
 })
 
@@ -727,7 +727,7 @@ async function postInHalves(
   })
 }
 
-test('a key revoked or a pairing reset during the upload sends nothing', async () => {
+test('a key revoked or a contact reset during the upload sends nothing', async () => {
   const request = vi.fn<RequestFn>(async () => ({
     kind: 'completed',
     outcome: { answer: 'Approve', timedOut: false },
@@ -781,7 +781,7 @@ test('the local person of a bot that does not pair sends to nobody in particular
   const url = await startRouted(() => toRoute(toBot(request, 100), { person: LOCAL_PERSON }))
   expect((await post(url, JSON.stringify(valid))).status).toBe(200)
   expect(request.mock.calls[0]?.[0]).not.toHaveProperty('recipient')
-  expect(request.mock.calls[0]?.[0].caller).toEqual({ key: 'k1', pairing: 'p1' })
+  expect(request.mock.calls[0]?.[0].caller).toEqual({ key: 'k1', contact: 'c1' })
 })
 
 test('GET /log answers the route log and checks its query', async () => {
@@ -795,7 +795,7 @@ test('GET /log answers the route log and checks its query', async () => {
     status: 'answered',
     answer: 'Approve',
     key: 'k1',
-    pairing: 'p1',
+    contact: 'c1',
   }
   const readLog = vi.fn<KeyRoute['readLog']>(() => ({ entries: [entry], skippedCount: 2 }))
   const url = await startRouted(() => ({ ...toRoute(undefined), readLog }))

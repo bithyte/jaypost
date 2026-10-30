@@ -186,7 +186,7 @@ async function findPairing(
     case 'answered':
       break
   }
-  const { pairing, key } = fetched.status
+  const { contact: pairing, key } = fetched.status
   // A service from before pairings has no admin routes either.
   return pairing === undefined
     ? { kind: 'failed', message: ADMIN_TOO_OLD_MESSAGE }
@@ -215,7 +215,7 @@ async function resetOwnerPairing(
   if (opened.kind !== 'opened') {
     return { kind: 'failed', message: opened.message }
   }
-  const reset = await opened.caller.resetPairing(found.pairingId)
+  const reset = await opened.caller.resetContact(found.pairingId)
   if (reset.kind === 'failed') {
     return { kind: 'failed', message: reset.message }
   }

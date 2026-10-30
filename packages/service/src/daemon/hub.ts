@@ -48,11 +48,11 @@ import type {
   AddBotBody,
   AdminBot,
   AdminKey,
-  AdminPairing,
+  AdminContact,
   CreatedKey,
   CreateKeyBody,
-  CreatePairingBody,
-  PairingInvite,
+  CreateContactBody,
+  ContactInvite,
   RemovedKeys,
   RotatedAdminKey,
   StatusInfo,
@@ -72,7 +72,7 @@ import type {
 import {
   parseBotSettings,
   toAdminKey,
-  toAdminPairing,
+  toAdminContact,
   toInvalid,
   toKeyDetails,
   toKeyTarget,
@@ -286,18 +286,18 @@ export class Hub implements AdminApi {
     return { removedKeys: [...result.keyIds] }
   }
 
-  listPairings(query: {
+  listContacts(query: {
     readonly bot?: string
-  }): { readonly pairings: readonly AdminPairing[] } | AdminFailure {
+  }): { readonly contacts: readonly AdminContact[] } | AdminFailure {
     const { bot } = query
     if (bot !== undefined && this.#findBot(bot) === undefined) {
       return toNotFound({ kind: 'notFound', what: 'bot', id: bot })
     }
     const { contacts, keys } = this.#registry
     return {
-      pairings: contacts
+      contacts: contacts
         .filter((contact) => bot === undefined || contact.botId === bot)
-        .map((contact) => toAdminPairing(contact, keys)),
+        .map((contact) => toAdminContact(contact, keys)),
     }
   }
 
@@ -305,7 +305,7 @@ export class Hub implements AdminApi {
    * An approver invite: a pending contact whose code goes to its running bot at once. A bot that
    * doesn't pair answers with its one local contact. Throws when the save fails.
    */
-  createPairing(body: CreatePairingBody): PairingInvite | AdminFailure {
+  createContact(body: CreateContactBody): ContactInvite | AdminFailure {
     const result = createContact(
       this.#registry,
       body.bot,
@@ -325,7 +325,7 @@ export class Hub implements AdminApi {
    * open questions are rejected with their timeout option, since nobody can answer them now.
    * Throws when the save fails.
    */
-  resetPairing(contactId: string): PairingInvite | AdminFailure {
+  resetContact(contactId: string): ContactInvite | AdminFailure {
     const contact = this.#findContact(contactId)
     if (contact === undefined) {
       return toNotFound({ kind: 'notFound', what: 'contact', id: contactId })
@@ -340,7 +340,7 @@ export class Hub implements AdminApi {
       return toNotFound(result)
     }
     if (result.kind === 'notPairing') {
-      return toInvalid(`pairing ${contactId} is on bot ${result.botId}, which doesn't pair`)
+      return toInvalid(`contact ${contactId} is on bot ${result.botId}, which doesn't pair`)
     }
     this.#commit(result.registry)
     this.#release(contact, this.#listKeyIds(contactId))
@@ -351,7 +351,7 @@ export class Hub implements AdminApi {
    * Removes the contact and its keys; their open questions are rejected with their timeout option
    * and a pending code stops working. Throws when the save fails.
    */
-  removePairing(contactId: string): RemovedKeys | AdminFailure {
+  removeContact(contactId: string): RemovedKeys | AdminFailure {
     const contact = this.#findContact(contactId)
     const result = removeContact(this.#registry, contactId)
     if (result.kind === 'notFound' || contact === undefined) {
@@ -364,11 +364,11 @@ export class Hub implements AdminApi {
 
   listKeys(query: {
     readonly bot?: string
-    readonly pairing?: string
+    readonly contact?: string
   }): { readonly keys: readonly AdminKey[] } | AdminFailure {
     const result = listKeys(this.#registry, {
       ...(query.bot === undefined ? {} : { bot: query.bot }),
-      ...(query.pairing === undefined ? {} : { contact: query.pairing }),
+      ...(query.contact === undefined ? {} : { contact: query.contact }),
     })
     if (result.kind === 'notFound') {
       return toNotFound(result)
@@ -384,7 +384,7 @@ export class Hub implements AdminApi {
   createKey(body: CreateKeyBody): CreatedKey | AdminFailure {
     const target = toKeyTarget(body)
     if (target === undefined) {
-      return toInvalid('exactly one of bot, pairing and sameAsKey is required')
+      return toInvalid('exactly one of bot, contact and sameAsKey is required')
     }
     const key = generateApiKey()
     const result = createKey(
@@ -405,7 +405,7 @@ export class Hub implements AdminApi {
     return {
       id: result.key.id,
       key,
-      pairing: result.contact.id,
+      contact: result.contact.id,
       ...(code === undefined ? {} : { code }),
       ...(instructions === undefined ? {} : { instructions }),
     }
@@ -445,7 +445,7 @@ export class Hub implements AdminApi {
   /**
    * Every bot's questions, removed bots' included (or one bot's, stored or not), each with its bot,
    * merged oldest first and then filtered. Lines from before keys existed are the seed key's.
-   * `pairing` and `key` may name removed ones, so their history stays readable. Throws when a log
+   * `contact` and `key` may name removed ones, so their history stays readable. Throws when a log
    * can't be read.
    */
   readLog(query: AdminLogQuery): AuditReadResult | AdminFailure {
@@ -474,14 +474,14 @@ export class Hub implements AdminApi {
   }
 
   /** A contact as an invite: its code and instructions while pending, sent to its running bot. */
-  #invite(contact: ContactRecord): PairingInvite {
-    const shown = toAdminPairing(contact, this.#registry.keys)
+  #invite(contact: ContactRecord): ContactInvite {
+    const shown = toAdminContact(contact, this.#registry.keys)
     if (!isPending(contact)) {
-      return { pairing: shown }
+      return { contact: shown }
     }
     const instructions = this.#findRunning(contact.botId)?.bot.pairingInstructions?.(contact.code)
     return {
-      pairing: shown,
+      contact: shown,
       code: formatCode(contact.code),
       ...(instructions === undefined ? {} : { instructions }),
     }
@@ -508,7 +508,7 @@ export class Hub implements AdminApi {
       ...(displayName === undefined ? {} : { displayName }),
       state: state.kind,
       ...(state.kind === 'failed' ? { error: state.reason } : {}),
-      pairingCount: contactCount,
+      contactCount,
       keyCount,
     }
   }
@@ -519,7 +519,7 @@ export class Hub implements AdminApi {
     return {
       ...entry,
       ...(seed !== undefined && isSeedLine(this.#registry, botId, entry)
-        ? { key: seed.keyId, pairing: seed.contactId }
+        ? { key: seed.keyId, contact: seed.contactId }
         : {}),
       bot: botId,
     }
@@ -638,7 +638,7 @@ export class Hub implements AdminApi {
     const running = this.#findRunning(contact.botId)
     const route: KeyRoute = {
       kind: 'key',
-      caller: { key: key.id, pairing: contact.id },
+      caller: { key: key.id, contact: contact.id },
       person: contact.person,
       bot: running?.bot,
       status: () => this.#describeStatus(key.id, contact),
@@ -671,7 +671,7 @@ export class Hub implements AdminApi {
       running?.bot.describe() ?? (record === undefined ? {} : { provider: record.provider })
     const common = {
       key: keyId,
-      pairing: contact.id,
+      contact: contact.id,
       state: state.kind,
       ...(state.kind === 'failed' ? { error: state.reason } : {}),
       ...described,

@@ -51,7 +51,7 @@ function setup(over: Partial<StatusDeps> = {}) {
 test('status prints install lines for the local bot', async () => {
   const { deps, out } = setup({
     fetchStatus: vi.fn(async () =>
-      answered({ paired: true, key: 'k1', pairing: 'p1', state: 'running' }),
+      answered({ paired: true, key: 'k1', contact: 'c1', state: 'running' }),
     ),
   })
   expect(await runStatus(deps)).toBe(0)
@@ -61,7 +61,7 @@ test('status prints install lines for the local bot', async () => {
     'Version: 1.0.0',
     'Port:    9000',
     'Running: yes',
-    'Key:     k1 (pairing p1)',
+    'Key:     k1 (pairing c1)',
     'Pairing: paired',
   ])
 })
@@ -150,7 +150,7 @@ test('status shows a failed bot with its error', async () => {
       answered({
         paired: true,
         key: 'k1',
-        pairing: 'p1',
+        contact: 'c1',
         state: 'failed',
         error: 'the bot token was rejected',
       }),
@@ -158,7 +158,7 @@ test('status shows a failed bot with its error', async () => {
   })
   expect(await runStatus(deps)).toBe(0)
   expect(out.slice(-3)).toEqual([
-    'Key:     k1 (pairing p1)',
+    'Key:     k1 (pairing c1)',
     'Bot:     failed (the bot token was rejected)',
     'Pairing: paired',
   ])

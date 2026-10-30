@@ -15,7 +15,7 @@ function parseOnce(
 }
 
 /**
- * The named id filters of a query (`bot`, `pairing`, `key`), each given at most once; unknown
+ * The named id filters of a query (`bot`, `contact`, `key`), each given at most once; unknown
  * fields are ignored. Never throws.
  */
 export function parseIdFilters<Name extends string>(
@@ -70,12 +70,12 @@ export function parseLogQuery(
   }
 }
 
-/** A GET /admin/log query: GET /log's fields plus `bot`, `pairing` and `key`. Never throws. */
+/** A GET /admin/log query: GET /log's fields plus `bot`, `contact` and `key`. Never throws. */
 export function parseAdminLogQuery(
   query: Readonly<Record<string, unknown>>,
   now: Date,
 ): Parsed<AdminLogQuery> {
-  const filters = parseIdFilters(query, ['bot', 'pairing', 'key'])
+  const filters = parseIdFilters(query, ['bot', 'contact', 'key'])
   if (!filters.ok) {
     return filters
   }

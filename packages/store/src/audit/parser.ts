@@ -42,7 +42,7 @@ export function parseAuditLog(raw: string, now: Date): AuditReadResult {
 }
 
 /**
- * `since` is inclusive on `askedAt`; `project`, `key`, `pairing` and `bot` are exact matches;
+ * `since` is inclusive on `askedAt`; `project`, `key`, `contact` and `bot` are exact matches;
  * `limit` keeps the last N.
  */
 export function selectAuditEntries(
@@ -55,7 +55,7 @@ export function selectAuditEntries(
       (sinceMs === undefined || Date.parse(entry.askedAt) >= sinceMs) &&
       (filter.project === undefined || entry.project === filter.project) &&
       (filter.key === undefined || entry.key === filter.key) &&
-      (filter.pairing === undefined || entry.pairing === filter.pairing) &&
+      (filter.contact === undefined || entry.contact === filter.contact) &&
       (filter.bot === undefined || entry.bot === filter.bot),
   )
   return filter.limit === undefined || filter.limit <= 0 ? matching : matching.slice(-filter.limit)
@@ -122,6 +122,6 @@ function toEntry(asked: AskedRecord, settled: SettledRecord | undefined, now: Da
     ...(settled?.answer === undefined ? {} : { answer: settled.answer }),
     ...(settled === undefined ? {} : { settledAt: settled.at }),
     ...(asked.key === undefined ? {} : { key: asked.key }),
-    ...(asked.pairing === undefined ? {} : { pairing: asked.pairing }),
+    ...(asked.contact === undefined ? {} : { contact: asked.contact }),
   }
 }

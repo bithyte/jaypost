@@ -51,7 +51,7 @@ function formatBots(body: BotsBody): string {
       bot.label,
       bot.displayName,
       describeState(bot),
-      String(bot.pairingCount),
+      String(bot.contactCount),
       String(bot.keyCount),
     ]),
   )
@@ -284,7 +284,7 @@ export function runBotRemove(args: AdminRemoveArgs, deps: AdminDeps): Promise<nu
       }
       const name = bot.label ?? bot.displayName ?? bot.provider
       const question =
-        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.pairingCount, 'pairing')} ` +
+        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.contactCount, 'pairing')} ` +
         `and revokes ${formatCount(bot.keyCount, 'key')}.`
       if (!(await deps.prompt.confirm(question, false))) {
         deps.printError('Nothing removed.')

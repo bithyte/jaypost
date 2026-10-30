@@ -104,7 +104,7 @@ test('bots: list, add and remove map 2xx to ok', async () => {
           provider: 'fakepair',
           displayName: 'fake',
           state: 'running',
-          pairingCount: 1,
+          contactCount: 1,
           keyCount: 1,
         },
       ],
@@ -121,7 +121,7 @@ test('bots: list, add and remove map 2xx to ok', async () => {
         label: 'ci',
         displayName: 'fake',
         state: 'running',
-        pairingCount: 0,
+        contactCount: 0,
         keyCount: 0,
       },
     },
@@ -129,41 +129,41 @@ test('bots: list, add and remove map 2xx to ok', async () => {
   expect(await caller.removeBot('b2')).toEqual({ kind: 'ok', value: { removedKeys: [] } })
 })
 
-test('pairings: create, list, reset and remove map 2xx to ok', async () => {
+test('contacts: create, list, reset and remove map 2xx to ok', async () => {
   const { port, adminKey } = await start()
   const caller = createCaller(port, adminKey)
-  expect(await caller.createPairing({ bot: 'b1' })).toEqual({
+  expect(await caller.createContact({ bot: 'b1' })).toEqual({
     kind: 'ok',
     value: {
-      pairing: { id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] },
+      contact: { id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] },
       code: 'PAIR-2222',
       instructions: 'Say PAIR2222 to fake',
     },
   })
-  expect(await caller.listPairings({ bot: 'b1' })).toEqual({
+  expect(await caller.listContacts({ bot: 'b1' })).toEqual({
     kind: 'ok',
     value: {
-      pairings: [
+      contacts: [
         { id: 'c1', bot: 'b1', person: 'u1', state: 'paired', keys: ['k1'] },
         { id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] },
       ],
     },
   })
-  expect(await caller.resetPairing('c1')).toEqual({
+  expect(await caller.resetContact('c1')).toEqual({
     kind: 'ok',
     value: {
-      pairing: { id: 'c1', bot: 'b1', state: 'pending', code: 'PAIR-3333', keys: ['k1'] },
+      contact: { id: 'c1', bot: 'b1', state: 'pending', code: 'PAIR-3333', keys: ['k1'] },
       code: 'PAIR-3333',
       instructions: 'Say PAIR3333 to fake',
     },
   })
-  expect(await caller.removePairing('c1')).toEqual({
+  expect(await caller.removeContact('c1')).toEqual({
     kind: 'ok',
     value: { removedKeys: ['k1'] },
   })
-  expect(await caller.listPairings({})).toEqual({
+  expect(await caller.listContacts({})).toEqual({
     kind: 'ok',
-    value: { pairings: [{ id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] }] },
+    value: { contacts: [{ id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] }] },
   })
 })
 
@@ -173,26 +173,26 @@ test('keys: create, list, update and revoke map 2xx to ok', async () => {
   const created = await caller.createKey({ sameAsKey: 'k1', label: 'deploy', externalId: 'x1' })
   expect(created).toEqual({
     kind: 'ok',
-    value: { id: 'k2', key: expect.stringMatching(/^jpk_/), pairing: 'c1' },
+    value: { id: 'k2', key: expect.stringMatching(/^jpk_/), contact: 'c1' },
   })
   expect(await caller.createKey({ bot: 'b1' })).toEqual({
     kind: 'ok',
     value: {
       id: 'k3',
       key: expect.stringMatching(/^jpk_/),
-      pairing: 'c2',
+      contact: 'c2',
       code: 'PAIR-2222',
       instructions: 'Say PAIR2222 to fake',
     },
   })
-  expect(await caller.listKeys({ pairing: 'c1' })).toEqual({
+  expect(await caller.listKeys({ contact: 'c1' })).toEqual({
     kind: 'ok',
     value: {
       keys: [
-        { id: 'k1', pairing: 'c1', bot: 'b1', createdAt: CREATED_AT },
+        { id: 'k1', contact: 'c1', bot: 'b1', createdAt: CREATED_AT },
         {
           id: 'k2',
-          pairing: 'c1',
+          contact: 'c1',
           bot: 'b1',
           label: 'deploy',
           externalId: 'x1',
@@ -203,15 +203,15 @@ test('keys: create, list, update and revoke map 2xx to ok', async () => {
   })
   expect(await caller.updateKey('k2', { label: 'release', externalId: null })).toEqual({
     kind: 'ok',
-    value: { key: { id: 'k2', pairing: 'c1', bot: 'b1', label: 'release', createdAt: CREATED_AT } },
+    value: { key: { id: 'k2', contact: 'c1', bot: 'b1', label: 'release', createdAt: CREATED_AT } },
   })
   expect(await caller.revokeKey('k2')).toEqual({ kind: 'ok', value: {} })
   expect(await caller.listKeys({ bot: 'b1' })).toEqual({
     kind: 'ok',
     value: {
       keys: [
-        { id: 'k1', pairing: 'c1', bot: 'b1', createdAt: CREATED_AT },
-        { id: 'k3', pairing: 'c2', bot: 'b1', createdAt: CREATED_AT },
+        { id: 'k1', contact: 'c1', bot: 'b1', createdAt: CREATED_AT },
+        { id: 'k3', contact: 'c2', bot: 'b1', createdAt: CREATED_AT },
       ],
     },
   })
@@ -226,7 +226,7 @@ test('readLog sends every filter and maps the page to ok', async () => {
       project: 'web',
       limit: 5,
       bot: 'b1',
-      pairing: 'c1',
+      contact: 'c1',
       key: 'k1',
     }),
   ).toEqual({ kind: 'ok', value: { entries: [], skippedCount: 0 } })
@@ -259,10 +259,10 @@ test('a 401 is unauthorized on every method', async () => {
     caller.listBots(),
     caller.addBot({ provider: 'fake', settings: { fakeKey: 'x' } }),
     caller.removeBot('b1'),
-    caller.listPairings({}),
-    caller.createPairing({ bot: 'b1' }),
-    caller.resetPairing('c1'),
-    caller.removePairing('c1'),
+    caller.listContacts({}),
+    caller.createContact({ bot: 'b1' }),
+    caller.resetContact('c1'),
+    caller.removeContact('c1'),
     caller.listKeys({}),
     caller.createKey({ bot: 'b1' }),
     caller.updateKey('k1', { label: 'x' }),
@@ -284,12 +284,12 @@ test("a 404 is notFound with the server's error", async () => {
   const caller = createCaller(port, adminKey)
   const notFound = (message: string) => ({ kind: 'failed', reason: 'notFound', message })
   expect(await caller.removeBot('b9')).toEqual(notFound('unknown bot "b9"'))
-  expect(await caller.listPairings({ bot: 'b9' })).toEqual(notFound('unknown bot "b9"'))
-  expect(await caller.createPairing({ bot: 'b9' })).toEqual(notFound('unknown bot "b9"'))
-  expect(await caller.resetPairing('c9')).toEqual(notFound('unknown contact "c9"'))
-  expect(await caller.removePairing('c9')).toEqual(notFound('unknown contact "c9"'))
+  expect(await caller.listContacts({ bot: 'b9' })).toEqual(notFound('unknown bot "b9"'))
+  expect(await caller.createContact({ bot: 'b9' })).toEqual(notFound('unknown bot "b9"'))
+  expect(await caller.resetContact('c9')).toEqual(notFound('unknown contact "c9"'))
+  expect(await caller.removeContact('c9')).toEqual(notFound('unknown contact "c9"'))
   expect(await caller.listKeys({ bot: 'b9' })).toEqual(notFound('unknown bot "b9"'))
-  expect(await caller.createKey({ pairing: 'c9' })).toEqual(notFound('unknown contact "c9"'))
+  expect(await caller.createKey({ contact: 'c9' })).toEqual(notFound('unknown contact "c9"'))
   expect(await caller.updateKey('k9', { label: 'x' })).toEqual(notFound('unknown key "k9"'))
   expect(await caller.revokeKey('k9')).toEqual(notFound('unknown key "k9"'))
 })
@@ -319,7 +319,7 @@ test("a 400 is rejected with the server's error", async () => {
   expect(await caller.createKey({})).toEqual({
     kind: 'failed',
     reason: 'rejected',
-    message: 'exactly one of bot, pairing and sameAsKey is required',
+    message: 'exactly one of bot, contact and sameAsKey is required',
   })
 })
 

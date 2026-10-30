@@ -99,7 +99,7 @@ export function runAdminLog(args: AdminLogArgs, deps: AdminLogDeps): Promise<num
       ...(args.project === undefined ? {} : { project: args.project }),
       ...(limit === undefined ? {} : { limit }),
       ...(args.bot === undefined ? {} : { bot: args.bot }),
-      ...(args.pairing === undefined ? {} : { pairing: args.pairing }),
+      ...(args.pairing === undefined ? {} : { contact: args.pairing }),
       ...(args.key === undefined ? {} : { key: args.key }),
     }
     const read = await readAdminLog(filter, deps)
@@ -111,7 +111,7 @@ export function runAdminLog(args: AdminLogArgs, deps: AdminLogDeps): Promise<num
       filter.since !== undefined ||
       filter.project !== undefined ||
       filter.bot !== undefined ||
-      filter.pairing !== undefined ||
+      filter.contact !== undefined ||
       filter.key !== undefined
     printEntries(read.entries, read.skippedCount, isNarrowed, args, deps)
     return 0

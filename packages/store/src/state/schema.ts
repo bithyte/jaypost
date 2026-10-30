@@ -21,7 +21,7 @@ export const requestRecordSchema = z.object({
   reference: referenceSchema,
   text: z.string(),
   spans: z.array(spanSchema).optional(),
-  caller: z.object({ key: z.string(), pairing: z.string() }).optional(),
+  caller: z.object({ key: z.string(), contact: z.string() }).optional(),
 })
 
 export const notificationRecordSchema = z.object({

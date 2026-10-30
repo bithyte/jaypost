@@ -283,7 +283,7 @@ function saveQuestions(configPath: string, log: string): void {
           record.timeoutOption,
           record.timeoutSeconds,
           record.key ?? null,
-          record.pairing ?? null,
+          record.contact ?? null,
         )
     }
   } finally {
@@ -391,7 +391,7 @@ function askedBy(id: string, at: string, key: string): string {
     timeoutOption: 'Decline',
     timeoutSeconds: 300,
     key,
-    pairing: 'p1',
+    contact: 'c1',
   })}\n`
 }
 

@@ -2,7 +2,7 @@ import { findOwnerSetting, formatCode } from '@jaypost/core'
 import type { Provider, SettingValue, SettingValues } from '@jaypost/core'
 import { isPending } from '@jaypost/store'
 import type { KeyDetails, KeyRecord, KeyTarget, NotFound, ContactRecord } from '@jaypost/store'
-import type { AdminKey, AdminPairing, CreateKeyBody } from '@jaypost/protocol'
+import type { AdminKey, AdminContact, CreateKeyBody } from '@jaypost/protocol'
 import type { AdminFailure, Parsed } from '../server/index.ts'
 
 /** The 404 of an unknown id; ids aren't secret, so it names it. */
@@ -55,8 +55,8 @@ export function toKeyTarget(body: CreateKeyBody): KeyTarget | undefined {
   if (body.bot !== undefined) {
     return { kind: 'newContact', botId: body.bot }
   }
-  if (body.pairing !== undefined) {
-    return { kind: 'contact', contactId: body.pairing }
+  if (body.contact !== undefined) {
+    return { kind: 'contact', contactId: body.contact }
   }
   return body.sameAsKey === undefined ? undefined : { kind: 'sameAsKey', keyId: body.sameAsKey }
 }
@@ -69,7 +69,7 @@ export function toKeyDetails(body: CreateKeyBody): KeyDetails {
 }
 
 /** A contact as the admin routes show it, with its keys' ids and its code while pending. */
-export function toAdminPairing(contact: ContactRecord, keys: readonly KeyRecord[]): AdminPairing {
+export function toAdminContact(contact: ContactRecord, keys: readonly KeyRecord[]): AdminContact {
   return {
     id: contact.id,
     bot: contact.botId,
@@ -84,7 +84,7 @@ export function toAdminPairing(contact: ContactRecord, keys: readonly KeyRecord[
 export function toAdminKey(key: KeyRecord, botId: string): AdminKey {
   return {
     id: key.id,
-    pairing: key.contactId,
+    contact: key.contactId,
     bot: botId,
     ...(key.label === undefined ? {} : { label: key.label }),
     ...(key.externalId === undefined ? {} : { externalId: key.externalId }),

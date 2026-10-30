@@ -18,7 +18,7 @@ const KEY = `jpk_${'n'.repeat(43)}`
 const CREATED = {
   id: 'k2',
   key: KEY,
-  pairing: 'p2',
+  contact: 'c2',
   code: 'PAIR-2222',
   instructions: 'Say PAIR2222 to workbot',
 }
@@ -30,19 +30,19 @@ const BOTS = {
       label: 'Work',
       displayName: 'workbot',
       state: 'running',
-      pairingCount: 1,
+      contactCount: 1,
       keyCount: 1,
     },
   ],
 }
 const KEYS = {
-  keys: [{ id: 'k1', pairing: 'p2', bot: 'b2', createdAt: '2026-10-29T00:00:00.000Z' }],
+  keys: [{ id: 'k1', contact: 'c2', bot: 'b2', createdAt: '2026-10-29T00:00:00.000Z' }],
 }
 const PAIRINGS = {
-  pairings: [{ id: 'p2', bot: 'b2', person: 'u1', state: 'paired', keys: ['k1'] }],
+  contacts: [{ id: 'c2', bot: 'b2', person: 'u1', state: 'paired', keys: ['k1'] }],
 }
 const KEY_LINES = [
-  `Key k2 (pairing p2): ${KEY}`,
+  `Key k2 (pairing c2): ${KEY}`,
   "This key isn't shown again; store it now.",
   'Pairing code: PAIR-2222',
   'Say PAIR2222 to workbot',
@@ -77,7 +77,7 @@ beforeEach(async () => {
         'POST /admin/keys': CREATED,
         'GET /admin/keys': KEYS,
         'GET /admin/bots': BOTS,
-        'GET /admin/pairings': PAIRINGS,
+        'GET /admin/contacts': PAIRINGS,
       }
       response.end(JSON.stringify(routes[`${request.method} ${request.url}`] ?? {}))
     })
@@ -158,16 +158,16 @@ test("key create --save stores the key under the bot's label", async () => {
 
 test("key create --save --pairing finds the pairing's bot before making the key", async () => {
   writeRemoteInbox()
-  expect(await runKeyCreate({ pairing: 'p2', save: true }, createDeps())).toBe(0)
+  expect(await runKeyCreate({ pairing: 'c2', save: true }, createDeps())).toBe(0)
   expect(out.at(-1)).toBe('Saved as "Work" in your inbox.')
-  expect(seen).toEqual(['GET /admin/pairings', 'GET /admin/bots', 'POST /admin/keys'])
+  expect(seen).toEqual(['GET /admin/contacts', 'GET /admin/bots', 'POST /admin/keys'])
 })
 
 test('key create --save for an unknown pairing fails before making a key', async () => {
   const inbox = writeRemoteInbox()
-  expect(await runKeyCreate({ pairing: 'p9', save: true }, createDeps())).toBe(1)
-  expect(err).toEqual(['unknown pairing "p9"'])
-  expect(seen).toEqual(['GET /admin/pairings'])
+  expect(await runKeyCreate({ pairing: 'c9', save: true }, createDeps())).toBe(1)
+  expect(err).toEqual(['unknown pairing "c9"'])
+  expect(seen).toEqual(['GET /admin/contacts'])
   expect(readInbox(inboxPath)).toEqual(inbox)
 })
 

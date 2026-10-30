@@ -7,8 +7,8 @@ const NO_BOT_MESSAGE = 'no bot to send to'
 
 /** The key and pairing lines, and the bot's error when it failed; older services send neither. */
 function printKey(status: StatusInfo, print: (text: string) => void): void {
-  if (status.key !== undefined && status.pairing !== undefined) {
-    print(`Key:     ${status.key} (pairing ${status.pairing})`)
+  if (status.key !== undefined && status.contact !== undefined) {
+    print(`Key:     ${status.key} (pairing ${status.contact})`)
   }
   if (status.state === 'failed') {
     print(`Bot:     failed (${status.error ?? 'no reason given'})`)

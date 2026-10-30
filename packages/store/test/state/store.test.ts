@@ -55,7 +55,7 @@ test('keeps spans and the caller on a request', () => {
       { kind: 'bold' as const, offset: 0, length: 3 },
       { kind: 'pre' as const, offset: 4, length: 2, language: 'ts' },
     ],
-    caller: { key: 'k1', pairing: 'p1' },
+    caller: { key: 'k1', contact: 'c1' },
   }
   createStore(database).addRequest(full)
   expect(createStore(database).load().requests).toEqual([full])

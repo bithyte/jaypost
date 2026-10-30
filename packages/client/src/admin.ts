@@ -4,8 +4,8 @@ import {
   createdKeySchema,
   keyListSchema,
   logPageSchema,
-  pairingInviteSchema,
-  pairingListSchema,
+  contactInviteSchema,
+  contactListSchema,
   removedKeysSchema,
   revokedKeySchema,
   rotatedAdminKeySchema,
@@ -17,11 +17,11 @@ import type {
   BotsBody,
   CreatedKey,
   CreateKeyBody,
-  CreatePairingBody,
+  CreateContactBody,
   KeysBody,
   LogPage,
-  PairingInvite,
-  PairingsBody,
+  ContactInvite,
+  ContactsBody,
   RemovedKeys,
   RevokedKey,
   RotatedAdminKey,
@@ -87,7 +87,7 @@ export class AdminCaller {
     return this.#call('POST', '/admin/bots', body, addedBotSchema)
   }
 
-  /** Removes the bot with its pairings and keys; `removedKeys` lists the keys that went. */
+  /** Removes the bot with its contacts and keys; `removedKeys` lists the keys that went. */
   removeBot(id: string): Promise<AdminResult<RemovedKeys>> {
     return this.#call(
       'DELETE',
@@ -97,30 +97,30 @@ export class AdminCaller {
     )
   }
 
-  listPairings(filter: { readonly bot?: string }): Promise<AdminResult<PairingsBody>> {
-    return this.#call('GET', `/admin/pairings${toQuery(filter)}`, undefined, pairingListSchema)
+  listContacts(filter: { readonly bot?: string }): Promise<AdminResult<ContactsBody>> {
+    return this.#call('GET', `/admin/contacts${toQuery(filter)}`, undefined, contactListSchema)
   }
 
-  /** A pairing with no key (an approver invite) and its code. */
-  createPairing(body: CreatePairingBody): Promise<AdminResult<PairingInvite>> {
-    return this.#call('POST', '/admin/pairings', body, pairingInviteSchema)
+  /** A contact with no key (an approver invite) and its code. */
+  createContact(body: CreateContactBody): Promise<AdminResult<ContactInvite>> {
+    return this.#call('POST', '/admin/contacts', body, contactInviteSchema)
   }
 
-  /** Drops the pairing's person and hands out a new code; its keys stay. */
-  resetPairing(id: string): Promise<AdminResult<PairingInvite>> {
+  /** Drops the contact's person and hands out a new code; its keys stay. */
+  resetContact(id: string): Promise<AdminResult<ContactInvite>> {
     return this.#call(
       'POST',
-      `/admin/pairings/${encodeURIComponent(id)}/reset`,
+      `/admin/contacts/${encodeURIComponent(id)}/reset`,
       undefined,
-      pairingInviteSchema,
+      contactInviteSchema,
     )
   }
 
-  /** Removes the pairing and revokes its keys. */
-  removePairing(id: string): Promise<AdminResult<RemovedKeys>> {
+  /** Removes the contact and revokes its keys. */
+  removeContact(id: string): Promise<AdminResult<RemovedKeys>> {
     return this.#call(
       'DELETE',
-      `/admin/pairings/${encodeURIComponent(id)}`,
+      `/admin/contacts/${encodeURIComponent(id)}`,
       undefined,
       removedKeysSchema,
     )
@@ -128,7 +128,7 @@ export class AdminCaller {
 
   listKeys(filter: {
     readonly bot?: string
-    readonly pairing?: string
+    readonly contact?: string
   }): Promise<AdminResult<KeysBody>> {
     return this.#call('GET', `/admin/keys${toQuery(filter)}`, undefined, keyListSchema)
   }
@@ -157,7 +157,7 @@ export class AdminCaller {
     const query = toQuery({
       ...toLogQueryFields(filter),
       ...(filter.bot === undefined ? {} : { bot: filter.bot }),
-      ...(filter.pairing === undefined ? {} : { pairing: filter.pairing }),
+      ...(filter.contact === undefined ? {} : { contact: filter.contact }),
       ...(filter.key === undefined ? {} : { key: filter.key }),
     })
     return this.#call('GET', `/admin/log${query}`, undefined, logPageSchema)

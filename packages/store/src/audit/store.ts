@@ -60,7 +60,7 @@ export class AuditLog implements AuditSink {
         timeoutOption: request.timeoutOption,
         timeoutSeconds: request.timeoutSeconds,
         keyId: request.caller?.key ?? null,
-        contactId: request.caller?.pairing ?? null,
+        contactId: request.caller?.contact ?? null,
       })
     })
   }
@@ -225,9 +225,9 @@ function toRecords(row: Row, options: readonly string[]): readonly (AskedRecord 
   return [asked, settled]
 }
 
-function callerFields(row: Row): { readonly key?: string; readonly pairing?: string } {
+function callerFields(row: Row): { readonly key?: string; readonly contact?: string } {
   return {
     ...(row.key_id === null ? {} : { key: String(row.key_id) }),
-    ...(row.contact_id === null ? {} : { pairing: String(row.contact_id) }),
+    ...(row.contact_id === null ? {} : { contact: String(row.contact_id) }),
   }
 }

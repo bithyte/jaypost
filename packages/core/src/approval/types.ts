@@ -7,10 +7,10 @@ export type Attachment = {
   readonly content: Uint8Array
 }
 
-/** Who asked: the API key and its pairing. Opaque to core; used for scoping and the audit log. */
+/** Who asked: the API key and its contact. Opaque to core; used for scoping and the audit log. */
 export type RequestCaller = {
   readonly key: string
-  readonly pairing: string
+  readonly contact: string
 }
 
 /**
