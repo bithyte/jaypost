@@ -7,9 +7,9 @@ import { createFakeProvider, createPairingFakeProvider } from '@jaypost/testing'
 import { PROVIDERS } from '@jaypost/providers'
 import {
   applySeed,
-  claimPairing,
+  claimContact,
   createEmptyRegistry,
-  createPairing,
+  createContact,
   loadSeed,
   openDatabase,
   RegistryStore,
@@ -38,20 +38,20 @@ function withRegistryStore<T>(use: (store: RegistryStore) => T): T {
   }
 }
 
-/** Seeds bot 1, pairing 1 (u1) and key 1 from the config file, plus pairing 2 paired to u2. */
+/** Seeds bot 1, contact 1 (u1) and key 1 from the config file, plus contact 2 paired to u2. */
 function writeRegistry(): Registry {
   const loaded = loadSeed(env, PAIRING_PROVIDERS)
   if (loaded.kind !== 'seed') {
     throw new Error(loaded.message)
   }
   const seeded = applySeed(createEmptyRegistry(), loaded.seed, true, () => 'SEED1111', NOW)
-  const created = createPairing(seeded.registry, 'b1', 'PAIR2222', true, NOW)
+  const created = createContact(seeded.registry, 'b1', 'PAIR2222', true, NOW)
   if (created.kind !== 'created') {
     throw new Error('no bot b1')
   }
-  const claimed = claimPairing(created.registry, 'b1', created.pairing.id, 'u2')
+  const claimed = claimContact(created.registry, 'b1', created.contact.id, 'u2')
   if (claimed.kind === 'notPending') {
-    throw new Error('no pairing p2')
+    throw new Error('no contact c2')
   }
   withRegistryStore((store) => store.save(claimed.registry))
   return claimed.registry
@@ -98,25 +98,25 @@ test('unknown action returns 2', () => {
   expect(runOwner(['x'], env)).toBe(2)
 })
 
-test('owner clear resets pairing 1 in the registry and keeps other pairings', () => {
+test('owner clear resets contact 1 in the registry and keeps other contacts', () => {
   writeFileSync(file, JSON.stringify({ provider: 'fakepair', fakeOwner: 'u1', fakeKey: 'k' }))
   const before = writeRegistry()
-  expect(before.pairings.find((pairing) => pairing.id === 'p1')?.person).toBe('u1')
+  expect(before.contacts.find((contact) => contact.id === 'c1')?.person).toBe('u1')
   expect(runOwner(['clear'], env, PAIRING_PROVIDERS)).toBe(0)
   const after = readRegistry()
-  const [first, second] = after.pairings
+  const [first, second] = after.contacts
   expect(first).toEqual({
-    id: 'p1',
+    id: 'c1',
     botId: 'b1',
     code: expect.stringMatching(/^[A-Z0-9]{8}$/),
     createdAt: NOW.toISOString(),
   })
-  expect(second).toEqual(before.pairings[1])
+  expect(second).toEqual(before.contacts[1])
   expect(after.keys).toEqual(before.keys)
   expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ provider: 'fakepair', fakeKey: 'k' })
 })
 
-test('owner get prints the seed pairing person from the registry', () => {
+test('owner get prints the seed contact person from the registry', () => {
   writeFileSync(file, JSON.stringify({ provider: 'fakepair', fakeOwner: 'u1', fakeKey: 'k' }))
   writeRegistry()
   // A person paired through the service after the upgrade; config.json still has the old one.
@@ -124,8 +124,8 @@ test('owner get prints the seed pairing person from the registry', () => {
   withRegistryStore((store) =>
     store.save({
       ...registry,
-      pairings: registry.pairings.map((pairing) =>
-        pairing.id === 'p1' ? { ...pairing, person: 'u9' } : pairing,
+      contacts: registry.contacts.map((contact) =>
+        contact.id === 'c1' ? { ...contact, person: 'u9' } : contact,
       ),
     }),
   )
@@ -134,7 +134,7 @@ test('owner get prints the seed pairing person from the registry', () => {
   expect(log.mock.calls).toEqual([['u9']])
 })
 
-test('owner get prints nothing while the seed pairing waits for a code', () => {
+test('owner get prints nothing while the seed contact waits for a code', () => {
   writeFileSync(file, JSON.stringify({ provider: 'fakepair', fakeOwner: 'u1', fakeKey: 'k' }))
   writeRegistry()
   expect(runOwner(['clear'], env, PAIRING_PROVIDERS)).toBe(0)

@@ -466,12 +466,12 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
   expect(await runResetOwner(d)).toBe(0)
   expect(seen).toEqual([
     answered(
-      expect.objectContaining({ paired: false, code: 'PAIR-2222', key: 'k1', pairing: 'p1' }),
+      expect.objectContaining({ paired: false, code: 'PAIR-2222', key: 'k1', pairing: 'c1' }),
     ),
   ])
   const registry = readRegistry(configPath)
-  expect(registry.pairings).toEqual([
-    { id: 'p1', botId: 'b1', code: 'PAIR2222', createdAt: expect.any(String) },
+  expect(registry.contacts).toEqual([
+    { id: 'c1', botId: 'b1', code: 'PAIR2222', createdAt: expect.any(String) },
   ])
   expect(systemctl).toEqual([['systemctl', '--user', 'is-active', '--quiet', 'jaypost']])
   expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual({
@@ -480,7 +480,7 @@ test('reset-owner resets pairing 1 through the admin route and waits for the new
     apiToken: TOKEN,
   })
   expect(d.confirm).toHaveBeenCalledWith(
-    'This unlinks your Fake account. It resets pairing p1 (key k1). Continue?',
+    'This unlinks your Fake account. It resets pairing c1 (key k1). Continue?',
     false,
   )
   expect(notes()).toEqual(['Paired. Try it: jaypost ping'])

@@ -7,10 +7,10 @@ import { openDatabase, removeDatabaseFiles, resolveDatabasePath } from '../../sr
 
 const TABLE_NAMES = [
   'bots',
+  'contacts',
   'counters',
   'keys',
   'notifications',
-  'pairings',
   'questions',
   'requests',
   'seed',

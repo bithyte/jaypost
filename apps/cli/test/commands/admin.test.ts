@@ -200,7 +200,7 @@ test('key create prints the key once and the pairing code when pending', async (
   expect(countOccurrences(printed, key)).toBe(1)
   expect(out).toEqual([
     [
-      `Key k2 (pairing p2): ${key}`,
+      `Key k2 (pairing c2): ${key}`,
       "This key isn't shown again; store it now.",
       'Pairing code: PAIR-2222',
       'Say PAIR2222 to fake',
@@ -215,18 +215,18 @@ test('key create for a paired pairing prints no code', async () => {
   expect(await runKeyCreate({ sameAs: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
   expect(out).toEqual([
     expect.stringMatching(
-      /^Key k2 \(pairing p1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
+      /^Key k2 \(pairing c1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
     ),
   ])
 })
 
 test('key create --json prints the created key as JSON and the note on stderr', async () => {
   const started = await start()
-  expect(await runKeyCreate({ pairing: 'p1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyCreate({ pairing: 'c1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({
     id: 'k2',
     key: expect.stringMatching(/^jpk_/),
-    pairing: 'p1',
+    pairing: 'c1',
   })
   expect(err).toEqual(["This key isn't shown again; store it now."])
 })
@@ -234,7 +234,7 @@ test('key create --json prints the created key as JSON and the note on stderr', 
 test('key create needs exactly one of --bot, --pairing and --same-as', async () => {
   const deps = createDeps({ HOME: tmp })
   expect(await runKeyCreate({}, deps)).toBe(2)
-  expect(await runKeyCreate({ bot: 'b1', pairing: 'p1' }, deps)).toBe(2)
+  expect(await runKeyCreate({ bot: 'b1', pairing: 'c1' }, deps)).toBe(2)
   expect(err).toEqual([
     'give exactly one of --bot, --pairing and --same-as',
     'give exactly one of --bot, --pairing and --same-as',
@@ -556,11 +556,11 @@ test('pairing create prints the code and pairing list shows it', async () => {
   expect(await runPairingCreate({ bot: 'b1' }, deps)).toBe(0)
   expect(await runPairingList({ bot: 'b1' }, deps)).toBe(0)
   expect(out).toEqual([
-    'Pairing p2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
+    'Pairing c2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
     [
       'ID  BOT  STATE    PERSON  CODE       KEYS',
-      'p1  b1   paired   u1      -          k1',
-      'p2  b1   pending  -       PAIR-2222  -',
+      'c1  b1   paired   u1      -          k1',
+      'c2  b1   pending  -       PAIR-2222  -',
     ].join('\n'),
   ])
 })
@@ -569,9 +569,9 @@ test('pairing remove says how many keys it revokes and asks first', async () => 
   const started = await start()
   const confirm = vi.fn(async () => true)
   const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
-  expect(await runPairingRemove({ id: 'p1' }, deps)).toBe(0)
-  expect(confirm).toHaveBeenCalledWith('Remove pairing p1 on bot b1? This revokes 1 key.', false)
-  expect(out).toEqual(['Removed pairing p1 and revoked 1 key (k1).'])
+  expect(await runPairingRemove({ id: 'c1' }, deps)).toBe(0)
+  expect(confirm).toHaveBeenCalledWith('Remove pairing c1 on bot b1? This revokes 1 key.', false)
+  expect(out).toEqual(['Removed pairing c1 and revoked 1 key (k1).'])
 })
 
 test('key list, label and revoke', async () => {
@@ -581,13 +581,13 @@ test('key list, label and revoke', async () => {
   out = []
   expect(await runKeyLabel({ id: 'k2', label: '', externalId: 'user-8' }, deps)).toBe(0)
   expect(await runKeyRevoke({ id: 'k1' }, deps)).toBe(0)
-  expect(await runKeyList({ pairing: 'p1' }, deps)).toBe(0)
+  expect(await runKeyList({ pairing: 'c1' }, deps)).toBe(0)
   expect(out).toEqual([
     'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   p1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
+      `k2  b1   c1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
     'Revoked key k1.',
     'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   p1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
+      `k2  b1   c1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
   ])
 })
 

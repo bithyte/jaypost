@@ -178,17 +178,17 @@ test("reads the seed bot's log next to the config", () => {
     .run()
   database
     .prepare(
-      "INSERT INTO pairings (id, bot_id, created_at) VALUES ('p', 'seedbot', '2026-10-01T00:00:00.000Z')",
+      "INSERT INTO contacts (id, bot_id, created_at) VALUES ('c', 'seedbot', '2026-10-01T00:00:00.000Z')",
     )
     .run()
   database
     .prepare(
-      "INSERT INTO keys (id, pairing_id, created_at) VALUES ('k', 'p', '2026-10-01T00:00:00.000Z')",
+      "INSERT INTO keys (id, contact_id, created_at) VALUES ('k', 'c', '2026-10-01T00:00:00.000Z')",
     )
     .run()
   database
     .prepare(
-      "INSERT INTO seed (only, fingerprint, bot_id, pairing_id, key_id, is_open) VALUES (1, 'f', 'seedbot', 'p', 'k', 0)",
+      "INSERT INTO seed (only, fingerprint, bot_id, contact_id, key_id, is_open) VALUES (1, 'f', 'seedbot', 'c', 'k', 0)",
     )
     .run()
   new AuditLog(database, 'seedbot', { log }).asked('mine', REQUEST, AT)

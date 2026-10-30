@@ -387,8 +387,8 @@ test('readSecrets, clearOwner and readAuditLog use the recorded configFile', asy
   try {
     new RegistryStore(database).save({
       ...createEmptyRegistry(),
-      lastIds: { bot: 1, pairing: 1, key: 1 },
-      seed: { fingerprint: 'f', botId: 'b1', pairingId: 'p1', keyId: 'k1', isOpen: false },
+      lastIds: { bot: 1, contact: 1, key: 1 },
+      seed: { fingerprint: 'f', botId: 'b1', contactId: 'c1', keyId: 'k1', isOpen: false },
     })
     database
       .prepare(

@@ -30,14 +30,14 @@ const OTHER_ADMIN_KEY = `jpa_${'b'.repeat(43)}`
 const SEED = {
   fingerprint: 'e'.repeat(64),
   botId: 'b1',
-  pairingId: 'p1',
+  contactId: 'c1',
   keyId: 'k1',
   isOpen: false,
 }
 
 const FULL_REGISTRY: Registry = {
   version: 1,
-  lastIds: { bot: 12, pairing: 3, key: 4 },
+  lastIds: { bot: 12, contact: 3, key: 4 },
   bots: [
     { id: 'b1', provider: 'telegram', settings: { botToken: 'tok' }, createdAt: CREATED },
     {
@@ -48,10 +48,10 @@ const FULL_REGISTRY: Registry = {
       createdAt: CREATED,
     },
   ],
-  pairings: [
-    { id: 'p1', botId: 'b1', person: '7', quietHours: '22:00-07:00', createdAt: CREATED },
+  contacts: [
+    { id: 'c1', botId: 'b1', person: '7', quietHours: '22:00-07:00', createdAt: CREATED },
     {
-      id: 'p3',
+      id: 'c3',
       botId: 'b12',
       code: 'ABCD-EFGH',
       mutedUntil: '2026-10-27T00:00:00.000Z',
@@ -59,10 +59,10 @@ const FULL_REGISTRY: Registry = {
     },
   ],
   keys: [
-    { id: 'k1', pairingId: 'p1', createdAt: CREATED },
+    { id: 'k1', contactId: 'c1', createdAt: CREATED },
     {
       id: 'k4',
-      pairingId: 'p3',
+      contactId: 'c3',
       hash: 'f'.repeat(64),
       label: 'ci',
       externalId: 'x-1',
@@ -74,7 +74,7 @@ const FULL_REGISTRY: Registry = {
 
 const TWO_BOTS: Registry = {
   version: 1,
-  lastIds: { bot: 2, pairing: 2, key: 2 },
+  lastIds: { bot: 2, contact: 2, key: 2 },
   bots: [
     { id: 'b1', provider: 'telegram', settings: { botToken: 'one' }, createdAt: CREATED },
     {
@@ -85,13 +85,13 @@ const TWO_BOTS: Registry = {
       createdAt: CREATED,
     },
   ],
-  pairings: [
-    { id: 'p1', botId: 'b1', person: '7', createdAt: CREATED },
-    { id: 'p2', botId: 'b2', person: '8', createdAt: CREATED },
+  contacts: [
+    { id: 'c1', botId: 'b1', person: '7', createdAt: CREATED },
+    { id: 'c2', botId: 'b2', person: '8', createdAt: CREATED },
   ],
   keys: [
-    { id: 'k1', pairingId: 'p1', hash: '1'.repeat(64), createdAt: CREATED },
-    { id: 'k2', pairingId: 'p2', hash: '2'.repeat(64), createdAt: CREATED },
+    { id: 'k1', contactId: 'c1', hash: '1'.repeat(64), createdAt: CREATED },
+    { id: 'k2', contactId: 'c2', hash: '2'.repeat(64), createdAt: CREATED },
   ],
 }
 
@@ -152,12 +152,25 @@ test('loads an empty registry from a new db', () => {
   expect(new RegistryStore(openTestDatabase()).load()).toEqual(createEmptyRegistry())
 })
 
-test('round-trips a registry with bots, pairings, keys, counters and a seed', () => {
+test('round-trips a registry with bots, contacts, keys, counters and a seed', () => {
   new RegistryStore(openTestDatabase()).save(FULL_REGISTRY)
   const loaded = loadFresh()
   expect(loaded).toStrictEqual(FULL_REGISTRY)
   expect(Object.keys(loaded.bots[0] ?? {})).not.toContain('label')
   expect(Object.keys(loaded.keys[0] ?? {})).not.toContain('hash')
+})
+
+test('a saved registry lands in the contacts table and keys.contact_id', () => {
+  const database = openTestDatabase()
+  new RegistryStore(database).save(FULL_REGISTRY)
+  expect(database.prepare('SELECT id FROM contacts ORDER BY id').all()).toEqual([
+    { id: 'c1' },
+    { id: 'c3' },
+  ])
+  expect(database.prepare('SELECT contact_id FROM keys ORDER BY id').all()).toEqual([
+    { contact_id: 'c1' },
+    { contact_id: 'c3' },
+  ])
 })
 
 test('a registry without a seed round-trips without one', () => {
@@ -173,31 +186,31 @@ test('writes only the rows a change touches', () => {
   const store = new RegistryStore(database)
   store.save(TWO_BOTS)
   database.prepare("UPDATE bots SET label = 'raw' WHERE id = 'b2'").run()
-  const withPairing: Registry = {
+  const withContact: Registry = {
     ...TWO_BOTS,
-    lastIds: { ...TWO_BOTS.lastIds, pairing: 3 },
-    pairings: [...TWO_BOTS.pairings, { id: 'p3', botId: 'b1', code: 'WXYZ', createdAt: CREATED }],
+    lastIds: { ...TWO_BOTS.lastIds, contact: 3 },
+    contacts: [...TWO_BOTS.contacts, { id: 'c3', botId: 'b1', code: 'WXYZ', createdAt: CREATED }],
   }
-  store.save(withPairing)
+  store.save(withContact)
   const loaded = loadFresh()
   expect(loaded.bots[1]).toEqual({ ...TWO_BOTS.bots[1], label: 'raw' })
-  expect(loaded.pairings).toEqual(withPairing.pairings)
-  expect(loaded.lastIds).toEqual(withPairing.lastIds)
+  expect(loaded.contacts).toEqual(withContact.contacts)
+  expect(loaded.lastIds).toEqual(withContact.lastIds)
 })
 
-test('moving keys into another pairing keeps them when the old pairing goes', () => {
+test('moving keys into another contact keeps them when the old contact goes', () => {
   const store = new RegistryStore(openTestDatabase())
   store.save(TWO_BOTS)
   const merged: Registry = {
     ...TWO_BOTS,
-    pairings: TWO_BOTS.pairings.filter((pairing) => pairing.id !== 'p2'),
-    keys: TWO_BOTS.keys.map((key) => ({ ...key, pairingId: 'p1' })),
+    contacts: TWO_BOTS.contacts.filter((contact) => contact.id !== 'c2'),
+    keys: TWO_BOTS.keys.map((key) => ({ ...key, contactId: 'c1' })),
   }
   store.save(merged)
   expect(loadFresh()).toEqual(merged)
 })
 
-test('removing a bot deletes its pairings, keys, requests and notifications', () => {
+test('removing a bot deletes its contacts, keys, requests and notifications', () => {
   const database = openTestDatabase()
   const store = new RegistryStore(database)
   store.save(TWO_BOTS)
@@ -213,10 +226,10 @@ test('removing a bot deletes its pairings, keys, requests and notifications', ()
   expect(listStateRows(database, 'notifications')).toEqual(['b2'])
   expect(
     database
-      .prepare('SELECT id FROM pairings')
+      .prepare('SELECT id FROM contacts')
       .all()
       .map((row) => row.id),
-  ).toEqual(['p2'])
+  ).toEqual(['c2'])
   expect(
     database
       .prepare('SELECT id FROM keys')
@@ -234,7 +247,7 @@ test('a failed save changes nothing and the next save still applies', () => {
     bots: TWO_BOTS.bots.map((bot) => ({ ...bot, label: 'changed' })),
     keys: [
       ...TWO_BOTS.keys,
-      { id: 'k3', pairingId: 'p1', hash: '1'.repeat(64), createdAt: CREATED },
+      { id: 'k3', contactId: 'c1', hash: '1'.repeat(64), createdAt: CREATED },
     ],
   }
   expect(() => store.save(clash)).toThrow()
@@ -252,7 +265,7 @@ test('a store over a db it has not read saves against what the db holds', () => 
   const changed: Registry = {
     ...TWO_BOTS,
     bots: TWO_BOTS.bots.slice(0, 1),
-    pairings: TWO_BOTS.pairings.slice(0, 1),
+    contacts: TWO_BOTS.contacts.slice(0, 1),
     keys: TWO_BOTS.keys.slice(0, 1),
   }
   new RegistryStore(openTestDatabase()).save(changed)

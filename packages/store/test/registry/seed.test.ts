@@ -100,7 +100,7 @@ function requireFingerprint(load: SeedLoad): string {
   return load.seed.fingerprint
 }
 
-test('loadSeed reads bot 1, pairing 1 and key 1 from config.json', () => {
+test('loadSeed reads bot 1, contact 1 and key 1 from config.json', () => {
   const load = loadSeedFor({
     provider: 'fake',
     botToken: 'tok',

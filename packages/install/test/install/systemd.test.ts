@@ -305,8 +305,8 @@ function seedQuestionDb(configFile: string, botId: string): void {
   try {
     new RegistryStore(database).save({
       ...createEmptyRegistry(),
-      lastIds: { bot: 3, pairing: 1, key: 1 },
-      seed: { fingerprint: 'f', botId, pairingId: 'p1', keyId: 'k1', isOpen: false },
+      lastIds: { bot: 3, contact: 1, key: 1 },
+      seed: { fingerprint: 'f', botId, contactId: 'c1', keyId: 'k1', isOpen: false },
     })
     const insert = database.prepare(
       "INSERT INTO questions (bot_id, id, asked_at, text, options, timeout_option, timeout_seconds) VALUES (?, ?, '2026-10-19T06:00:00.000Z', 'q', '[]', 'No', 1)",

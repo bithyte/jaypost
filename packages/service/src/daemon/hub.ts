@@ -14,9 +14,9 @@ import {
   claimCode,
   countBotRecords,
   createKey,
-  createPairing,
+  createContact,
   findKeyRoute,
-  findPairingOf,
+  findContactOf,
   generateAdminKey,
   generateApiKey,
   hashKey,
@@ -25,12 +25,12 @@ import {
   listKeys,
   readAuditEntries,
   removeBot,
-  removePairing,
-  resetPairing,
+  removeContact,
+  resetContact,
   revokeKey,
   selectAuditEntries,
   updateKey,
-  updatePairingQuiet,
+  updateContactQuiet,
   writeAdminKeyFile,
 } from '@jaypost/store'
 import type {
@@ -40,7 +40,7 @@ import type {
   ClaimCodeResult,
   KeyLookup,
   KeyTarget,
-  PairingRecord,
+  ContactRecord,
   Registry,
   RegistryStore,
 } from '@jaypost/store'
@@ -106,13 +106,13 @@ function toSmallestLimits(left: Limits, right: Limits): Limits {
   }
 }
 
-/** A pairing's stored quiet settings as a `QuietService` takes them; bad values are left out. */
-function toQuiet(pairing: PairingRecord | undefined): {
+/** A contact's stored quiet settings as a `QuietService` takes them; bad values are left out. */
+function toQuiet(contact: ContactRecord | undefined): {
   readonly quietHours?: QuietHours
   readonly mutedUntil?: Date
 } {
-  const parsed = pairing?.quietHours === undefined ? undefined : parseQuietHours(pairing.quietHours)
-  const mutedUntil = pairing?.mutedUntil === undefined ? undefined : new Date(pairing.mutedUntil)
+  const parsed = contact?.quietHours === undefined ? undefined : parseQuietHours(contact.quietHours)
+  const mutedUntil = contact?.mutedUntil === undefined ? undefined : new Date(contact.mutedUntil)
   return {
     ...(parsed?.ok === true ? { quietHours: parsed.value } : {}),
     ...(mutedUntil === undefined || Number.isNaN(mutedUntil.getTime()) ? {} : { mutedUntil }),
@@ -269,9 +269,9 @@ export class Hub implements AdminApi {
   }
 
   /**
-   * Removes the bot with its pairings and keys, then stops its runtime, rejecting every open
+   * Removes the bot with its contacts and keys, then stops its runtime, rejecting every open
    * question with its timeout option. Its questions stay readable in the log until they're 30
-   * days old; its pairings, keys and saved state are deleted. Throws when the save fails.
+   * days old; its contacts, keys and saved state are deleted. Throws when the save fails.
    */
   async removeBot(botId: string): Promise<RemovedKeys | AdminFailure> {
     const result = removeBot(this.#registry, botId)
@@ -293,20 +293,20 @@ export class Hub implements AdminApi {
     if (bot !== undefined && this.#findBot(bot) === undefined) {
       return toNotFound({ kind: 'notFound', what: 'bot', id: bot })
     }
-    const { pairings, keys } = this.#registry
+    const { contacts, keys } = this.#registry
     return {
-      pairings: pairings
-        .filter((pairing) => bot === undefined || pairing.botId === bot)
-        .map((pairing) => toAdminPairing(pairing, keys)),
+      pairings: contacts
+        .filter((contact) => bot === undefined || contact.botId === bot)
+        .map((contact) => toAdminPairing(contact, keys)),
     }
   }
 
   /**
-   * An approver invite: a pending pairing whose code goes to its running bot at once. A bot that
-   * doesn't pair answers with its one local pairing. Throws when the save fails.
+   * An approver invite: a pending contact whose code goes to its running bot at once. A bot that
+   * doesn't pair answers with its one local contact. Throws when the save fails.
    */
   createPairing(body: CreatePairingBody): PairingInvite | AdminFailure {
-    const result = createPairing(
+    const result = createContact(
       this.#registry,
       body.bot,
       this.#generateCode(),
@@ -317,48 +317,48 @@ export class Hub implements AdminApi {
       return toNotFound(result)
     }
     this.#commit(result.registry)
-    return this.#invite(result.pairing)
+    return this.#invite(result.contact)
   }
 
   /**
-   * Drops the pairing's person and gives it a new code; its keys and quiet settings stay. Their
+   * Drops the contact's person and gives it a new code; its keys and quiet settings stay. Their
    * open questions are rejected with their timeout option, since nobody can answer them now.
    * Throws when the save fails.
    */
-  resetPairing(pairingId: string): PairingInvite | AdminFailure {
-    const pairing = this.#findPairing(pairingId)
-    if (pairing === undefined) {
-      return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
+  resetPairing(contactId: string): PairingInvite | AdminFailure {
+    const contact = this.#findContact(contactId)
+    if (contact === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'contact', id: contactId })
     }
-    const result = resetPairing(
+    const result = resetContact(
       this.#registry,
-      pairingId,
+      contactId,
       this.#generateCode(),
-      this.#isPairingBot(pairing.botId),
+      this.#isPairingBot(contact.botId),
     )
     if (result.kind === 'notFound') {
       return toNotFound(result)
     }
     if (result.kind === 'notPairing') {
-      return toInvalid(`pairing ${pairingId} is on bot ${result.botId}, which doesn't pair`)
+      return toInvalid(`pairing ${contactId} is on bot ${result.botId}, which doesn't pair`)
     }
     this.#commit(result.registry)
-    this.#release(pairing, this.#listKeyIds(pairingId))
-    return this.#invite(result.pairing)
+    this.#release(contact, this.#listKeyIds(contactId))
+    return this.#invite(result.contact)
   }
 
   /**
-   * Removes the pairing and its keys; their open questions are rejected with their timeout option
+   * Removes the contact and its keys; their open questions are rejected with their timeout option
    * and a pending code stops working. Throws when the save fails.
    */
-  removePairing(pairingId: string): RemovedKeys | AdminFailure {
-    const pairing = this.#findPairing(pairingId)
-    const result = removePairing(this.#registry, pairingId)
-    if (result.kind === 'notFound' || pairing === undefined) {
-      return toNotFound({ kind: 'notFound', what: 'pairing', id: pairingId })
+  removePairing(contactId: string): RemovedKeys | AdminFailure {
+    const contact = this.#findContact(contactId)
+    const result = removeContact(this.#registry, contactId)
+    if (result.kind === 'notFound' || contact === undefined) {
+      return toNotFound({ kind: 'notFound', what: 'contact', id: contactId })
     }
     this.#commit(result.registry)
-    this.#release(pairing, result.keyIds)
+    this.#release(contact, result.keyIds)
     return { removedKeys: [...result.keyIds] }
   }
 
@@ -366,7 +366,10 @@ export class Hub implements AdminApi {
     readonly bot?: string
     readonly pairing?: string
   }): { readonly keys: readonly AdminKey[] } | AdminFailure {
-    const result = listKeys(this.#registry, query)
+    const result = listKeys(this.#registry, {
+      ...(query.bot === undefined ? {} : { bot: query.bot }),
+      ...(query.pairing === undefined ? {} : { contact: query.pairing }),
+    })
     if (result.kind === 'notFound') {
       return toNotFound(result)
     }
@@ -374,8 +377,8 @@ export class Hub implements AdminApi {
   }
 
   /**
-   * A new key on the body's pairing, saved before it takes effect; the plaintext key is returned
-   * only here. A new pending pairing's code goes to its running bot at once. Throws when the save
+   * A new key on the body's contact, saved before it takes effect; the plaintext key is returned
+   * only here. A new pending contact's code goes to its running bot at once. Throws when the save
    * fails.
    */
   createKey(body: CreateKeyBody): CreatedKey | AdminFailure {
@@ -389,8 +392,8 @@ export class Hub implements AdminApi {
       target,
       hashKey(key),
       toKeyDetails(body),
-      // Only a new pairing uses the code.
-      target.kind === 'newPairing' ? this.#generateCode() : '',
+      // Only a new contact uses the code.
+      target.kind === 'newContact' ? this.#generateCode() : '',
       this.#isPairingTarget(target),
       this.#now(),
     )
@@ -398,11 +401,11 @@ export class Hub implements AdminApi {
       return toNotFound(result)
     }
     this.#commit(result.registry)
-    const { code, instructions } = this.#invite(result.pairing)
+    const { code, instructions } = this.#invite(result.contact)
     return {
       id: result.key.id,
       key,
-      pairing: result.pairing.id,
+      pairing: result.contact.id,
       ...(code === undefined ? {} : { code }),
       ...(instructions === undefined ? {} : { instructions }),
     }
@@ -418,8 +421,8 @@ export class Hub implements AdminApi {
       return toNotFound(result)
     }
     this.#commit(result.registry)
-    const pairing = this.#findPairing(result.key.pairingId)
-    return { key: toAdminKey(result.key, pairing?.botId ?? '') }
+    const contact = this.#findContact(result.key.contactId)
+    return { key: toAdminKey(result.key, contact?.botId ?? '') }
   }
 
   /**
@@ -427,14 +430,14 @@ export class Hub implements AdminApi {
    * save fails.
    */
   revokeKey(keyId: string): Readonly<Record<string, never>> | AdminFailure {
-    const pairing = this.#findPairingOfKey(keyId)
+    const contact = this.#findContactOfKey(keyId)
     const result = revokeKey(this.#registry, keyId)
     if (result.kind === 'notFound') {
       return toNotFound(result)
     }
     this.#commit(result.registry)
-    if (pairing !== undefined) {
-      this.#findRunning(pairing.botId)?.bot.rejectForKeys([keyId])
+    if (contact !== undefined) {
+      this.#findRunning(contact.botId)?.bot.rejectForKeys([keyId])
     }
     return {}
   }
@@ -470,25 +473,25 @@ export class Hub implements AdminApi {
     this.#registry = registry
   }
 
-  /** A pairing as an invite: its code and instructions while pending, sent to its running bot. */
-  #invite(pairing: PairingRecord): PairingInvite {
-    const shown = toAdminPairing(pairing, this.#registry.keys)
-    if (!isPending(pairing)) {
+  /** A contact as an invite: its code and instructions while pending, sent to its running bot. */
+  #invite(contact: ContactRecord): PairingInvite {
+    const shown = toAdminPairing(contact, this.#registry.keys)
+    if (!isPending(contact)) {
       return { pairing: shown }
     }
-    const instructions = this.#findRunning(pairing.botId)?.bot.pairingInstructions?.(pairing.code)
+    const instructions = this.#findRunning(contact.botId)?.bot.pairingInstructions?.(contact.code)
     return {
       pairing: shown,
-      code: formatCode(pairing.code),
+      code: formatCode(contact.code),
       ...(instructions === undefined ? {} : { instructions }),
     }
   }
 
-  /** The pairing's person is gone: the bot forgets them and their keys' questions are rejected. */
-  #release(pairing: PairingRecord, keyIds: readonly string[]): void {
-    const running = this.#findRunning(pairing.botId)
-    if (pairing.person !== undefined) {
-      running?.forgetPerson(pairing.person)
+  /** The contact's person is gone: the bot forgets them and their keys' questions are rejected. */
+  #release(contact: ContactRecord, keyIds: readonly string[]): void {
+    const running = this.#findRunning(contact.botId)
+    if (contact.person !== undefined) {
+      running?.forgetPerson(contact.person)
     }
     running?.bot.rejectForKeys(keyIds)
   }
@@ -497,7 +500,7 @@ export class Hub implements AdminApi {
     const state = this.#findState(record.id)
     const displayName =
       state.kind === 'running' ? state.running.bot.describe().displayName : undefined
-    const { pairingCount, keyCount } = countBotRecords(this.#registry, record.id)
+    const { contactCount, keyCount } = countBotRecords(this.#registry, record.id)
     return {
       id: record.id,
       provider: record.provider,
@@ -505,7 +508,7 @@ export class Hub implements AdminApi {
       ...(displayName === undefined ? {} : { displayName }),
       state: state.kind,
       ...(state.kind === 'failed' ? { error: state.reason } : {}),
-      pairingCount,
+      pairingCount: contactCount,
       keyCount,
     }
   }
@@ -516,7 +519,7 @@ export class Hub implements AdminApi {
     return {
       ...entry,
       ...(seed !== undefined && isSeedLine(this.#registry, botId, entry)
-        ? { key: seed.keyId, pairing: seed.pairingId }
+        ? { key: seed.keyId, pairing: seed.contactId }
         : {}),
       bot: botId,
     }
@@ -570,33 +573,33 @@ export class Hub implements AdminApi {
   }
 
   /**
-   * The pairing instruction for the install's own pending pairing, as the daemon always logged it.
+   * The pairing instruction for the install's own pending contact, as the daemon always logged it.
    */
   #logSeedCode(botId: string, running: RunningBot): void {
     const seed = this.#registry.seed
     if (seed?.botId !== botId) {
       return
     }
-    const pairing = this.#registry.pairings.find((other) => other.id === seed.pairingId)
+    const contact = this.#registry.contacts.find((other) => other.id === seed.contactId)
     const instructions = running.bot.pairingInstructions
-    if (pairing === undefined || !isPending(pairing) || instructions === undefined) {
+    if (contact === undefined || !isPending(contact) || instructions === undefined) {
       return
     }
-    this.#log(`[${botId}] Not paired. ${instructions(pairing.code)}`)
+    this.#log(`[${botId}] Not paired. ${instructions(contact.code)}`)
   }
 
   #createPeople(botId: string): BotPeople {
     return {
-      isPaired: (person) => findPairingOf(this.#registry, botId, person) !== undefined,
+      isPaired: (person) => findContactOf(this.#registry, botId, person) !== undefined,
       list: () => [
         ...new Set(
-          this.#registry.pairings.flatMap((pairing) =>
-            pairing.botId === botId && pairing.person !== undefined ? [pairing.person] : [],
+          this.#registry.contacts.flatMap((contact) =>
+            contact.botId === botId && contact.person !== undefined ? [contact.person] : [],
           ),
         ),
       ],
       claim: (text, person) => this.#claim(botId, text, person),
-      quietHours: (person) => toQuiet(findPairingOf(this.#registry, botId, person)),
+      quietHours: (person) => toQuiet(findContactOf(this.#registry, botId, person)),
       saveQuiet: (person, patch) => this.#saveQuiet(botId, person, patch),
     }
   }
@@ -619,11 +622,11 @@ export class Hub implements AdminApi {
   }
 
   #saveQuiet(botId: string, person: string, patch: QuietPatch): void {
-    const pairing = findPairingOf(this.#registry, botId, person)
-    if (pairing === undefined) {
+    const contact = findContactOf(this.#registry, botId, person)
+    if (contact === undefined) {
       throw new Error(`${person} isn't paired on ${botId}`)
     }
-    this.#commit(updatePairingQuiet(this.#registry, pairing.id, patch))
+    this.#commit(updateContactQuiet(this.#registry, contact.id, patch))
   }
 
   #route(authorization: string | undefined): BotRoute {
@@ -631,15 +634,15 @@ export class Hub implements AdminApi {
     if (found.kind !== 'found') {
       return { kind: 'unauthorized', reason: found.kind }
     }
-    const { key, pairing } = found
-    const running = this.#findRunning(pairing.botId)
+    const { key, contact } = found
+    const running = this.#findRunning(contact.botId)
     const route: KeyRoute = {
       kind: 'key',
-      caller: { key: key.id, pairing: pairing.id },
-      person: pairing.person,
+      caller: { key: key.id, pairing: contact.id },
+      person: contact.person,
       bot: running?.bot,
-      status: () => this.#describeStatus(key.id, pairing),
-      readLog: (query) => this.#readLog(key.id, pairing.botId, query),
+      status: () => this.#describeStatus(key.id, contact),
+      readLog: (query) => this.#readLog(key.id, contact.botId, query),
     }
     return route
   }
@@ -658,30 +661,30 @@ export class Hub implements AdminApi {
   }
 
   /** /status for a key, from the registry as it is now; `routed` stands in once it's gone. */
-  #describeStatus(keyId: string, routed: PairingRecord): StatusInfo {
-    const pairing = this.#registry.pairings.find((other) => other.id === routed.id) ?? routed
-    const record = this.#findBot(pairing.botId)
+  #describeStatus(keyId: string, routed: ContactRecord): StatusInfo {
+    const contact = this.#registry.contacts.find((other) => other.id === routed.id) ?? routed
+    const record = this.#findBot(contact.botId)
     const provider = record === undefined ? undefined : this.#providersByName.get(record.provider)
-    const state = this.#findState(pairing.botId)
+    const state = this.#findState(contact.botId)
     const running = state.kind === 'running' ? state.running : undefined
     const described =
       running?.bot.describe() ?? (record === undefined ? {} : { provider: record.provider })
     const common = {
       key: keyId,
-      pairing: pairing.id,
+      pairing: contact.id,
       state: state.kind,
       ...(state.kind === 'failed' ? { error: state.reason } : {}),
       ...described,
     }
     const limits = provider === undefined ? {} : toProviderLimits(provider)
-    if (!isPending(pairing)) {
+    if (!isPending(contact)) {
       return { paired: true, ...common, ...limits }
     }
-    const instructions = running?.bot.pairingInstructions?.(pairing.code)
+    const instructions = running?.bot.pairingInstructions?.(contact.code)
     return {
       paired: false,
       ...common,
-      code: formatCode(pairing.code),
+      code: formatCode(contact.code),
       ...(instructions === undefined ? {} : { instructions }),
       ...limits,
     }
@@ -710,9 +713,9 @@ export class Hub implements AdminApi {
     return { version: this.#version, ...(limits ?? NO_BOT_LIMITS) }
   }
 
-  /** Whether a new pairing on the target's bot waits for a code; only `newPairing` makes one. */
+  /** Whether a new contact on the target's bot waits for a code; only `newContact` makes one. */
   #isPairingTarget(target: KeyTarget): boolean {
-    return target.kind !== 'newPairing' || this.#isPairingBot(target.botId)
+    return target.kind !== 'newContact' || this.#isPairingBot(target.botId)
   }
 
   /**
@@ -729,23 +732,23 @@ export class Hub implements AdminApi {
     return this.#supervisors.get(botId)?.state ?? { kind: 'failed', reason: 'not started' }
   }
 
-  #findPairing(pairingId: string): PairingRecord | undefined {
-    return this.#registry.pairings.find((pairing) => pairing.id === pairingId)
+  #findContact(contactId: string): ContactRecord | undefined {
+    return this.#registry.contacts.find((contact) => contact.id === contactId)
   }
 
-  #listKeyIds(pairingId: string): readonly string[] {
-    return this.#registry.keys.filter((key) => key.pairingId === pairingId).map((key) => key.id)
+  #listKeyIds(contactId: string): readonly string[] {
+    return this.#registry.keys.filter((key) => key.contactId === contactId).map((key) => key.id)
   }
 
   #findBot(botId: string): BotRecord | undefined {
     return this.#registry.bots.find((record) => record.id === botId)
   }
 
-  #findPairingOfKey(keyId: string): PairingRecord | undefined {
+  #findContactOfKey(keyId: string): ContactRecord | undefined {
     const key = this.#registry.keys.find((other) => other.id === keyId)
     return key === undefined
       ? undefined
-      : this.#registry.pairings.find((pairing) => pairing.id === key.pairingId)
+      : this.#registry.contacts.find((contact) => contact.id === key.contactId)
   }
 
   #findRunning(botId: string): RunningBot | undefined {

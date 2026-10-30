@@ -1,7 +1,7 @@
 import { findOwnerSetting, formatCode } from '@jaypost/core'
 import type { Provider, SettingValue, SettingValues } from '@jaypost/core'
 import { isPending } from '@jaypost/store'
-import type { KeyDetails, KeyRecord, KeyTarget, NotFound, PairingRecord } from '@jaypost/store'
+import type { KeyDetails, KeyRecord, KeyTarget, NotFound, ContactRecord } from '@jaypost/store'
 import type { AdminKey, AdminPairing, CreateKeyBody } from '@jaypost/protocol'
 import type { AdminFailure, Parsed } from '../server/index.ts'
 
@@ -50,13 +50,13 @@ export function parseBotSettings(
   return { ok: true, value: values }
 }
 
-/** Which pairing a POST /admin/keys body points to; the schema made sure there's exactly one. */
+/** Which contact a POST /admin/keys body points to; the schema made sure there's exactly one. */
 export function toKeyTarget(body: CreateKeyBody): KeyTarget | undefined {
   if (body.bot !== undefined) {
-    return { kind: 'newPairing', botId: body.bot }
+    return { kind: 'newContact', botId: body.bot }
   }
   if (body.pairing !== undefined) {
-    return { kind: 'pairing', pairingId: body.pairing }
+    return { kind: 'contact', contactId: body.pairing }
   }
   return body.sameAsKey === undefined ? undefined : { kind: 'sameAsKey', keyId: body.sameAsKey }
 }
@@ -68,15 +68,15 @@ export function toKeyDetails(body: CreateKeyBody): KeyDetails {
   }
 }
 
-/** A pairing as the admin routes show it, with its keys' ids and its code while pending. */
-export function toAdminPairing(pairing: PairingRecord, keys: readonly KeyRecord[]): AdminPairing {
+/** A contact as the admin routes show it, with its keys' ids and its code while pending. */
+export function toAdminPairing(contact: ContactRecord, keys: readonly KeyRecord[]): AdminPairing {
   return {
-    id: pairing.id,
-    bot: pairing.botId,
-    ...(pairing.person === undefined ? {} : { person: pairing.person }),
-    state: pairing.person === undefined ? 'pending' : 'paired',
-    ...(isPending(pairing) ? { code: formatCode(pairing.code) } : {}),
-    keys: keys.filter((key) => key.pairingId === pairing.id).map((key) => key.id),
+    id: contact.id,
+    bot: contact.botId,
+    ...(contact.person === undefined ? {} : { person: contact.person }),
+    state: contact.person === undefined ? 'pending' : 'paired',
+    ...(isPending(contact) ? { code: formatCode(contact.code) } : {}),
+    keys: keys.filter((key) => key.contactId === contact.id).map((key) => key.id),
   }
 }
 
@@ -84,7 +84,7 @@ export function toAdminPairing(pairing: PairingRecord, keys: readonly KeyRecord[
 export function toAdminKey(key: KeyRecord, botId: string): AdminKey {
   return {
     id: key.id,
-    pairing: key.pairingId,
+    pairing: key.contactId,
     bot: botId,
     ...(key.label === undefined ? {} : { label: key.label }),
     ...(key.externalId === undefined ? {} : { externalId: key.externalId }),

@@ -6,7 +6,7 @@ const idCounterSchema = z.number().int().nonnegative()
 // Loose objects throughout, so fields a newer version adds survive a read-modify-write.
 export const registrySchema = z.looseObject({
   version: z.literal(REGISTRY_VERSION),
-  lastIds: z.looseObject({ bot: idCounterSchema, pairing: idCounterSchema, key: idCounterSchema }),
+  lastIds: z.looseObject({ bot: idCounterSchema, contact: idCounterSchema, key: idCounterSchema }),
   bots: z.array(
     z.looseObject({
       id: z.string(),
@@ -16,7 +16,7 @@ export const registrySchema = z.looseObject({
       createdAt: z.string(),
     }),
   ),
-  pairings: z.array(
+  contacts: z.array(
     z.looseObject({
       id: z.string(),
       botId: z.string(),
@@ -30,7 +30,7 @@ export const registrySchema = z.looseObject({
   keys: z.array(
     z.looseObject({
       id: z.string(),
-      pairingId: z.string(),
+      contactId: z.string(),
       hash: z.string().optional(),
       label: z.string().optional(),
       externalId: z.string().optional(),
@@ -41,7 +41,7 @@ export const registrySchema = z.looseObject({
     .looseObject({
       fingerprint: z.string(),
       botId: z.string(),
-      pairingId: z.string(),
+      contactId: z.string(),
       keyId: z.string(),
       isOpen: z.boolean(),
     })

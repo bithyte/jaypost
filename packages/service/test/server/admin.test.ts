@@ -110,7 +110,7 @@ const readRegistry = (configPath: string): Registry => {
   }
 }
 
-const REFUSED_WRITES = ['bots', 'pairings', 'keys'].flatMap((table) =>
+const REFUSED_WRITES = ['bots', 'contacts', 'keys'].flatMap((table) =>
   ['INSERT', 'UPDATE', 'DELETE'].map((event) => ({
     table,
     event,
@@ -180,8 +180,8 @@ const ADMIN_ROUTES: readonly (readonly [string, string])[] = [
   ['DELETE', '/admin/bots/b1'],
   ['GET', '/admin/pairings'],
   ['POST', '/admin/pairings'],
-  ['POST', '/admin/pairings/p1/reset'],
-  ['DELETE', '/admin/pairings/p1'],
+  ['POST', '/admin/pairings/c1/reset'],
+  ['DELETE', '/admin/pairings/c1'],
   ['GET', '/admin/keys'],
   ['POST', '/admin/keys'],
   ['PATCH', '/admin/keys/k1'],
@@ -226,16 +226,16 @@ test('a created key works at once for an existing pairing and waits for pairing 
   const { url, runtime } = started
   const same = await admin(started, 'POST', '/admin/keys', { sameAsKey: 'k1', label: 'ci' })
   expect(same.status).toBe(201)
-  expect(same.body).toEqual({ id: 'k2', key: expect.stringMatching(/^jpk_/), pairing: 'p1' })
+  expect(same.body).toEqual({ id: 'k2', key: expect.stringMatching(/^jpk_/), pairing: 'c1' })
   expect(await getStatus(url, same.body.key)).toMatchObject({ paired: true, key: 'k2' })
-  const viaPairing = await admin(started, 'POST', '/admin/keys', { pairing: 'p1' })
-  expect(viaPairing.body).toMatchObject({ id: 'k3', pairing: 'p1' })
+  const viaPairing = await admin(started, 'POST', '/admin/keys', { pairing: 'c1' })
+  expect(viaPairing.body).toMatchObject({ id: 'k3', pairing: 'c1' })
   const fresh = await admin(started, 'POST', '/admin/keys', { bot: 'b1', externalId: 'user-7' })
   expect(fresh.status).toBe(201)
   expect(fresh.body).toEqual({
     id: 'k4',
     key: expect.stringMatching(/^jpk_/),
-    pairing: 'p2',
+    pairing: 'c2',
     code: 'PAIR-2222',
     instructions: 'Say PAIR2222 to fake',
   })
@@ -254,10 +254,10 @@ test('a created key works at once for an existing pairing and waits for pairing 
     status: 200,
     body: {
       keys: [
-        { id: 'k1', pairing: 'p1', bot: 'b1', createdAt: expect.any(String) },
-        { id: 'k2', pairing: 'p1', bot: 'b1', label: 'ci', createdAt: expect.any(String) },
-        { id: 'k3', pairing: 'p1', bot: 'b1', createdAt: expect.any(String) },
-        { id: 'k4', pairing: 'p2', bot: 'b1', externalId: 'user-7', createdAt: expect.any(String) },
+        { id: 'k1', pairing: 'c1', bot: 'b1', createdAt: expect.any(String) },
+        { id: 'k2', pairing: 'c1', bot: 'b1', label: 'ci', createdAt: expect.any(String) },
+        { id: 'k3', pairing: 'c1', bot: 'b1', createdAt: expect.any(String) },
+        { id: 'k4', pairing: 'c2', bot: 'b1', externalId: 'user-7', createdAt: expect.any(String) },
       ],
     },
   })
@@ -266,7 +266,7 @@ test('a created key works at once for an existing pairing and waits for pairing 
     expect(listed).not.toContain(key)
   }
   expect(listed).not.toContain('hash')
-  expect(await admin(started, 'GET', '/admin/keys?pairing=p2')).toMatchObject({
+  expect(await admin(started, 'GET', '/admin/keys?pairing=c2')).toMatchObject({
     body: { keys: [{ id: 'k4' }] },
   })
   expect(await admin(started, 'POST', '/admin/keys', { sameAsKey: 'k9' })).toEqual({
@@ -303,7 +303,7 @@ test('a bot added at runtime serves its first key without a restart', async () =
   })
   expect(JSON.stringify(added.body)).not.toContain('other-token')
   const created = await admin(started, 'POST', '/admin/keys', { bot: 'b2' })
-  expect(created.body).toEqual({ id: 'k2', key: expect.any(String), pairing: 'p2' })
+  expect(created.body).toEqual({ id: 'k2', key: expect.any(String), pairing: 'c2' })
   expect((await post(started.url, '/request/async', REQUEST, created.body.key)).status).toBe(202)
   expect(other.runtimes.at(-1)?.sent).toHaveLength(1)
   expect(started.runtime.sent).toHaveLength(0)
@@ -421,7 +421,7 @@ test('a malformed admin body is a 400 that does not quote it', async () => {
     ],
     [
       '/admin/keys',
-      { bot: 'b1', pairing: 'p1' },
+      { bot: 'b1', pairing: 'c1' },
       'exactly one of bot, pairing and sameAsKey is required',
     ],
     ['/admin/keys', {}, 'exactly one of bot, pairing and sameAsKey is required'],
@@ -455,7 +455,7 @@ test('labels and external ids can be set and cleared', async () => {
     body: {
       key: {
         id: 'k1',
-        pairing: 'p1',
+        pairing: 'c1',
         bot: 'b1',
         label: 'laptop',
         externalId: 'user-1',
@@ -492,14 +492,14 @@ test('revoking a key cancels its open question with the timeout option', async (
     status: 404,
     body: { error: 'unknown key "k2"' },
   })
-  expect(readRegistry(started.configPath).pairings.map((pairing) => pairing.id)).toEqual(['p1'])
+  expect(readRegistry(started.configPath).contacts.map((pairing) => pairing.id)).toEqual(['c1'])
 })
 
 test('removing a pairing revokes its keys', async () => {
   const started = await start()
   const { url, runtime } = started
   const created = await admin(started, 'POST', '/admin/keys', { bot: 'b1' })
-  const second = await admin(started, 'POST', '/admin/keys', { pairing: 'p2' })
+  const second = await admin(started, 'POST', '/admin/keys', { pairing: 'c2' })
   expect(runtime.handlers?.pair?.('u2', created.body.code)).toBe('paired')
   const asked = post(url, '/request', REQUEST, second.body.key)
   await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
@@ -507,12 +507,12 @@ test('removing a pairing revokes its keys', async () => {
     status: 200,
     body: {
       pairings: [
-        { id: 'p1', bot: 'b1', person: 'u1', state: 'paired', keys: ['k1'] },
-        { id: 'p2', bot: 'b1', person: 'u2', state: 'paired', keys: ['k2', 'k3'] },
+        { id: 'c1', bot: 'b1', person: 'u1', state: 'paired', keys: ['k1'] },
+        { id: 'c2', bot: 'b1', person: 'u2', state: 'paired', keys: ['k2', 'k3'] },
       ],
     },
   })
-  expect(await admin(started, 'DELETE', '/admin/pairings/p2')).toEqual({
+  expect(await admin(started, 'DELETE', '/admin/pairings/c2')).toEqual({
     status: 200,
     body: { removedKeys: ['k2', 'k3'] },
   })
@@ -523,10 +523,10 @@ test('removing a pairing revokes its keys', async () => {
   }
   error.mockRestore()
   expect(runtime.handlers?.isPaired('u2')).toBe(false)
-  expect(readRegistry(started.configPath).pairings.map((pairing) => pairing.id)).toEqual(['p1'])
-  expect(await admin(started, 'DELETE', '/admin/pairings/p2')).toEqual({
+  expect(readRegistry(started.configPath).contacts.map((pairing) => pairing.id)).toEqual(['c1'])
+  expect(await admin(started, 'DELETE', '/admin/pairings/c2')).toEqual({
     status: 404,
-    body: { error: 'unknown pairing "p2"' },
+    body: { error: 'unknown contact "c2"' },
   })
 })
 
@@ -536,17 +536,17 @@ test('a removed pending pairing takes its code with it', async () => {
   expect(created).toEqual({
     status: 201,
     body: {
-      pairing: { id: 'p2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] },
+      pairing: { id: 'c2', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: [] },
       code: 'PAIR-2222',
       instructions: 'Say PAIR2222 to fake',
     },
   })
-  expect(await admin(started, 'DELETE', '/admin/pairings/p2')).toEqual({
+  expect(await admin(started, 'DELETE', '/admin/pairings/c2')).toEqual({
     status: 200,
     body: { removedKeys: [] },
   })
   expect(started.runtime.handlers?.pair?.('u2', 'PAIR2222')).toBe('notPairing')
-  expect(readRegistry(started.configPath).pairings.map((pairing) => pairing.id)).toEqual(['p1'])
+  expect(readRegistry(started.configPath).contacts.map((pairing) => pairing.id)).toEqual(['c1'])
 })
 
 test('someone re-paired after their pairing was removed starts without its quiet state', async () => {
@@ -555,15 +555,15 @@ test('someone re-paired after their pairing was removed starts without its quiet
   const first = await admin(started, 'POST', '/admin/pairings', { bot: 'b1' })
   expect(runtime.handlers?.pair?.('u2', first.body.code)).toBe('paired')
   expect(runtime.handlers?.command('mute', '2h', 'u2')).toMatch(/^Muted until /)
-  await admin(started, 'DELETE', '/admin/pairings/p2')
+  await admin(started, 'DELETE', '/admin/pairings/c2')
   const second = await admin(started, 'POST', '/admin/pairings', { bot: 'b1' })
   expect(runtime.handlers?.pair?.('u2', second.body.code)).toBe('paired')
   expect(runtime.handlers?.command('quiet', '', 'u2')).toContain('Not muted.')
-  expect(readRegistry(started.configPath).pairings).toMatchObject([
-    { id: 'p1', person: 'u1' },
-    { id: 'p3', person: 'u2' },
+  expect(readRegistry(started.configPath).contacts).toMatchObject([
+    { id: 'c1', person: 'u1' },
+    { id: 'c3', person: 'u2' },
   ])
-  expect(readRegistry(started.configPath).pairings[1]).not.toHaveProperty('mutedUntil')
+  expect(readRegistry(started.configPath).contacts[1]).not.toHaveProperty('mutedUntil')
 })
 
 test('resetting a pairing keeps its keys and waits for a new person', async () => {
@@ -571,11 +571,11 @@ test('resetting a pairing keeps its keys and waits for a new person', async () =
   const { url, runtime } = started
   const asked = post(url, '/request', REQUEST, TOKEN)
   await vi.waitFor(() => expect(runtime.sent).toHaveLength(1))
-  const reset = await admin(started, 'POST', '/admin/pairings/p1/reset')
+  const reset = await admin(started, 'POST', '/admin/pairings/c1/reset')
   expect(reset).toEqual({
     status: 200,
     body: {
-      pairing: { id: 'p1', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: ['k1'] },
+      pairing: { id: 'c1', bot: 'b1', state: 'pending', code: 'PAIR-2222', keys: ['k1'] },
       code: 'PAIR-2222',
       instructions: 'Say PAIR2222 to fake',
     },
@@ -584,23 +584,23 @@ test('resetting a pairing keeps its keys and waits for a new person', async () =
   expect(runtime.handlers?.isPaired('u1')).toBe(false)
   expect(await getStatus(url, TOKEN)).toMatchObject({ paired: false, code: 'PAIR-2222' })
   expect(runtime.handlers?.pair?.('u3', 'PAIR2222')).toBe('paired')
-  expect(await getStatus(url, TOKEN)).toMatchObject({ paired: true, key: 'k1', pairing: 'p1' })
-  expect(readRegistry(started.configPath).pairings).toMatchObject([{ id: 'p1', person: 'u3' }])
-  expect(await admin(started, 'POST', '/admin/pairings/p9/reset')).toEqual({
+  expect(await getStatus(url, TOKEN)).toMatchObject({ paired: true, key: 'k1', pairing: 'c1' })
+  expect(readRegistry(started.configPath).contacts).toMatchObject([{ id: 'c1', person: 'u3' }])
+  expect(await admin(started, 'POST', '/admin/pairings/c9/reset')).toEqual({
     status: 404,
-    body: { error: 'unknown pairing "p9"' },
+    body: { error: 'unknown contact "c9"' },
   })
 })
 
 test("a pairing on a bot that doesn't pair can't be reset", async () => {
   const started = await start({ providers: [createFakeProvider()], file: { apiToken: TOKEN } })
-  expect(await admin(started, 'POST', '/admin/pairings/p1/reset')).toEqual({
+  expect(await admin(started, 'POST', '/admin/pairings/c1/reset')).toEqual({
     status: 400,
-    body: { error: "pairing p1 is on bot b1, which doesn't pair" },
+    body: { error: "pairing c1 is on bot b1, which doesn't pair" },
   })
   expect(await admin(started, 'POST', '/admin/pairings', { bot: 'b1' })).toEqual({
     status: 201,
-    body: { pairing: { id: 'p1', bot: 'b1', person: 'local', state: 'paired', keys: ['k1'] } },
+    body: { pairing: { id: 'c1', bot: 'b1', person: 'local', state: 'paired', keys: ['k1'] } },
   })
 })
 
@@ -630,7 +630,7 @@ test('removing a bot stops it and rejects the questions of its keys', async () =
   error.mockRestore()
   const registry = readRegistry(started.configPath)
   expect(registry.bots.map((bot) => bot.id)).toEqual(['b1'])
-  expect(registry.pairings.map((pairing) => pairing.id)).toEqual(['p1'])
+  expect(registry.contacts.map((pairing) => pairing.id)).toEqual(['c1'])
   expect(await admin(started, 'DELETE', '/admin/bots/b2')).toEqual({
     status: 404,
     body: { error: 'unknown bot "b2"' },
@@ -710,9 +710,9 @@ test('admin log filters by bot, pairing and key', async () => {
       entry.pairing,
     ]),
   ).toEqual([
-    ['one', 'b1', 'k1', 'p1'],
-    ['two', 'b2', 'k2', 'p2'],
-    ['three', 'b1', 'k3', 'p1'],
+    ['one', 'b1', 'k1', 'c1'],
+    ['two', 'b2', 'k2', 'c2'],
+    ['three', 'b1', 'k3', 'c1'],
   ])
   const projects = async (query: string) =>
     (await admin(started, 'GET', `/admin/log${query}`)).body.entries.map(
@@ -720,7 +720,7 @@ test('admin log filters by bot, pairing and key', async () => {
     )
   expect(await projects('?bot=b1')).toEqual(['one', 'three'])
   expect(await projects('?bot=b2')).toEqual(['two'])
-  expect(await projects('?pairing=p1')).toEqual(['one', 'three'])
+  expect(await projects('?pairing=c1')).toEqual(['one', 'three'])
   expect(await projects('?key=k3')).toEqual(['three'])
   expect(await projects('?bot=b1&key=k1')).toEqual(['one'])
   expect(await projects('?project=two')).toEqual(['two'])
@@ -780,7 +780,7 @@ test('pairing and key lists filter by bot and pairing', async () => {
   await admin(started, 'POST', '/admin/keys', { bot: 'b2' })
   expect(await admin(started, 'GET', '/admin/pairings?bot=b2')).toEqual({
     status: 200,
-    body: { pairings: [{ id: 'p2', bot: 'b2', person: 'local', state: 'paired', keys: ['k2'] }] },
+    body: { pairings: [{ id: 'c2', bot: 'b2', person: 'local', state: 'paired', keys: ['k2'] }] },
   })
   expect(await admin(started, 'GET', '/admin/keys?bot=b1')).toMatchObject({
     body: { keys: [{ id: 'k1' }] },
@@ -789,9 +789,9 @@ test('pairing and key lists filter by bot and pairing', async () => {
     status: 404,
     body: { error: 'unknown bot "b9"' },
   })
-  expect(await admin(started, 'GET', '/admin/keys?pairing=p9')).toEqual({
+  expect(await admin(started, 'GET', '/admin/keys?pairing=c9')).toEqual({
     status: 404,
-    body: { error: 'unknown pairing "p9"' },
+    body: { error: 'unknown contact "c9"' },
   })
 })
 
@@ -808,8 +808,8 @@ test.skipIf(IS_ROOT)('a failed registry write answers 500 and changes nothing', 
     for (const [method, path, body] of [
       ['POST', '/admin/bots', { provider: 'fake', settings: { fakeKey: 'two' } }],
       ['POST', '/admin/pairings', { bot: 'b1' }],
-      ['POST', '/admin/pairings/p1/reset', undefined],
-      ['DELETE', '/admin/pairings/p1', undefined],
+      ['POST', '/admin/pairings/c1/reset', undefined],
+      ['DELETE', '/admin/pairings/c1', undefined],
       ['POST', '/admin/keys', { sameAsKey: 'k1' }],
       ['PATCH', '/admin/keys/k1', { label: 'x' }],
       ['DELETE', '/admin/keys/k1', undefined],

@@ -272,7 +272,7 @@ function saveQuestions(configPath: string, log: string): void {
       const record = JSON.parse(line)
       database
         .prepare(
-          "INSERT INTO questions (bot_id, id, asked_at, project, text, options, timeout_option, timeout_seconds, key_id, pairing_id) VALUES ('b1', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO questions (bot_id, id, asked_at, project, text, options, timeout_option, timeout_seconds, key_id, contact_id) VALUES ('b1', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )
         .run(
           record.id,
