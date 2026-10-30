@@ -114,7 +114,7 @@ Re-running `service install` on an install without an API token asks whether to 
 
 ## Upgrading to the inbox
 
-The CLI regrouped its commands and keeps the client's keys in an inbox. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `key`, `bot` and `pairing` moved under `admin` (now `admin bot`, `admin bot contact` and `admin bot key`), and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
+The CLI regrouped its commands and keeps the client's keys in an inbox. `init`, `uninstall` and `start` are now `service install`, `service uninstall` and `service run`; `bot`, `pairing` and `key` moved under `admin` (now `admin bot`, `admin bot contact` and `admin bot key`), and `admin-key rotate` is `admin rotate-key`. See [Commands](commands.md).
 
 There is no migration. The old files at the top of `~/.config/jaypost/` (`config.json`, `install.json`, `jaypost.db`, `admin-key`, `token`, `compose/`, `quadlet/`) are no longer read, so an existing install has to run `jaypost service install` again; it makes a fresh registry and a new `inbox.json`. `jaypost service update` doesn't write the inbox. A service whose unit or plist still runs the old `start` command doesn't work with the new CLI; `service update` or `service install` rewrites the unit. An older CLI's `jaypost update` gets the new CLI onto the machine but can't finish, so run `jaypost service update` after it.
 

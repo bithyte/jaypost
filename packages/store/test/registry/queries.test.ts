@@ -12,9 +12,9 @@ import type { Registry } from '../../src/registry/index.ts'
 
 const CREATED = '2026-10-26T10:00:00.000Z'
 
-const P1 = { id: 'c1', botId: 'b1', person: '111', createdAt: CREATED }
-const P2 = { id: 'c2', botId: 'b1', code: 'CODE0002', createdAt: CREATED }
-const P3 = { id: 'c3', botId: 'b2', person: '111', createdAt: CREATED }
+const C1 = { id: 'c1', botId: 'b1', person: '111', createdAt: CREATED }
+const C2 = { id: 'c2', botId: 'b1', code: 'CODE0002', createdAt: CREATED }
+const C3 = { id: 'c3', botId: 'b2', person: '111', createdAt: CREATED }
 const K1 = { id: 'k1', contactId: 'c1', createdAt: CREATED }
 const K2 = { id: 'k2', contactId: 'c1', hash: 'h2', createdAt: CREATED }
 const K3 = { id: 'k3', contactId: 'c2', hash: 'h3', createdAt: CREATED }
@@ -28,7 +28,7 @@ const REGISTRY: Registry = {
     { id: 'b1', provider: 'telegram', settings: {}, createdAt: CREATED },
     { id: 'b2', provider: 'discord', settings: {}, createdAt: CREATED },
   ],
-  contacts: [P1, P2, P3],
+  contacts: [C1, C2, C3],
   keys: [K1, K2, K3, K4],
   seed: { fingerprint: 'f1', botId: 'b1', contactId: 'c1', keyId: 'k1', isOpen: false },
 }
@@ -52,7 +52,7 @@ function createEntry(fields: Partial<AuditEntry>): AuditEntry {
 }
 
 test('a key is found by its hash, with its contact', () => {
-  expect(findKeyRoute(REGISTRY, 'h4')).toStrictEqual({ kind: 'found', key: K4, contact: P3 })
+  expect(findKeyRoute(REGISTRY, 'h4')).toStrictEqual({ kind: 'found', key: K4, contact: C3 })
 })
 
 test('an unknown hash is wrong', () => {
@@ -60,7 +60,7 @@ test('an unknown hash is wrong', () => {
 })
 
 test('a call without a token is the seed key on an open seed', () => {
-  expect(findKeyRoute(OPEN, undefined)).toStrictEqual({ kind: 'found', key: K1, contact: P1 })
+  expect(findKeyRoute(OPEN, undefined)).toStrictEqual({ kind: 'found', key: K1, contact: C1 })
 })
 
 test('a call without a token is missing on a seed that is not open', () => {
@@ -73,20 +73,20 @@ test('a call without a token is missing once the open seed key is revoked', () =
 })
 
 test('a key whose contact is gone is wrong', () => {
-  const registry = { ...OPEN, contacts: [P2, P3] }
+  const registry = { ...OPEN, contacts: [C2, C3] }
   expect(findKeyRoute(registry, 'h2')).toStrictEqual({ kind: 'wrong' })
   expect(findKeyRoute(registry, undefined)).toStrictEqual({ kind: 'wrong' })
 })
 
 test('the contact of a person is found per bot', () => {
-  expect(findContactOf(REGISTRY, 'b1', '111')).toStrictEqual(P1)
-  expect(findContactOf(REGISTRY, 'b2', '111')).toStrictEqual(P3)
+  expect(findContactOf(REGISTRY, 'b1', '111')).toStrictEqual(C1)
+  expect(findContactOf(REGISTRY, 'b2', '111')).toStrictEqual(C3)
   expect(findContactOf(REGISTRY, 'b1', '222')).toBeUndefined()
 })
 
 test('a contact is pending with no person and a code', () => {
-  expect(isPending(P2)).toBe(true)
-  expect(isPending(P1)).toBe(false)
+  expect(isPending(C2)).toBe(true)
+  expect(isPending(C1)).toBe(false)
   expect(isPending({ id: 'c9', botId: 'b1', createdAt: CREATED })).toBe(false)
 })
 

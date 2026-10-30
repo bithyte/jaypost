@@ -366,10 +366,7 @@ export class Hub implements AdminApi {
     readonly bot?: string
     readonly contact?: string
   }): { readonly keys: readonly AdminKey[] } | AdminFailure {
-    const result = listKeys(this.#registry, {
-      ...(query.bot === undefined ? {} : { bot: query.bot }),
-      ...(query.contact === undefined ? {} : { contact: query.contact }),
-    })
+    const result = listKeys(this.#registry, query)
     if (result.kind === 'notFound') {
       return toNotFound(result)
     }

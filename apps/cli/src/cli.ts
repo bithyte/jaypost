@@ -817,7 +817,7 @@ function findService(command: Command): string | undefined {
 
 /** The `admin bot` commands. */
 function addAdminBotCommands(admin: Command, setCode: (code: number) => void): void {
-  const bot = admin.command('bot').description("add, list and remove the service's bots")
+  const bot = admin.command('bot').description("manage the service's bots, their contacts and keys")
   bot
     .command('add')
     .description('add a bot; asks for its settings')

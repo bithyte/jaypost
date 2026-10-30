@@ -71,7 +71,7 @@ jaypost inbox join jpi_eyJ1cmwiOi...
 
 They run it, and `inbox join` saves the bot in their inbox and waits for them to send the pairing code to the bot (see [Pairing](pairing.md#joining-someone-elses-bot)). An invite carries the service url and an API key, never the admin key. The key is shown once; the service keeps only a hash, so lose it and you make a new one. Until the person pairs, `GET /status` called with the key shows the code.
 
-For a key that isn't going into an inbox, such as a CI secret or an app using `--external-id`, leave `--invite` off and `key add` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own inbox instead; `--save ALIAS` names it, and the target goes first (`key add b2 --save`).
+For a key that isn't going into an inbox, such as a CI secret or a key for an app that sets `externalId` through the API, leave `--invite` off and `key add` prints the bare key (`jpk_...`) and the pairing code. `--save` adds the key to your own inbox instead; `--save ALIAS` names it, and the target goes first (`key add b2 --save`).
 
 For someone already paired, or for a second workflow of the same person, share the contact. It works right away, with no phone step:
 

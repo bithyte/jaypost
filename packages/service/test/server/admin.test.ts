@@ -611,7 +611,9 @@ test('the old pairings routes are gone', async () => {
 
 test('a key body with pairing is rejected', async () => {
   const started = await start()
-  expect((await admin(started, 'POST', '/admin/keys', { pairing: 'c1' })).status).toBe(400)
+  expect((await admin(started, 'POST', '/admin/keys', { bot: 'b1', pairing: 'c1' })).status).toBe(
+    400,
+  )
 })
 
 test('removing a bot stops it and rejects the questions of its keys', async () => {

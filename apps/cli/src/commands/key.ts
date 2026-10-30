@@ -50,7 +50,7 @@ function parseKeyTarget(raw: string): KeyAddTarget | undefined {
   }
 }
 
-/** The pairing code and how to use it while the pairing waits; nothing once paired. */
+/** The pairing code and how to use it while the contact waits; nothing once paired. */
 function formatPairingLines(created: CreatedKey): readonly string[] {
   return created.code === undefined
     ? []
@@ -60,7 +60,7 @@ function formatPairingLines(created: CreatedKey): readonly string[] {
       ]
 }
 
-/** The key, once, then the pairing code and how to use it while the pairing waits. */
+/** The key, once, then the pairing code and how to use it while the contact waits. */
 function formatCreatedKey(created: CreatedKey): string {
   return [
     `Key ${created.id} (contact ${created.contact}): ${created.key}`,

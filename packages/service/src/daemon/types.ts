@@ -8,7 +8,7 @@ export type BotPeople = {
   readonly isPaired: (person: string) => boolean
   readonly list: () => readonly string[]
   /**
-   * `person` sent `text`, which may be a pending pairing's code. Checked against the registry as it
+   * `person` sent `text`, which may be a pending contact's code. Checked against the registry as it
    * is now; on a claim the hub records it and saves.
    */
   readonly claim: (text: string, person: string) => ClaimCodeResult['kind']
