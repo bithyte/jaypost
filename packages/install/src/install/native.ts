@@ -112,6 +112,15 @@ export function readConfigSecrets(path: string, providers: readonly Provider[]):
   }
 }
 
+/**
+ * The apiToken in a config file as written, valid or not (the caller decides), like the container
+ * `.env` read; undefined when the file or the token is missing or empty.
+ */
+export function readConfigApiToken(path: string): string | undefined {
+  const token = readConfigFile(path).apiToken
+  return token === undefined || token === '' ? undefined : token
+}
+
 /** Why a standalone binary can't be copied to the binary path (a symlink there is npm's launcher), or undefined. */
 export function findBinaryCopyConflict(paths: InstallPaths, cli: CliLocation): string | undefined {
   if (cli.kind === 'binary' && inspectEntry(paths.binaryCopy) === 'symlink') {

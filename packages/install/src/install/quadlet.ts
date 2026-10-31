@@ -12,7 +12,7 @@ import {
   SERVICE_NAME,
   VOLUME_NAME,
 } from './constants.ts'
-import { readContainerSecrets, removeEnvKey, writeEnvFile } from './envfile.ts'
+import { readContainerSecrets, readEnvApiToken, removeEnvKey, writeEnvFile } from './envfile.ts'
 import { requireRecordOwner } from './state.ts'
 import { formatDockerfile, formatEnvFile, formatQuadletContainer } from './templates.ts'
 import type { InstallRecord, Secrets, Target, TargetDeps } from './types.ts'
@@ -91,7 +91,12 @@ export function createQuadletTarget(deps: TargetDeps): Target {
       mkdirSync(dirname(paths.quadletUnit), { recursive: true })
       writeFileSync(
         paths.quadletUnit,
-        formatQuadletContainer({ version: options.version, port: options.port, envFile: envPath }),
+        formatQuadletContainer({
+          version: options.version,
+          port: options.port,
+          envFile: envPath,
+          exposed: options.exposed ?? false,
+        }),
       )
       for (const args of [['daemon-reload'], ['start', SERVICE_NAME]]) {
         const result = await systemctl(...args)
@@ -105,11 +110,12 @@ export function createQuadletTarget(deps: TargetDeps): Target {
         provider: options.provider.name,
         port: options.port,
         version: options.version,
+        ...(options.exposed ? { exposed: true } : {}),
       }
     },
     async upgrade(options, previous): Promise<InstallRecord> {
       // install builds before it touches the unit, so a failed build leaves the old one running.
-      const record = await target.install(options)
+      const record = await target.install({ ...options, exposed: previous.exposed ?? false })
       // `systemctl start` does nothing when the unit is already running.
       await target.restart(record)
       const oldTag = formatImageTag(previous.version)
@@ -178,6 +184,21 @@ export function createQuadletTarget(deps: TargetDeps): Target {
       if (result.code !== 0) {
         throw new Error(`systemctl restart failed (exit ${result.code})`)
       }
+    },
+    async start() {
+      const result = await systemctl('start', SERVICE_NAME)
+      if (result.code !== 0) {
+        throw new Error(`systemctl start failed (exit ${result.code})`)
+      }
+    },
+    async stop() {
+      const result = await systemctl('stop', SERVICE_NAME)
+      if (result.code !== 0) {
+        throw new Error(`systemctl stop failed (exit ${result.code})`)
+      }
+    },
+    async readApiToken() {
+      return readEnvApiToken(envPath)
     },
     async forgetSeedOwner(record) {
       removeEnvKey(envPath, requireRecordOwner(providers, record).envVar)

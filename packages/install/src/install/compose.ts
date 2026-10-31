@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path'
 import type { Exec, ExecOptions } from '@jaypost/store'
 import { parseContainerAdminKey } from './admin-key.ts'
 import { DOCKERIGNORE, PACKAGE_NAME } from './constants.ts'
-import { readContainerSecrets, removeEnvKey, writeEnvFile } from './envfile.ts'
+import { readContainerSecrets, readEnvApiToken, removeEnvKey, writeEnvFile } from './envfile.ts'
 import { requireRecordOwner } from './state.ts'
 import { formatComposeYaml, formatDockerfile, formatEnvFile } from './templates.ts'
 import type { InstallRecord, Secrets, Target, TargetDeps } from './types.ts'
@@ -63,7 +63,7 @@ export function createComposeTarget(deps: TargetDeps): Target {
           ...(options.tarball ? { tarball: options.tarball } : {}),
         }),
       )
-      writeFileSync(file, formatComposeYaml(options.port))
+      writeFileSync(file, formatComposeYaml(options.port, options.exposed ?? false))
       writeEnvFile(
         envPath,
         formatEnvFile({
@@ -86,12 +86,13 @@ export function createComposeTarget(deps: TargetDeps): Target {
         provider: options.provider.name,
         port: options.port,
         version: options.version,
+        ...(options.exposed ? { exposed: true } : {}),
       }
     },
-    async upgrade(options): Promise<InstallRecord> {
+    async upgrade(options, previous): Promise<InstallRecord> {
       const oldImageId = await readImageId()
       // `up -d --build` recreates the container when the image changed.
-      const record = await target.install(options)
+      const record = await target.install({ ...options, exposed: previous.exposed ?? false })
       if (oldImageId === '' || oldImageId === (await readImageId())) {
         return record
       }
@@ -121,6 +122,21 @@ export function createComposeTarget(deps: TargetDeps): Target {
       if (result.code !== 0) {
         throw new Error(`docker compose up failed (exit ${result.code})`)
       }
+    },
+    async start() {
+      const result = await compose(['start'])
+      if (result.code !== 0) {
+        throw new Error(`docker compose start failed (exit ${result.code})`)
+      }
+    },
+    async stop() {
+      const result = await compose(['stop'])
+      if (result.code !== 0) {
+        throw new Error(`docker compose stop failed (exit ${result.code})`)
+      }
+    },
+    async readApiToken() {
+      return readEnvApiToken(envPath)
     },
     async forgetSeedOwner(record) {
       removeEnvKey(envPath, requireRecordOwner(providers, record).envVar)

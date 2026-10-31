@@ -6,7 +6,7 @@ New here? Start with the [quick start](../README.md#quick-start).
 - [Pairing](pairing.md): pairing, changing owner, Discord setup
 - [Claude Code](claude-code.md): plugin and permission hook
 - [Agents (MCP)](mcp.md): tools for any MCP client
-- [Shell and Node](scripts.md): `jaypost send` and the `Client`
+- [Shell and Node](scripts.md): `jaypost request`, `jaypost notify` and the `Client`
 - [HTTP API](http-api.md): questions, background questions, notifications, attachments, log, admin routes
 - [Formatting](formatting.md): the markdown subset messages support
 - [CI](ci.md): GitHub Action, direct mode, several approvers

@@ -77,7 +77,7 @@ test('rejected token reason has the code and no token', async () => {
   const check = await runtime.checkCredentials()
   expect(check).toEqual({
     ok: false,
-    reason: 'Telegram rejected the bot token (401); check it with `jaypost init`',
+    reason: 'Telegram rejected the bot token (401); check it with `jaypost service install`',
   })
   expect(JSON.stringify(check)).not.toContain(TOKEN)
 })

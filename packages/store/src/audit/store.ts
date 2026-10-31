@@ -16,9 +16,9 @@ type Row = Record<string, SQLOutputValue>
 
 const INSERT_ASKED_SQL = `
 INSERT OR IGNORE INTO questions
-  (bot_id, id, asked_at, project, text, options, timeout_option, timeout_seconds, key_id, pairing_id)
+  (bot_id, id, asked_at, project, text, options, timeout_option, timeout_seconds, key_id, contact_id)
 VALUES
-  (:botId, :id, :askedAt, :project, :text, :options, :timeoutOption, :timeoutSeconds, :keyId, :pairingId)
+  (:botId, :id, :askedAt, :project, :text, :options, :timeoutOption, :timeoutSeconds, :keyId, :contactId)
 `
 
 const SETTLE_SQL = `
@@ -60,7 +60,7 @@ export class AuditLog implements AuditSink {
         timeoutOption: request.timeoutOption,
         timeoutSeconds: request.timeoutSeconds,
         keyId: request.caller?.key ?? null,
-        pairingId: request.caller?.pairing ?? null,
+        contactId: request.caller?.contact ?? null,
       })
     })
   }
@@ -225,9 +225,9 @@ function toRecords(row: Row, options: readonly string[]): readonly (AskedRecord 
   return [asked, settled]
 }
 
-function callerFields(row: Row): { readonly key?: string; readonly pairing?: string } {
+function callerFields(row: Row): { readonly key?: string; readonly contact?: string } {
   return {
     ...(row.key_id === null ? {} : { key: String(row.key_id) }),
-    ...(row.pairing_id === null ? {} : { pairing: String(row.pairing_id) }),
+    ...(row.contact_id === null ? {} : { contact: String(row.contact_id) }),
   }
 }

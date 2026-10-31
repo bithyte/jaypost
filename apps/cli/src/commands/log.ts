@@ -8,13 +8,12 @@ import {
   resolveConfigPath,
   selectAuditEntries,
 } from '@jaypost/store'
-import type { AuditEntry, ClientToken } from '@jaypost/store'
-import { Caller, findEnvEndpoint } from '@jaypost/client'
-import type { AdminCaller, Failure, LogFilter, ServiceEndpoint } from '@jaypost/client'
-import type { LogPage } from '@jaypost/protocol'
-import { findExistingInstall } from '@jaypost/install'
+import type { AuditEntry } from '@jaypost/store'
+import { Caller } from '@jaypost/client'
+import type { AdminLogFilter, LogFilter } from '@jaypost/client'
 import { openAdmin } from './admin-access.ts'
-import type { LogArgs, LogDeps } from './types.ts'
+import { runAdminCommand } from './admin.ts'
+import type { AdminLogArgs, AdminLogDeps, LocalAdminEndpoint, LogArgs, LogDeps } from './types.ts'
 
 /** Entries to print and how many lines were skipped, or why there are none. */
 type LogRead =
@@ -22,24 +21,181 @@ type LogRead =
       readonly kind: 'read'
       readonly entries: readonly AuditEntry[]
       readonly skippedCount: number
-      /** No entries at all before filtering, so the message says nothing was logged. */
-      readonly isLogEmpty: boolean
     }
-  | { readonly kind: 'failed'; readonly message: string }
-
-/** Where an API read goes: the admin routes, or GET /log with the client token and why. */
-type LogSource =
-  | { readonly kind: 'admin'; readonly caller: AdminCaller }
-  | { readonly kind: 'client'; readonly endpoint: ServiceEndpoint; readonly reason: string }
   | { readonly kind: 'failed'; readonly message: string }
 
 const VERSION_PATTERN = /^(\d+)\.(\d+)\.(\d+)/
 
-function parseVersion(version: string): readonly number[] | undefined {
-  const match = VERSION_PATTERN.exec(version)
-  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])]
+/** Follows the reason `admin log` reads the files instead of asking the service. */
+const FROM_FILES_NOTE = "showing the seed bot's questions from its files"
+
+/**
+ * Prints the question log of the bot's key through GET /log. Returns 0, or 1 with the message on
+ * stderr when the log can't be read.
+ */
+export async function runLog(args: LogArgs, deps: LogDeps): Promise<number> {
+  const limit = args.limit ?? (args.since === undefined ? DEFAULT_LOG_LIMIT : undefined)
+  const filter: LogFilter = {
+    ...(args.since === undefined ? {} : { since: args.since }),
+    ...(args.project === undefined ? {} : { project: args.project }),
+    ...(limit === undefined ? {} : { limit }),
+  }
+  const caller = new Caller({
+    endpoint: deps.endpoint,
+    readToken: () => deps.token,
+  })
+  // Nothing cancels the read but its timeout.
+  const result = await caller.readLog(filter, {
+    signal: new AbortController().signal,
+  })
+  if (result.kind === 'failed') {
+    deps.printError(result.message)
+    return 1
+  }
+  const isNarrowed = filter.since !== undefined || filter.project !== undefined
+  printEntries(result.page.entries, result.page.skippedCount, isNarrowed, args, deps)
+  return 0
 }
 
+/**
+ * Prints the entries as a table or JSON lines, or says there are none (on stderr with `--json`, so
+ * stdout stays parseable), then how many lines were unreadable.
+ */
+function printEntries(
+  entries: readonly AuditEntry[],
+  skippedCount: number,
+  isNarrowed: boolean,
+  args: LogArgs,
+  deps: Pick<LogDeps, 'print' | 'printError'>,
+): void {
+  if (entries.length > 0) {
+    deps.print(args.json ? formatAuditJsonLines(entries) : formatAuditTable(entries))
+  } else {
+    const message = isNarrowed ? 'No questions match.' : 'No questions logged.'
+    if (args.json) {
+      deps.printError(message)
+    } else {
+      deps.print(message)
+    }
+  }
+  if (skippedCount > 0) {
+    deps.printError(
+      `skipped ${skippedCount} unreadable log ${skippedCount === 1 ? 'line' : 'lines'}`,
+    )
+  }
+}
+
+/**
+ * Prints every bot's question log through GET /admin/log, narrowed by `--bot`, `--contact` and
+ * `--key` (none, or `--all`, means every bot). When the local service doesn't answer, or its admin
+ * key can't be found, reads the seed bot's log from the install's files instead and says so on
+ * stderr. Returns 0, or 1 when the log can't be read or the install is too old to read.
+ */
+export function runAdminLog(args: AdminLogArgs, deps: AdminLogDeps): Promise<number> {
+  return runAdminCommand(deps, async () => {
+    const limit = args.limit ?? (args.since === undefined ? DEFAULT_LOG_LIMIT : undefined)
+    const filter: AdminLogFilter = {
+      ...(args.since === undefined ? {} : { since: args.since }),
+      ...(args.project === undefined ? {} : { project: args.project }),
+      ...(limit === undefined ? {} : { limit }),
+      ...(args.bot === undefined ? {} : { bot: args.bot }),
+      ...(args.contact === undefined ? {} : { contact: args.contact }),
+      ...(args.key === undefined ? {} : { key: args.key }),
+    }
+    const read = await readAdminLog(filter, deps)
+    if (read.kind === 'failed') {
+      deps.printError(read.message)
+      return 1
+    }
+    const isNarrowed =
+      filter.since !== undefined ||
+      filter.project !== undefined ||
+      filter.bot !== undefined ||
+      filter.contact !== undefined ||
+      filter.key !== undefined
+    printEntries(read.entries, read.skippedCount, isNarrowed, args, deps)
+    return 0
+  })
+}
+
+/** GET /admin/log, or the seed bot's log from the files of a local service that can't be asked. */
+async function readAdminLog(filter: AdminLogFilter, deps: AdminLogDeps): Promise<LogRead> {
+  const opened = await openAdmin(deps)
+  switch (opened.kind) {
+    case 'failed':
+      return opened
+    case 'noKey':
+      if (opened.endpoint.kind !== 'local') {
+        return { kind: 'failed', message: opened.message }
+      }
+      return fallBackToFiles(opened.message, opened.endpoint, filter, deps)
+    case 'opened': {
+      const result = await opened.caller.readLog(filter)
+      if (result.kind === 'ok') {
+        return { kind: 'read', ...result.value }
+      }
+      if (result.reason !== 'unreachable' || opened.endpoint.kind !== 'local') {
+        return { kind: 'failed', message: result.message }
+      }
+      return fallBackToFiles("the service didn't answer", opened.endpoint, filter, deps)
+    }
+  }
+}
+
+/**
+ * Says why the files are read (`reason`) and reads them. The files hold no bot ids, so `--bot`
+ * fails instead of matching nothing.
+ */
+function fallBackToFiles(
+  reason: string,
+  endpoint: LocalAdminEndpoint,
+  filter: AdminLogFilter,
+  deps: AdminLogDeps,
+): Promise<LogRead> {
+  if (filter.bot !== undefined) {
+    return Promise.resolve({
+      kind: 'failed',
+      message: `${reason}; --bot needs the service running, so start it or leave --bot out`,
+    })
+  }
+  deps.printError(`${reason}; ${FROM_FILES_NOTE}`)
+  return readFromFiles(endpoint, filter, deps)
+}
+
+/**
+ * The seed bot's log from the install's target (or the db next to the config when nothing is
+ * installed), filtered here. An install too old to have its log where this CLI reads fails.
+ */
+async function readFromFiles(
+  endpoint: LocalAdminEndpoint,
+  filter: AdminLogFilter,
+  deps: AdminLogDeps,
+): Promise<LogRead> {
+  const { install } = endpoint
+  if (install !== undefined && isTooOld(install.version, deps.version)) {
+    return {
+      kind: 'failed',
+      message: `the installed service (${install.version}) keeps its log where this CLI can't read it; run jaypost service install to upgrade`,
+    }
+  }
+  let raw: string
+  try {
+    raw =
+      install === undefined
+        ? readSeedAuditLog(endpoint.configPath ?? resolveConfigPath(deps.env))
+        : await deps.targets[install.target].readAuditLog(install)
+  } catch (error) {
+    return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+  }
+  const now = deps.now ?? (() => new Date())
+  const { entries, skippedCount } = parseAuditLog(raw, now())
+  return { kind: 'read', entries: selectAuditEntries(entries, filter), skippedCount }
+}
+
+/**
+ * True when the install's version predates the log this CLI reads; the CLI's own version never
+ * is, and neither is anything at or above `MIN_AUDIT_VERSION`, compared part by part as numbers.
+ */
 function isTooOld(version: string, runningVersion: string): boolean {
   if (version === 'legacy') {
     return true
@@ -61,160 +217,7 @@ function isTooOld(version: string, runningVersion: string): boolean {
   return false
 }
 
-async function readRaw(deps: LogDeps): Promise<string | { readonly message: string }> {
-  try {
-    const existing = findExistingInstall(deps.paths, deps.targets, deps.env)
-    if (existing === undefined) {
-      return readSeedAuditLog(resolveConfigPath(deps.env))
-    }
-    const { record } = existing
-    if (isTooOld(record.version, deps.version)) {
-      return {
-        message: `the installed service (${record.version}) keeps its log where this CLI can't read it; run jaypost init to upgrade`,
-      }
-    }
-    return await deps.targets[record.target].readAuditLog(record)
-  } catch (error) {
-    return { message: error instanceof Error ? error.message : String(error) }
-  }
-}
-
-/** The seed bot's log from the install's target (or the db next to the config), filtered here. */
-async function readFromDatabase(filter: LogFilter, deps: LogDeps): Promise<LogRead> {
-  const raw = await readRaw(deps)
-  if (typeof raw !== 'string') {
-    return { kind: 'failed', message: raw.message }
-  }
-  const { entries, skippedCount } = parseAuditLog(raw, deps.now())
-  return {
-    kind: 'read',
-    entries: selectAuditEntries(entries, filter),
-    skippedCount,
-    isLogEmpty: entries.length === 0,
-  }
-}
-
-/** True when `log` reads through the API: an admin-only flag, or `JAYPOST_URL` set. */
-function isApiRead(args: LogArgs, env: NodeJS.ProcessEnv): boolean {
-  return hasAdminFlag(args) || findEnvEndpoint(env) !== undefined
-}
-
-function hasAdminFlag(args: LogArgs): boolean {
-  return (
-    args.bot !== undefined ||
-    args.pairing !== undefined ||
-    args.key !== undefined ||
-    args.all === true
-  )
-}
-
-/**
- * The admin routes when an admin key resolves (`JAYPOST_URL` with `JAYPOST_ADMIN_KEY`, or the local
- * service's key), else GET /log on the same service. Never throws.
- */
-async function resolveLogSource(deps: LogDeps): Promise<LogSource> {
-  const opened = await openAdmin(deps)
-  switch (opened.kind) {
-    case 'failed':
-      return opened
-    case 'noKey':
-      return { kind: 'client', endpoint: opened.endpoint.endpoint, reason: opened.message }
-    case 'opened':
-      return { kind: 'admin', caller: opened.caller }
-  }
-}
-
-/**
- * Every bot's log through GET /admin/log, narrowed by the flags, or this client's key's log through
- * GET /log when no admin key resolves (saying so when admin-only flags were given).
- */
-async function readFromApi(args: LogArgs, filter: LogFilter, deps: LogDeps): Promise<LogRead> {
-  const source = await resolveLogSource(deps)
-  const isNarrowed =
-    filter.since !== undefined ||
-    filter.project !== undefined ||
-    args.bot !== undefined ||
-    args.pairing !== undefined ||
-    args.key !== undefined
-  switch (source.kind) {
-    case 'failed':
-      return source
-    case 'admin': {
-      const result = await source.caller.readLog({
-        ...filter,
-        ...(args.bot === undefined ? {} : { bot: args.bot }),
-        ...(args.pairing === undefined ? {} : { pairing: args.pairing }),
-        ...(args.key === undefined ? {} : { key: args.key }),
-      })
-      if (result.kind === 'failed') {
-        return { kind: 'failed', message: result.message }
-      }
-      return { kind: 'read', ...result.value, isLogEmpty: !isNarrowed }
-    }
-    case 'client': {
-      if (hasAdminFlag(args)) {
-        deps.printError(
-          `${source.reason}; showing only this client's questions, without --bot, --pairing, --key or --all`,
-        )
-      }
-      const result = await readClientLog(source.endpoint, deps.token, filter)
-      if (result.kind === 'failed') {
-        return { kind: 'failed', message: result.message }
-      }
-      return {
-        kind: 'read',
-        ...result.page,
-        isLogEmpty: filter.since === undefined && filter.project === undefined,
-      }
-    }
-  }
-}
-
-function readClientLog(
-  endpoint: ServiceEndpoint,
-  token: ClientToken,
-  filter: LogFilter,
-): Promise<{ readonly kind: 'log'; readonly page: LogPage } | Failure> {
-  const caller = new Caller({ endpoint, readToken: () => token })
-  // Nothing cancels the read but its timeout.
-  return caller.readLog(filter, { signal: new AbortController().signal })
-}
-
-/**
- * Prints the question log: from the install's target (or the db next to the config when nothing
- * is installed), or through the API with `--bot`, `--pairing`, `--key`, `--all` or `JAYPOST_URL`.
- * Returns 0, or 1 when the log can't be read or the install is too old.
- */
-export async function runLog(args: LogArgs, deps: LogDeps): Promise<number> {
-  const limit = args.limit ?? (args.since === undefined ? DEFAULT_LOG_LIMIT : undefined)
-  const filter: LogFilter = {
-    ...(args.since === undefined ? {} : { since: args.since }),
-    ...(args.project === undefined ? {} : { project: args.project }),
-    ...(limit === undefined ? {} : { limit }),
-  }
-  const read = isApiRead(args, deps.env)
-    ? await readFromApi(args, filter, deps)
-    : await readFromDatabase(filter, deps)
-  if (read.kind === 'failed') {
-    deps.printError(read.message)
-    return 1
-  }
-  const { entries, skippedCount } = read
-  if (entries.length > 0) {
-    deps.print(args.json ? formatAuditJsonLines(entries) : formatAuditTable(entries))
-  } else {
-    // With --json stdout stays parseable, so the message goes to stderr.
-    const message = read.isLogEmpty ? 'No questions logged.' : 'No questions match.'
-    if (args.json) {
-      deps.printError(message)
-    } else {
-      deps.print(message)
-    }
-  }
-  if (skippedCount > 0) {
-    deps.printError(
-      `skipped ${skippedCount} unreadable log ${skippedCount === 1 ? 'line' : 'lines'}`,
-    )
-  }
-  return 0
+function parseVersion(version: string): readonly number[] | undefined {
+  const match = VERSION_PATTERN.exec(version)
+  return match === null ? undefined : [Number(match[1]), Number(match[2]), Number(match[3])]
 }

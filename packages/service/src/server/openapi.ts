@@ -14,10 +14,10 @@ import {
   addBotBodySchema,
   adminBotSchema,
   adminKeySchema,
-  adminPairingSchema,
+  adminContactSchema,
   createdKeySchema,
   createKeyBodySchema,
-  createPairingBodySchema,
+  createContactBodySchema,
   logEntrySchema,
   MAX_LABEL_LENGTH,
   removedKeysSchema,
@@ -165,7 +165,7 @@ function toApprovalRequestSchema(body: JsonSchema): JsonSchema {
 function toStatusSchema(status: JsonSchema): JsonSchema {
   const descriptions: Readonly<Record<string, string>> = {
     key: "The caller key's id.",
-    pairing: "The id of the caller key's pairing.",
+    contact: "The id of the caller key's contact.",
     state:
       "Where the key's bot is: `starting`, `running`, or `failed` (with `error`) and retried with backoff. Question routes answer 503 unless `running`.",
     error: 'Why the bot failed; present only when `state` is `failed`.',
@@ -312,9 +312,9 @@ function createAdminPaths() {
     '/admin/bots/{id}': {
       delete: adminOperation({
         operationId: 'removeBot',
-        summary: 'Remove a bot with its pairings and keys',
+        summary: 'Remove a bot with its contacts and keys',
         description:
-          'Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its pairings, keys and saved state are deleted.',
+          'Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its contacts, keys and saved state are deleted.',
         parameters: [idParameter('BotId')],
         responses: {
           '200': jsonResponse(
@@ -325,55 +325,55 @@ function createAdminPaths() {
         },
       }),
     },
-    '/admin/pairings': {
+    '/admin/contacts': {
       get: adminOperation({
-        operationId: 'listPairings',
-        summary: 'List pairings',
+        operationId: 'listContacts',
+        summary: 'List contacts',
         saves: false,
-        parameters: [filterParameter('bot', "Only this bot's pairings.")],
+        parameters: [filterParameter('bot', "Only this bot's contacts.")],
         responses: {
           '200': wrappedResponse(
-            'The pairings, with their keys and, while pending, their code.',
-            'pairings',
-            listOf('AdminPairing'),
+            'The contacts, with their keys and, while pending, their code.',
+            'contacts',
+            listOf('AdminContact'),
           ),
           '400': errorResponse('A filter was given more than once.'),
           '404': unknownId(),
         },
       }),
       post: adminOperation({
-        operationId: 'createPairing',
+        operationId: 'createContact',
         summary: 'Invite an approver',
         description:
-          "A pairing with no key, waiting for its code. On a bot that doesn't pair, the bot's one pairing.",
-        requestBody: jsonBody('CreatePairingBody'),
+          "A contact with no key, waiting for its code. On a bot that doesn't pair, the bot's one contact.",
+        requestBody: jsonBody('CreateContactBody'),
         responses: {
-          '201': jsonResponse('The pairing and, while pending, its code.', 'PairingInvite'),
+          '201': jsonResponse('The contact and, while pending, its code.', 'ContactInvite'),
           '400': { $ref: '#/components/responses/AdminBadRequest' },
           '404': unknownId(),
         },
       }),
     },
-    '/admin/pairings/{id}/reset': {
+    '/admin/contacts/{id}/reset': {
       post: adminOperation({
-        operationId: 'resetPairing',
-        summary: "Remove a pairing's person and wait for a new one",
+        operationId: 'resetContact',
+        summary: "Remove a contact's person and wait for a new one",
         description:
           'Its keys stay and wait for the new code. Their open questions are answered with their timeout option.',
-        parameters: [idParameter('PairingId')],
+        parameters: [idParameter('ContactId')],
         responses: {
-          '200': jsonResponse('The pending pairing and its new code.', 'PairingInvite'),
-          '400': errorResponse("The pairing is on a bot that doesn't pair."),
+          '200': jsonResponse('The pending contact and its new code.', 'ContactInvite'),
+          '400': errorResponse("The contact is on a bot that doesn't pair."),
           '404': unknownId(),
         },
       }),
     },
-    '/admin/pairings/{id}': {
+    '/admin/contacts/{id}': {
       delete: adminOperation({
-        operationId: 'removePairing',
-        summary: 'Remove a pairing and revoke its keys',
+        operationId: 'removeContact',
+        summary: 'Remove a contact and revoke its keys',
         description: 'Their open questions are answered with their timeout option.',
-        parameters: [idParameter('PairingId')],
+        parameters: [idParameter('ContactId')],
         responses: {
           '200': jsonResponse('Removed; `removedKeys` are the revoked keys.', 'RemovedKeys'),
           '404': unknownId(),
@@ -386,8 +386,8 @@ function createAdminPaths() {
         summary: 'List API keys',
         saves: false,
         parameters: [
-          filterParameter('bot', "Only keys on this bot's pairings."),
-          filterParameter('pairing', 'Only keys on this pairing.'),
+          filterParameter('bot', "Only keys on this bot's contacts."),
+          filterParameter('contact', 'Only keys on this contact.'),
         ],
         responses: {
           '200': wrappedResponse(
@@ -403,7 +403,7 @@ function createAdminPaths() {
         operationId: 'createKey',
         summary: 'Create an API key',
         description:
-          'On a new pairing (`bot`), the key waits until someone sends the code to the bot. On an existing pairing (`pairing` or `sameAsKey`), it works at once.',
+          'On a new contact (`bot`), the key waits until someone sends the code to the bot. On an existing contact (`contact` or `sameAsKey`), it works at once.',
         requestBody: jsonBody('CreateKeyBody'),
         responses: {
           '201': jsonResponse(
@@ -431,7 +431,7 @@ function createAdminPaths() {
         operationId: 'revokeKey',
         summary: 'Revoke an API key',
         description:
-          'Its open questions are answered with their timeout option. Its pairing stays.',
+          'Its open questions are answered with their timeout option. Its contact stays.',
         parameters: [idParameter('KeyId')],
         responses: {
           '200': {
@@ -447,11 +447,11 @@ function createAdminPaths() {
         operationId: 'readAdminLog',
         summary: "Every bot's questions",
         description:
-          'Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `pairing` and `key` may name removed ones, so their history stays readable.',
+          'Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `contact` and `key` may name removed ones, so their history stays readable.',
         saves: false,
         parameters: [
           filterParameter('bot', "Only this bot's questions."),
-          filterParameter('pairing', "Only this pairing's questions."),
+          filterParameter('contact', "Only this contact's questions."),
           filterParameter('key', "Only this key's questions."),
           ...logQueryParameters(),
         ],
@@ -494,7 +494,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
       {
         name: 'admin',
         description:
-          'Managing bots, pairings and keys. Needs the admin key; an API key gets 401 like a missing one.',
+          'Managing bots, contacts and keys. Needs the admin key; an API key gets 401 like a missing one.',
       },
     ],
     paths: {
@@ -734,13 +734,13 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           type: 'http',
           scheme: 'bearer',
           description:
-            'An API key, such as the one `init` saved to `~/.config/jaypost/token`. A service installed without a token treats a call without the header as its first key.',
+            'An API key, such as the `key` of a bot in `~/.config/jaypost/inbox.json`. A service installed without a token treats a call without the header as its first key.',
         },
         adminKey: {
           type: 'http',
           scheme: 'bearer',
           description:
-            'The admin key, in `~/.config/jaypost/admin-key` on the machine running the service. Only the admin routes take it.',
+            'The admin key, in `~/.config/jaypost/service/admin-key` on the machine running the service, and in `~/.config/jaypost/inbox.json` on a machine that administers it. Only the admin routes take it.',
         },
       },
       schemas: {
@@ -845,29 +845,29 @@ export function createOpenApiDocument(options: OpenApiOptions) {
         },
         AddBotBody: {
           ...toComponentSchema(addBotBodySchema, 'input'),
-          description: `\`settings\` by config key, as \`init\` asks for them, without the owner. \`label\` is at most ${MAX_LABEL_LENGTH} characters.`,
+          description: `\`settings\` by config key, as \`service install\` asks for them, without the owner. \`label\` is at most ${MAX_LABEL_LENGTH} characters.`,
         },
-        CreatePairingBody: toComponentSchema(createPairingBodySchema, 'input'),
+        CreateContactBody: toComponentSchema(createContactBodySchema, 'input'),
         CreateKeyBody: {
           ...toComponentSchema(createKeyBodySchema, 'input'),
-          description: `Exactly one of \`bot\` (a new pairing on that bot), \`pairing\` or \`sameAsKey\` (that key's pairing). \`label\` and \`externalId\` are stored and never interpreted, at most ${MAX_LABEL_LENGTH} characters.`,
+          description: `Exactly one of \`bot\` (a new contact on that bot), \`contact\` or \`sameAsKey\` (that key's contact). \`label\` and \`externalId\` are stored and never interpreted, at most ${MAX_LABEL_LENGTH} characters.`,
         },
         UpdateKeyBody: {
           ...toComponentSchema(updateKeyBodySchema, 'input'),
           description: 'A string sets the field, `null` deletes it, and a missing field stays.',
         },
         AdminBot: toComponentSchema(adminBotSchema),
-        AdminPairing: toComponentSchema(adminPairingSchema),
+        AdminContact: toComponentSchema(adminContactSchema),
         AdminKey: toComponentSchema(adminKeySchema),
         CreatedKey: toComponentSchema(createdKeySchema),
-        PairingInvite: {
+        ContactInvite: {
           type: 'object',
           properties: {
-            pairing: componentReference('AdminPairing'),
-            code: { type: 'string', description: 'Present while the pairing waits for it.' },
+            contact: componentReference('AdminContact'),
+            code: { type: 'string', description: 'Present while the contact waits for it.' },
             instructions: { type: 'string', description: 'How to send the code to the bot.' },
           },
-          required: ['pairing'],
+          required: ['contact'],
         },
         RemovedKeys: toComponentSchema(removedKeysSchema),
         RotatedAdminKey: toComponentSchema(rotatedAdminKeySchema),
@@ -892,11 +892,11 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           description: 'A bot id, such as `b1`.',
           schema: { type: 'string' },
         },
-        PairingId: {
+        ContactId: {
           name: 'id',
           in: 'path',
           required: true,
-          description: 'A pairing id, such as `p1`.',
+          description: 'A contact id, such as `c1`.',
           schema: { type: 'string' },
         },
         KeyId: {
@@ -923,7 +923,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
         ),
         SendFailed: errorResponse("The message couldn't be sent."),
         NotPaired: errorResponse(
-          "The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).",
+          "The key's contact waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).",
         ),
         BotUnavailable: errorResponse(
           "The key's bot isn't running (`bot unavailable`); it is starting or failed.",

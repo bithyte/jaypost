@@ -13,26 +13,26 @@ export const addBotBodySchema = z.strictObject({
   label: labelSchema.optional(),
 })
 
-/** POST /admin/pairings: an approver invite on `bot`. */
-export const createPairingBodySchema = z.strictObject({ bot: z.string() })
+/** POST /admin/contacts: an approver invite on `bot`. */
+export const createContactBodySchema = z.strictObject({ bot: z.string() })
 
 /**
- * POST /admin/keys: exactly one of `bot` (a new pairing), `pairing` (an existing one) or
- * `sameAsKey` (the pairing of that key), plus free-form details jaypost never interprets.
+ * POST /admin/keys: exactly one of `bot` (a new contact), `contact` (an existing one) or
+ * `sameAsKey` (the contact of that key), plus free-form details jaypost never interprets.
  */
 export const createKeyBodySchema = z
   .strictObject({
     bot: z.string().optional(),
-    pairing: z.string().optional(),
+    contact: z.string().optional(),
     sameAsKey: z.string().optional(),
     label: labelSchema.optional(),
     externalId: labelSchema.optional(),
   })
   .refine(
     (body) =>
-      [body.bot, body.pairing, body.sameAsKey].filter((target) => target !== undefined).length ===
+      [body.bot, body.contact, body.sameAsKey].filter((target) => target !== undefined).length ===
       1,
-    { message: 'exactly one of bot, pairing and sameAsKey is required' },
+    { message: 'exactly one of bot, contact and sameAsKey is required' },
   )
 
 /** PATCH /admin/keys/:id: a string sets the field, null deletes it, absent keeps it. */
@@ -49,12 +49,12 @@ export const adminBotSchema = z.looseObject({
   displayName: z.string().optional(),
   state: botStateSchema,
   error: z.string().optional(),
-  pairingCount: z.number(),
+  contactCount: z.number(),
   keyCount: z.number(),
 })
 
-/** One pairing; `code` (formatted) while pending, `person` once paired. Unknown fields are kept. */
-export const adminPairingSchema = z.looseObject({
+/** One contact; `code` (formatted) while pending, `person` once paired. Unknown fields are kept. */
+export const adminContactSchema = z.looseObject({
   id: z.string(),
   bot: z.string(),
   person: z.string().optional(),
@@ -66,7 +66,7 @@ export const adminPairingSchema = z.looseObject({
 /** One API key without its hash. Unknown fields are kept. */
 export const adminKeySchema = z.looseObject({
   id: z.string(),
-  pairing: z.string(),
+  contact: z.string(),
   bot: z.string(),
   label: z.string().optional(),
   externalId: z.string().optional(),
@@ -77,14 +77,14 @@ export const adminKeySchema = z.looseObject({
 export const createdKeySchema = z.looseObject({
   id: z.string(),
   key: z.string(),
-  pairing: z.string(),
+  contact: z.string(),
   code: z.string().optional(),
   instructions: z.string().optional(),
 })
 
-/** POST /admin/pairings and POST /admin/pairings/:id/reset; `code` while the pairing waits. */
-export const pairingInviteSchema = z.looseObject({
-  pairing: adminPairingSchema,
+/** POST /admin/contacts and POST /admin/contacts/:id/reset; `code` while the contact waits. */
+export const contactInviteSchema = z.looseObject({
+  contact: adminContactSchema,
   code: z.string().optional(),
   instructions: z.string().optional(),
 })
@@ -102,7 +102,7 @@ export const logEntrySchema = z.looseObject({
   answer: z.string().optional(),
   settledAt: z.string().optional(),
   key: z.string().optional(),
-  pairing: z.string().optional(),
+  contact: z.string().optional(),
   bot: z.string().optional(),
 })
 
@@ -112,7 +112,7 @@ export const logPageSchema = z.looseObject({
   skippedCount: z.number(),
 })
 
-/** DELETE /admin/bots/:id and DELETE /admin/pairings/:id: the keys that went with it. */
+/** DELETE /admin/bots/:id and DELETE /admin/contacts/:id: the keys that went with it. */
 export const removedKeysSchema = z.looseObject({ removedKeys: z.array(z.string()) })
 
 /** POST /admin/admin-key: the new admin key; the old one stopped working. */
@@ -124,8 +124,8 @@ export const botListSchema = z.looseObject({ bots: z.array(adminBotSchema) })
 /** POST /admin/bots: the bot just added, already starting. Unknown fields are kept. */
 export const addedBotSchema = z.looseObject({ bot: adminBotSchema })
 
-/** GET /admin/pairings. Unknown fields are kept. */
-export const pairingListSchema = z.looseObject({ pairings: z.array(adminPairingSchema) })
+/** GET /admin/contacts. Unknown fields are kept. */
+export const contactListSchema = z.looseObject({ contacts: z.array(adminContactSchema) })
 
 /** GET /admin/keys. Unknown fields are kept. */
 export const keyListSchema = z.looseObject({ keys: z.array(adminKeySchema) })

@@ -4,11 +4,11 @@ import type {
   AddBotBody,
   AdminBot,
   AdminKey,
-  AdminPairing,
+  AdminContact,
   CreatedKey,
   CreateKeyBody,
-  CreatePairingBody,
-  PairingInvite,
+  CreateContactBody,
+  ContactInvite,
   RemovedKeys,
   RotatedAdminKey,
   StatusInfo,
@@ -54,11 +54,11 @@ export type LogQuery = {
   readonly limit?: number
 }
 
-/** The key a call presents, with its pairing's person and bot. */
+/** The key a call presents, with its contact's person and bot. */
 export type KeyRoute = {
   readonly kind: 'key'
   readonly caller: RequestCaller
-  /** Undefined while the pairing waits for its code (the API answers 503 not paired). */
+  /** Undefined while the contact waits for its code (the API answers 503 not paired). */
   readonly person: string | undefined
   /** Undefined while the bot isn't running (the API answers 503 bot unavailable). */
   readonly bot: ApiBot | undefined
@@ -114,7 +114,7 @@ export type AdminFailure = {
 /** What GET /admin/log may narrow every bot's log to. */
 export type AdminLogQuery = LogQuery & {
   readonly bot?: string
-  readonly pairing?: string
+  readonly contact?: string
   readonly key?: string
 }
 
@@ -131,16 +131,16 @@ export type AdminApi = {
   readonly addBot: (body: AddBotBody) => Promise<{ readonly bot: AdminBot } | AdminFailure>
   /** Stops the bot, rejecting its open questions with their timeout option. */
   readonly removeBot: (botId: string) => Promise<RemovedKeys | AdminFailure>
-  readonly listPairings: (query: {
+  readonly listContacts: (query: {
     readonly bot?: string
-  }) => { readonly pairings: readonly AdminPairing[] } | AdminFailure
-  readonly createPairing: (body: CreatePairingBody) => PairingInvite | AdminFailure
+  }) => { readonly contacts: readonly AdminContact[] } | AdminFailure
+  readonly createContact: (body: CreateContactBody) => ContactInvite | AdminFailure
   /** Drops the person, keeps the keys and rejects their open questions with the timeout option. */
-  readonly resetPairing: (pairingId: string) => PairingInvite | AdminFailure
-  readonly removePairing: (pairingId: string) => RemovedKeys | AdminFailure
+  readonly resetContact: (contactId: string) => ContactInvite | AdminFailure
+  readonly removeContact: (contactId: string) => RemovedKeys | AdminFailure
   readonly listKeys: (query: {
     readonly bot?: string
-    readonly pairing?: string
+    readonly contact?: string
   }) => { readonly keys: readonly AdminKey[] } | AdminFailure
   readonly createKey: (body: CreateKeyBody) => CreatedKey | AdminFailure
   readonly updateKey: (

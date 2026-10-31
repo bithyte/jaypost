@@ -1,11 +1,11 @@
 import { createServer } from 'node:http'
 import type { RequestListener, Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { NO_AUTH, writeTokenFile } from '@jaypost/store'
+import { NO_AUTH, resolveInboxPath, writeInbox } from '@jaypost/store'
 import { createApiServer, createSingleBotRouter } from '@jaypost/service'
 import type { ApprovalRequest, NotifyRequest, RequestResult } from '@jaypost/core'
 import {
@@ -23,13 +23,14 @@ const TOKEN = 'A'.repeat(43)
 const FIRST = 'B'.repeat(43)
 const SECOND = 'C'.repeat(43)
 let directory = ''
-const tokenFile = (): string => join(directory, 'jaypost', 'token')
+const legacyTokenPath = (): string => join(directory, 'jaypost', 'service', 'token')
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-client-'))
   vi.stubEnv('XDG_CONFIG_HOME', directory)
   vi.stubEnv('JAYPOST_TOKEN', '')
   vi.stubEnv('JAYPOST_URL', '')
+  vi.stubEnv('JAYPOST_BOT', '')
 })
 
 const servers: Server[] = []
@@ -278,44 +279,64 @@ test('no token anywhere sends no authorization header', async () => {
   expect(seen.authorization).toBeUndefined()
 })
 
-test('the default lookup reads the token file on every call', async () => {
+test('JAYPOST_TOKEN is read on every call', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
   const client = new Client({ port })
-  writeTokenFile(tokenFile(), FIRST)
+  vi.stubEnv('JAYPOST_TOKEN', FIRST)
   await client.notify({ text: 'x' })
   expect(seen.authorization).toBe(`Bearer ${FIRST}`)
-  writeTokenFile(tokenFile(), SECOND)
+  vi.stubEnv('JAYPOST_TOKEN', SECOND)
   await client.notify({ text: 'x' })
   expect(seen.authorization).toBe(`Bearer ${SECOND}`)
 })
 
-test('JAYPOST_TOKEN beats the token file', async () => {
+test('the token file is no longer consulted', async () => {
   const { port, seen } = await startStub(200, '{"ok":true}')
-  writeTokenFile(tokenFile(), FIRST)
-  vi.stubEnv('JAYPOST_TOKEN', SECOND)
+  mkdirSync(dirname(legacyTokenPath()), { recursive: true })
+  writeFileSync(legacyTokenPath(), `${FIRST}\n`)
   await new Client({ port }).notify({ text: 'x' })
+  expect(seen.authorization).toBeUndefined()
+})
+
+test('Client with bot sends that bot key as the bearer token', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  writeInbox(resolveInboxPath(process.env), {
+    version: 1,
+    remotes: [],
+    bots: [{ alias: 'pal', url: `http://127.0.0.1:${port}/`, key: SECOND }],
+  })
+  vi.stubEnv('JAYPOST_TOKEN', FIRST)
+  await new Client({ bot: 'pal' }).notify({ text: 'x' })
   expect(seen.authorization).toBe(`Bearer ${SECOND}`)
+})
+
+test('Client with an unknown bot fails by name and sends nothing', async () => {
+  const { port, seen } = await startStub(200, '{"ok":true}')
+  writeInbox(resolveInboxPath(process.env), {
+    version: 1,
+    remotes: [],
+    bots: [{ alias: 'pal', url: `http://127.0.0.1:${port}/`, key: SECOND }],
+  })
+  const error = await new Client({ bot: 'ghost' }).notify({ text: 'x' }).catch((e: unknown) => e)
+  expect(error).toBeInstanceOf(JaypostError)
+  expect(error).toHaveProperty('message', 'no bot "ghost" in your inbox; known: pal')
+  expect(seen.url).toBeUndefined()
+})
+
+test('Client rejects bot combined with url, host, port or token', () => {
+  const message = "bot can't be combined with url, host, port or token"
+  expect(() => new Client({ bot: 'a', url: 'http://127.0.0.1:1/' })).toThrow(
+    new RangeError(message),
+  )
+  expect(() => new Client({ bot: 'a', host: 'h' })).toThrow(new RangeError(message))
+  expect(() => new Client({ bot: 'a', port: 1 })).toThrow(new RangeError(message))
+  expect(() => new Client({ bot: 'a', token: TOKEN })).toThrow(new RangeError(message))
 })
 
 test('a bad explicit token is a RangeError that does not quote it', () => {
   expect(() => new Client({ token: 'short-secret' })).toThrow(
     new RangeError("token isn't a valid jaypost token"),
   )
-})
-
-test('the constructor does no io and an unreadable token file rejects the call', async () => {
-  mkdirSync(tokenFile(), { recursive: true })
-  const { port, seen } = await startStub(200, '{"ok":true}')
-  const client = new Client({ port })
-  const error = await client.notify({ text: 'x' }).catch((caught: unknown) => caught)
-  expect(error).toBeInstanceOf(JaypostError)
-  expect(error).toHaveProperty(
-    'message',
-    expect.stringMatching(
-      new RegExp(`^token file ${JSON.stringify(tokenFile())} couldn't be read: `),
-    ),
-  )
-  expect(seen.url).toBeUndefined()
 })
 
 test('a rejected token surfaces the rejected message', async () => {

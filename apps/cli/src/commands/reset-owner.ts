@@ -3,11 +3,11 @@ import { findExistingInstall, resolveRecordProvider } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
 import { findOwnerSetting, requireProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
-import { resolveClientToken } from '@jaypost/store'
+import { findLocalSeedBot, readInbox, resolveEnvToken } from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { runStep } from '../progress/index.ts'
 import { openAdmin } from './admin-access.ts'
-import { POLL_INTERVAL_MS, START_POLL_COUNT } from './constants.ts'
+import { POLL_INTERVAL_MS, START_POLL_COUNT, toLocalUrl } from './constants.ts'
 import { createAbortableSleep } from './pairing-wait.ts'
 import { PromptAborted } from './prompts.ts'
 import type { ResetOwnerDeps, StatusFetch, WaitResult } from './types.ts'
@@ -17,24 +17,24 @@ type ResetOutcome =
   | { readonly kind: 'reset' }
   | { readonly kind: 'failed'; readonly message: string }
 
-/** The pairing /status named for the token, with its key when the service said. */
-type PairingLookup =
-  | { readonly kind: 'found'; readonly pairingId: string; readonly keyId: string | undefined }
+/** The contact /status named for the token, with its key when the service said. */
+type ContactLookup =
+  | { readonly kind: 'found'; readonly contactId: string; readonly keyId: string | undefined }
   | { readonly kind: 'failed'; readonly message: string }
 
 /**
- * Key 1's token for reset-owner: the token file init wrote, else `JAYPOST_TOKEN`, so a shell set
- * up for another key doesn't pick the pairing. Never throws.
+ * Key 1's token: the local seed bot's key in the inbox, else `JAYPOST_TOKEN`, so a shell set up for
+ * another key doesn't pick the contact. Throws when the inbox can't be read, never quoting a key.
  */
-export function resolveResetOwnerToken(env: NodeJS.ProcessEnv, tokenFile: string): ClientToken {
-  const fromFile = resolveClientToken({}, tokenFile)
-  return fromFile.kind === 'none' ? resolveClientToken(env, tokenFile) : fromFile
+function resolveSeedToken(env: NodeJS.ProcessEnv, inboxPath: string): ClientToken {
+  const key = findLocalSeedBot(readInbox(inboxPath))?.key
+  return key === undefined ? resolveEnvToken(env) : { kind: 'token', token: key, source: 'inbox' }
 }
 
 /**
  * Unlinks the paired owner without a restart: reads /status with key 1's token to learn its
- * pairing (and names it in the prompt), resets that pairing through the admin route, drops the
- * owner from the install's seed inputs and waits for a new pairing. A stopped service is restarted
+ * contact (and names it in the prompt), resets that contact through the admin route, drops the
+ * owner from the install's seed inputs and waits for a new pairing. A stopped service is started
  * after the prompt. Refuses while `JAYPOST_URL` is set: it only works on this machine's install.
  * Returns 0 on success or if the user declines, 1 on failure, not installed, `JAYPOST_URL` set or
  * a provider that doesn't pair, 130 on interrupt.
@@ -43,18 +43,25 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   const print = deps.progress.note
   if (findEnvEndpoint(deps.env) !== undefined) {
     print(
-      "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run reset-owner again.",
+      "JAYPOST_URL is set, but reset-owner only works on this machine's install. Unset it and run jaypost pair reset-owner again.",
     )
     return 1
   }
   const existing = findExistingInstall(deps.paths, deps.targets)
   if (!existing) {
-    print('Not installed. Run "jaypost init".')
+    print('Not installed. Run "jaypost service install".')
     return 1
   }
   const { record } = existing
-  if (deps.token.kind === 'unusable') {
-    print(deps.token.message)
+  let seedToken: ClientToken
+  try {
+    seedToken = resolveSeedToken(deps.env, deps.inboxPath)
+  } catch (error) {
+    print(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+  if (seedToken.kind === 'unusable') {
+    print(seedToken.message)
     return 1
   }
   const target = deps.targets[record.target]
@@ -70,12 +77,12 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     print(`${provider.label} doesn't support re-pairing.`)
     return 1
   }
-  const token = deps.token.kind === 'token' ? deps.token.token : undefined
+  const token = seedToken.kind === 'token' ? seedToken.token : undefined
   const stepOptions = deps.signal ? { signal: deps.signal } : {}
   let outcome: ResetOutcome
   try {
     const isRunning = await target.isRunning(record)
-    const known = isRunning ? await findPairing(deps, target, record, token) : undefined
+    const known = isRunning ? await findContact(deps, target, record, token) : undefined
     if (known?.kind === 'failed') {
       print(known.message)
       return 1
@@ -84,21 +91,22 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
       return 0
     }
     deps.progress.plan([
-      ...(isRunning ? [] : ['Restarting the service']),
+      ...(isRunning ? [] : ['Starting the service']),
       'Clearing the owner',
       'Waiting for the service to start',
       'Waiting for pairing',
     ])
     if (!isRunning) {
-      await runStep(deps.progress, 'Restarting the service', () => target.restart(record), {
+      // start, not restart: launchd can't kickstart an agent `service stop` unloaded.
+      await runStep(deps.progress, 'Starting the service', () => target.start(record), {
         ...stepOptions,
-        settle: (step) => step.succeed('Restarted the service'),
+        settle: (step) => step.succeed('Started the service'),
       })
     }
     outcome = await runStep(
       deps.progress,
       'Clearing the owner',
-      () => resetOwnerPairing(deps, target, record, token, known),
+      () => resetOwnerContact(deps, target, record, token, known),
       {
         ...stepOptions,
         settle: (step, value) =>
@@ -120,7 +128,7 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
   let result: WaitResult
   try {
     result = await deps.wait({
-      port: record.port,
+      url: toLocalUrl(record.port),
       isRunning: () => target.isRunning(record),
       logsHint: target.logsHint(record),
       ...(token === undefined ? {} : { token }),
@@ -143,32 +151,32 @@ export async function runResetOwner(deps: ResetOwnerDeps): Promise<number> {
     return 130
   }
   if (result === 'unauthorized') {
-    print(describeUnauthorized(deps.token.kind === 'token'))
+    print(describeUnauthorized(token !== undefined))
     return 1
   }
   print(target.logsHint(record))
   return 1
 }
 
-/** The provider's warning, naming the pairing and key when /status was read before the prompt. */
+/** The provider's warning, naming the contact and key when /status was read before the prompt. */
 function formatConfirm(
   warning: string,
-  known: Extract<PairingLookup, { readonly kind: 'found' }> | undefined,
+  known: Extract<ContactLookup, { readonly kind: 'found' }> | undefined,
 ): string {
   if (known === undefined) {
     return `${warning} Continue?`
   }
   const key = known.keyId === undefined ? '' : ` (key ${known.keyId})`
-  return `${warning} It resets pairing ${known.pairingId}${key}. Continue?`
+  return `${warning} It resets contact ${known.contactId}${key}. Continue?`
 }
 
-/** Asks /status which pairing `token` belongs to. Throws only when interrupted. */
-async function findPairing(
+/** Asks /status which contact `token` belongs to. Throws only when interrupted. */
+async function findContact(
   deps: ResetOwnerDeps,
   target: Target,
   record: InstallRecord,
   token: string | undefined,
-): Promise<PairingLookup> {
+): Promise<ContactLookup> {
   const fetched = await fetchStartedStatus(deps, record.port, token)
   switch (fetched.kind) {
     case 'unreachable':
@@ -178,35 +186,36 @@ async function findPairing(
     case 'answered':
       break
   }
-  const { pairing, key } = fetched.status
-  // A service from before pairings has no admin routes either.
-  return pairing === undefined
+  const { contact, key } = fetched.status
+  // A service from before contacts has no admin routes either.
+  return contact === undefined
     ? { kind: 'failed', message: ADMIN_TOO_OLD_MESSAGE }
-    : { kind: 'found', pairingId: pairing, keyId: key }
+    : { kind: 'found', contactId: contact, keyId: key }
 }
 
 /**
- * Resets the pairing (`known`, or the one /status names now) through `openAdmin`, then
+ * Resets the contact (`known`, or the one /status names now) through `openAdmin`, then
  * drops the owner from the install's seed inputs so a later re-seed can't pair them again. Throws
  * when interrupted or when the seed inputs can't be written.
  */
-async function resetOwnerPairing(
+async function resetOwnerContact(
   deps: ResetOwnerDeps,
   target: Target,
   record: InstallRecord,
   token: string | undefined,
-  known: PairingLookup | undefined,
+  known: ContactLookup | undefined,
 ): Promise<ResetOutcome> {
-  const found = known ?? (await findPairing(deps, target, record, token))
+  const found = known ?? (await findContact(deps, target, record, token))
   if (found.kind === 'failed') {
     return found
   }
-  // Opened only now: a service restarted a moment ago may have just written its admin key.
-  const opened = await openAdmin(deps)
+  // Opened only now: a service started a moment ago may have just written its admin key.
+  // reset-owner only works on the local install, which `openAdmin` picks without -s.
+  const opened = await openAdmin({ ...deps, service: undefined })
   if (opened.kind !== 'opened') {
     return { kind: 'failed', message: opened.message }
   }
-  const reset = await opened.caller.resetPairing(found.pairingId)
+  const reset = await opened.caller.resetContact(found.contactId)
   if (reset.kind === 'failed') {
     return { kind: 'failed', message: reset.message }
   }
@@ -225,7 +234,7 @@ async function fetchStartedStatus(
 ): Promise<StatusFetch> {
   const sleep = deps.sleep ?? createAbortableSleep(deps.signal)
   for (let attempt = 1; ; attempt += 1) {
-    const fetched = await deps.fetchStatus(port, token)
+    const fetched = await deps.fetchStatus(toLocalUrl(port), token)
     if (deps.signal?.aborted) {
       throw new Error('interrupted')
     }

@@ -23,7 +23,7 @@ export async function checkService(caller: Caller, deps: HookDeps): Promise<stri
   if (result.kind === 'status') {
     const { status } = result
     if (!status.paired) {
-      return "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair."
+      return "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost service install` to pair."
     }
     if (status.state === 'failed') {
       // The error is the provider's sanitized reason, the same text /status gives this key.
@@ -40,11 +40,11 @@ export async function checkService(caller: Caller, deps: HookDeps): Promise<stri
     case 'cancelled':
     case 'httpTimeout':
       return isLoopbackEndpoint(endpoint.url)
-        ? `jaypost isn't running on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
-        : `jaypost isn't reachable on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Check JAYPOST_URL and that the service there is running.`
+        ? `jaypost isn't running on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`
+        : `jaypost isn't reachable on ${describeEndpoint(endpoint.url)}, so permission prompts stay in the terminal. Check the bot with \`jaypost inbox\` (\`-b\` or JAYPOST_BOT picks another) and that the service there is running.`
     case 'unusableToken':
     case 'unauthorized':
-      return `jaypost can't use its API token (${result.message}), so permission prompts stay in the terminal. Run \`jaypost init\`, or set JAYPOST_TOKEN in a container.`
+      return `jaypost can't use its API token (${result.message}), so permission prompts stay in the terminal. Run \`jaypost service install\`, or set JAYPOST_TOKEN in a container.`
     default:
       return `jaypost setup check failed (${result.message}), so permission prompts may stay in the terminal.`
   }

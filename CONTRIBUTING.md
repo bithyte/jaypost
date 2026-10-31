@@ -7,9 +7,11 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` runs the service from source and restarts it on every save. It first asks which chat app to use, with your last pick selected. Terminal needs nothing: questions print in that same terminal and you answer by typing an option number or a reply. Telegram or Discord asks for your bot's token once, reuses it after that, and the service prints a pairing code the first time. Use your own bot, not one a running install already uses. Then try it from a second terminal with `pnpm cli test --port 8788`; `pnpm cli` runs any CLI command from source. It keeps clear of a real install: it listens on port 8788 and keeps each chat app's config, state and question log in `.dev/<app>/`.
+`pnpm dev` runs the service from source and restarts it on every save. It first asks which chat app to use, with your last pick selected. Terminal needs nothing: questions print in that same terminal and you answer by typing an option number or a reply. Telegram or Discord asks for your bot's token once, reuses it after that, and the service prints a pairing code the first time. Use your own bot, not one a running install already uses. Then try it from a second terminal with `JAYPOST_URL=http://127.0.0.1:8788 pnpm cli ping`; `pnpm cli` runs any CLI command from source. It keeps clear of a real install: it listens on port 8788 and keeps each chat app's config, state and question log in `.dev/<app>/`.
 
 To skip the questions, `cp .env.example .env` and fill in `JAYPOST_BOT_TOKEN` (and `JAYPOST_PROVIDER=discord` for Discord). If `JAYPOST_CONFIG` is set, `pnpm dev` uses that file as is and never writes to it.
+
+To run your branch as the real installed service, `pnpm install:local` packs `apps/cli` and runs `service install` with that tarball instead of the npm release. Arguments go to `service install`, e.g. `pnpm install:local quadlet`. It replaces the current install like any `service install` and keeps the bot token and owner. The version doesn't change, so the container image keeps the same tag and is rebuilt over it.
 
 Before a PR, run `pnpm test` and `pnpm check`. If the change matters to users, add a changeset (see [Releasing](#releasing)).
 

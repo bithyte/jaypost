@@ -4,16 +4,16 @@ import type {
   addedBotSchema,
   adminBotSchema,
   adminKeySchema,
-  adminPairingSchema,
+  adminContactSchema,
   botListSchema,
   createdKeySchema,
   createKeyBodySchema,
-  createPairingBodySchema,
+  createContactBodySchema,
   keyListSchema,
   logEntrySchema,
   logPageSchema,
-  pairingInviteSchema,
-  pairingListSchema,
+  contactInviteSchema,
+  contactListSchema,
   removedKeysSchema,
   revokedKeySchema,
   rotatedAdminKeySchema,
@@ -26,21 +26,21 @@ import type { statusInfoSchema } from './schema.ts'
 export type StatusInfo = Readonly<z.infer<typeof statusInfoSchema>>
 
 export type AddBotBody = Readonly<z.infer<typeof addBotBodySchema>>
-export type CreatePairingBody = Readonly<z.infer<typeof createPairingBodySchema>>
+export type CreateContactBody = Readonly<z.infer<typeof createContactBodySchema>>
 export type CreateKeyBody = Readonly<z.infer<typeof createKeyBodySchema>>
 export type UpdateKeyBody = Readonly<z.infer<typeof updateKeyBodySchema>>
 export type AdminBot = Readonly<z.infer<typeof adminBotSchema>>
-export type AdminPairing = Readonly<z.infer<typeof adminPairingSchema>>
+export type AdminContact = Readonly<z.infer<typeof adminContactSchema>>
 export type AdminKey = Readonly<z.infer<typeof adminKeySchema>>
 export type CreatedKey = Readonly<z.infer<typeof createdKeySchema>>
-export type PairingInvite = Readonly<z.infer<typeof pairingInviteSchema>>
+export type ContactInvite = Readonly<z.infer<typeof contactInviteSchema>>
 export type LogEntry = Readonly<z.infer<typeof logEntrySchema>>
 export type LogPage = Readonly<z.infer<typeof logPageSchema>>
 export type RemovedKeys = Readonly<z.infer<typeof removedKeysSchema>>
 export type RotatedAdminKey = Readonly<z.infer<typeof rotatedAdminKeySchema>>
 export type BotsBody = Readonly<z.infer<typeof botListSchema>>
 export type AddedBotBody = Readonly<z.infer<typeof addedBotSchema>>
-export type PairingsBody = Readonly<z.infer<typeof pairingListSchema>>
+export type ContactsBody = Readonly<z.infer<typeof contactListSchema>>
 export type KeysBody = Readonly<z.infer<typeof keyListSchema>>
 export type UpdatedKeyBody = Readonly<z.infer<typeof updatedKeySchema>>
 export type RevokedKey = Readonly<z.infer<typeof revokedKeySchema>>

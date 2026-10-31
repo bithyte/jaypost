@@ -17,6 +17,7 @@ import {
   findBinaryCopyConflict,
   printPathHint,
   purgeServiceFiles,
+  readConfigApiToken,
   readConfigSecrets,
   resolveCliCommand,
   resolveDefaultConfigFile,
@@ -117,6 +118,7 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       exec: command.words,
       config: configFile,
       logFile: paths.launchdLogFile,
+      exposed: options.exposed ?? false,
     })
     return { command, plist }
   }
@@ -129,6 +131,7 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       cliPath: command.cliPath,
       cliKind: cli.kind,
       configFile,
+      ...(options.exposed ? { exposed: true } : {}),
     }
   }
   const target: Target = {
@@ -163,18 +166,19 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       printPathHint(deps, cli, options.print)
       return toRecord(options, command)
     },
-    async upgrade(options): Promise<InstallRecord> {
-      const { command, plist } = await prepare(options)
+    async upgrade(options, previousRecord): Promise<InstallRecord> {
+      const upgradeOptions = { ...options, exposed: previousRecord.exposed ?? false }
+      const { command, plist } = await prepare(upgradeOptions)
       const previous = readTextFile(paths.launchdPlist)
       writeFileSync(paths.launchdPlist, plist)
       // kickstart only works on a loaded agent, and a changed plist needs a fresh bootstrap.
       if (plist !== previous || (await launchctl('print', service)).code !== 0) {
         await reload()
       } else {
-        await target.restart(toRecord(options, command))
+        await target.restart(toRecord(upgradeOptions, command))
       }
       printPathHint(deps, cli, options.print)
-      return toRecord(options, command)
+      return toRecord(upgradeOptions, command)
     },
     async readSecrets(record): Promise<Secrets> {
       return readConfigSecrets(resolveConfigFile(record), providers)
@@ -192,6 +196,28 @@ export function createLaunchdTarget(deps: TargetDeps, cli: CliLocation): Target 
       if (result.code !== 0) {
         throw new Error(`launchctl kickstart failed (exit ${result.code})`)
       }
+    },
+    // bootstrap/bootout rather than kickstart/kill: bootout unloads the agent, so KeepAlive can't
+    // bring it back, and bootstrap is what loads it again (as install does).
+    async start() {
+      if ((await launchctl('print', service)).code === 0) {
+        return
+      }
+      // A previous `launchctl disable` makes bootstrap fail; enable is a no-op otherwise.
+      await launchctl('enable', service)
+      const result = await launchctl('bootstrap', domain, paths.launchdPlist)
+      if (result.code !== 0) {
+        throw new Error(`launchctl bootstrap failed (exit ${result.code})`)
+      }
+    },
+    async stop() {
+      const result = await launchctl('bootout', service)
+      if (result.code !== 0 && !LAUNCHD_NOT_LOADED_PATTERN.test(result.stderr)) {
+        throw new Error(`launchctl bootout failed (exit ${result.code})`)
+      }
+    },
+    async readApiToken(record) {
+      return readConfigApiToken(resolveConfigFile(record))
     },
     async clearOwner(record) {
       await target.forgetSeedOwner(record)

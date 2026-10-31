@@ -7,12 +7,14 @@ import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import {
   loadSeed,
   openDatabase,
+  readInbox,
   RegistryStore,
   resolveAdminKeyPath,
   resolveDatabasePath,
-  writeTokenFile,
+  writeAdminKeyFile,
+  writeInbox,
 } from '@jaypost/store'
-import type { Registry } from '@jaypost/store'
+import type { InboxRemote, Registry } from '@jaypost/store'
 import { ADMIN_KEY_REJECTED_MESSAGE } from '@jaypost/client'
 import { startService } from '@jaypost/service'
 import type { RunningService } from '@jaypost/service'
@@ -25,13 +27,11 @@ import {
   runBotAdd,
   runBotList,
   runBotRemove,
-  runKeyCreate,
-  runKeyLabel,
-  runKeyList,
+  runContactAdd,
+  runContactList,
+  runContactRemove,
+  runKeyAdd,
   runKeyRevoke,
-  runPairingCreate,
-  runPairingList,
-  runPairingRemove,
 } from '../../src/commands/index.ts'
 import type { AdminDeps, FetchStatus, Prompts } from '../../src/commands/index.ts'
 import { UNREACHABLE_STATUS } from '../../src/commands/constants.ts'
@@ -45,6 +45,7 @@ const CODES = ['PAIR2222', 'PAIR3333', 'PAIR4444']
 const PROVIDERS = [createPairingFakeProvider(), createFakeProvider()] as const
 
 let tmp: string
+let inboxPath: string
 let paths: InstallPaths
 let out: string[]
 let err: string[]
@@ -52,6 +53,7 @@ let running: RunningService | undefined
 
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'admin-cli-'))
+  inboxPath = join(tmp, 'inbox.json')
   paths = resolveInstallPaths({ HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') })
   out = []
   err = []
@@ -164,17 +166,30 @@ function createDeps(env: NodeJS.ProcessEnv, over: Partial<AdminDeps> = {}): Admi
     printError: (text) => err.push(text),
     fetchStatus: vi.fn<FetchStatus>(async () => UNREACHABLE_STATUS),
     now: () => new Date('2026-10-26T12:00:00Z'),
+    inboxPath,
+    service: undefined,
+    isInteractive: false,
     ...over,
   }
+}
+
+/** An inbox holding only `remotes`. */
+function writeRemotes(...remotes: readonly InboxRemote[]): void {
+  writeInbox(inboxPath, { version: 1, remotes, bots: [] })
+}
+
+/** `started` as a remote named `name`. */
+function remoteOf(name: string, started: Started): InboxRemote {
+  return { name, url: `http://127.0.0.1:${started.port}/`, adminKey: started.adminKey }
 }
 
 function countOccurrences(text: string, part: string): number {
   return text.split(part).length - 1
 }
 
-test('key create prints the key once and the pairing code when pending', async () => {
+test('key add prints the key once and the pairing code when pending', async () => {
   const started = await start()
-  expect(await runKeyCreate({ bot: 'b1', label: 'ci' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'b1', label: 'ci' }, createDeps(remoteEnv(started)))).toBe(0)
   const printed = [...out, ...err].join('\n')
   const key = /jpk_[\w-]+/.exec(printed)?.[0]
   if (key === undefined) {
@@ -183,7 +198,7 @@ test('key create prints the key once and the pairing code when pending', async (
   expect(countOccurrences(printed, key)).toBe(1)
   expect(out).toEqual([
     [
-      `Key k2 (pairing p2): ${key}`,
+      `Key k2 (contact c2): ${key}`,
       "This key isn't shown again; store it now.",
       'Pairing code: PAIR-2222',
       'Say PAIR2222 to fake',
@@ -193,36 +208,25 @@ test('key create prints the key once and the pairing code when pending', async (
   expect(err).toEqual([])
 })
 
-test('key create for a paired pairing prints no code', async () => {
+test('key add for a paired contact prints no code', async () => {
   const started = await start()
-  expect(await runKeyCreate({ sameAs: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
   expect(out).toEqual([
     expect.stringMatching(
-      /^Key k2 \(pairing p1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
+      /^Key k2 \(contact c1\): jpk_\S+\nThis key isn't shown again; store it now\.$/,
     ),
   ])
 })
 
-test('key create --json prints the created key as JSON and the note on stderr', async () => {
+test('key add --json prints the created key as JSON and the note on stderr', async () => {
   const started = await start()
-  expect(await runKeyCreate({ pairing: 'p1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(await runKeyAdd({ target: 'c1', json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({
     id: 'k2',
     key: expect.stringMatching(/^jpk_/),
-    pairing: 'p1',
+    contact: 'c1',
   })
   expect(err).toEqual(["This key isn't shown again; store it now."])
-})
-
-test('key create needs exactly one of --bot, --pairing and --same-as', async () => {
-  const deps = createDeps({ HOME: tmp })
-  expect(await runKeyCreate({}, deps)).toBe(2)
-  expect(await runKeyCreate({ bot: 'b1', pairing: 'p1' }, deps)).toBe(2)
-  expect(err).toEqual([
-    'give exactly one of --bot, --pairing and --same-as',
-    'give exactly one of --bot, --pairing and --same-as',
-  ])
-  expect(out).toEqual([])
 })
 
 test('JAYPOST_URL without JAYPOST_ADMIN_KEY fails with a hint and no request', async () => {
@@ -265,8 +269,8 @@ test('a wrong admin key says the service rejected it', async () => {
 })
 
 test('bot add writes the registry directly when the local service is down', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
-  writeTokenFile(resolveAdminKeyPath(configPath), `jpa_${'k'.repeat(43)}`)
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), `jpa_${'k'.repeat(43)}`)
   const env = {
     HOME: tmp,
     XDG_CONFIG_HOME: join(tmp, 'cfg'),
@@ -290,18 +294,18 @@ test('bot add writes the registry directly when the local service is down', asyn
 })
 
 test('bot add writes the registry when no admin key exists and nothing answers', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
   const port = await freePort()
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
   const deps = createDeps(env)
   expect(await runBotAdd({ json: true }, deps)).toBe(0)
-  expect(deps.fetchStatus).toHaveBeenCalledWith(port, undefined)
+  expect(deps.fetchStatus).toHaveBeenCalledWith(new URL(`http://127.0.0.1:${port}/`), undefined)
   expect(JSON.parse(out.join('\n'))).toEqual({ bot: { id: 'b1', provider: 'fake' } })
   expect(readRegistry(configPath).bots).toHaveLength(1)
 })
 
 test('bot add without an admin key refuses the registry when the service starts meanwhile', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
   const env = {
     HOME: tmp,
     XDG_CONFIG_HOME: join(tmp, 'cfg'),
@@ -313,18 +317,18 @@ test('bot add without an admin key refuses the registry when the service starts 
     .mockResolvedValue({ kind: 'unauthorized' })
   expect(await runBotAdd({}, createDeps(env, { fetchStatus }))).toBe(1)
   expect(err).toEqual([
-    'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.',
+    'The service started while the settings were asked, so nothing was written. Run jaypost admin bot add again.',
   ])
   expect(fetchStatus).toHaveBeenCalledTimes(2)
   expect(readRegistry(configPath).bots).toEqual([])
 })
 
 test('bot add with an admin key uses the api when the service starts meanwhile', async () => {
-  const directory = join(tmp, 'cfg', 'jaypost')
+  const directory = join(tmp, 'cfg', 'jaypost', 'service')
   const configPath = join(directory, 'config.json')
   mkdirSync(directory, { recursive: true })
   const adminKey = `jpa_${'k'.repeat(43)}`
-  writeTokenFile(resolveAdminKeyPath(configPath), adminKey)
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), adminKey)
   const port = await freePort()
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg'), JAYPOST_PORT: String(port) }
   // The service comes up while the bot token is asked for, seeded from a config of its own.
@@ -372,8 +376,8 @@ test('bot add for a native install that never started this version writes its re
 })
 
 test('bot add refuses the registry while a config file waits to be seeded', async () => {
-  const configPath = join(tmp, 'cfg', 'jaypost', 'config.json')
-  mkdirSync(join(tmp, 'cfg', 'jaypost'), { recursive: true })
+  const configPath = join(tmp, 'cfg', 'jaypost', 'service', 'config.json')
+  mkdirSync(join(tmp, 'cfg', 'jaypost', 'service'), { recursive: true })
   writeFileSync(configPath, JSON.stringify({ provider: 'fake', fakeKey: SEED_BOT_TOKEN }))
   const env = {
     HOME: tmp,
@@ -382,7 +386,7 @@ test('bot add refuses the registry while a config file waits to be seeded', asyn
   }
   expect(await runBotAdd({}, createDeps(env))).toBe(1)
   expect(err).toEqual([
-    "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost bot add again.",
+    "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost admin bot add again.",
   ])
   expect(readRegistry(configPath).bots).toEqual([])
 })
@@ -406,7 +410,7 @@ test('bot add for a stopped container install says to start it first', async () 
   const deps = createDeps({ HOME: tmp }, { targets: targets({ compose }), prompt })
   expect(await runBotAdd({}, deps)).toBe(1)
   expect(err).toEqual([
-    "The compose service isn't running. Start it first, then run jaypost bot add again.",
+    "The compose service isn't running. Start it first, then run jaypost admin bot add again.",
   ])
   expect(prompt.password).not.toHaveBeenCalled()
 })
@@ -447,7 +451,7 @@ test('a container install reads the admin key through the target', async () => {
   expect(quadlet.readAdminKey).toHaveBeenCalledWith(record)
   expect(out).toEqual([
     [
-      'ID  PROVIDER  LABEL  ACCOUNT  STATE    PAIRINGS  KEYS',
+      'ID  PROVIDER  LABEL  ACCOUNT  STATE    CONTACTS  KEYS',
       'b1  fakepair  -      fake     running  1         1',
     ].join('\n'),
   ])
@@ -485,7 +489,7 @@ test('with no install the admin key file and port come from the config', async (
         provider: 'fakepair',
         displayName: 'fake',
         state: 'running',
-        pairingCount: 1,
+        contactCount: 1,
         keyCount: 1,
       },
     ],
@@ -496,7 +500,7 @@ test('with no install and no admin key file the hint says to start the service',
   const env = { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') }
   expect(await runBotList({}, createDeps(env))).toBe(1)
   expect(err).toEqual([
-    `no admin key in ${JSON.stringify(join(tmp, 'cfg', 'jaypost', 'admin-key'))} yet; start the service once so it writes one`,
+    `no admin key in ${JSON.stringify(join(tmp, 'cfg', 'jaypost', 'service', 'admin-key'))} yet; start the service once so it writes one`,
   ])
 })
 
@@ -506,7 +510,7 @@ test('bot remove says how many keys go and asks first', async () => {
   const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
   expect(await runBotRemove({ id: 'b1' }, deps)).toBe(0)
   expect(confirm).toHaveBeenCalledWith(
-    'Remove bot b1 (fake)? This removes 1 pairing and revokes 1 key.',
+    'Remove bot b1 (fake)? This removes 1 contact and revokes 1 key.',
     false,
   )
   expect(err).toEqual(['Nothing removed.'])
@@ -533,50 +537,63 @@ test('bot remove --yes skips the question', async () => {
   expect(JSON.parse(out.join('\n'))).toEqual({ removedKeys: ['k1'] })
 })
 
-test('pairing create prints the code and pairing list shows it', async () => {
+test('contact add prints the code and contact list shows it with key labels', async () => {
   const started = await start()
   const deps = createDeps(remoteEnv(started))
-  expect(await runPairingCreate({ bot: 'b1' }, deps)).toBe(0)
-  expect(await runPairingList({ bot: 'b1' }, deps)).toBe(0)
+  expect(await runKeyAdd({ target: 'k1', label: 'ci' }, deps)).toBe(0)
+  out = []
+  expect(await runContactAdd({ bot: 'b1' }, deps)).toBe(0)
+  expect(await runContactList({ bot: 'b1' }, deps)).toBe(0)
   expect(out).toEqual([
-    'Pairing p2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
+    'Contact c2 on bot b1.\nPairing code: PAIR-2222\nSay PAIR2222 to fake',
     [
       'ID  BOT  STATE    PERSON  CODE       KEYS',
-      'p1  b1   paired   u1      -          k1',
-      'p2  b1   pending  -       PAIR-2222  -',
+      'c1  b1   paired   u1      -          k1, k2 ci',
+      'c2  b1   pending  -       PAIR-2222  -',
     ].join('\n'),
   ])
 })
 
-test('pairing remove says how many keys it revokes and asks first', async () => {
+test('contact list without a bot shows every bot and --json prints only the contacts body', async () => {
+  const started = await start()
+  const deps = createDeps(remoteEnv(started))
+  expect(await runKeyAdd({ target: 'k1', label: 'ci' }, deps)).toBe(0)
+  out = []
+  expect(await runContactList({ json: true }, deps)).toBe(0)
+  expect(JSON.parse(out.join('\n'))).toEqual({
+    contacts: [{ id: 'c1', bot: 'b1', person: 'u1', state: 'paired', keys: ['k1', 'k2'] }],
+  })
+})
+
+test('contact list for an unknown bot fails once with no table', async () => {
+  const started = await start()
+  expect(await runContactList({ bot: 'b9' }, createDeps(remoteEnv(started)))).toBe(1)
+  expect(out).toEqual([])
+  expect(err).toEqual(['unknown bot "b9"'])
+})
+
+test('contact remove says how many keys it revokes and asks first', async () => {
   const started = await start()
   const confirm = vi.fn(async () => true)
   const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
-  expect(await runPairingRemove({ id: 'p1' }, deps)).toBe(0)
-  expect(confirm).toHaveBeenCalledWith('Remove pairing p1 on bot b1? This revokes 1 key.', false)
-  expect(out).toEqual(['Removed pairing p1 and revoked 1 key (k1).'])
+  expect(await runContactRemove({ id: 'c1' }, deps)).toBe(0)
+  expect(confirm).toHaveBeenCalledWith('Remove contact c1 on bot b1? This revokes 1 key.', false)
+  expect(out).toEqual(['Removed contact c1 and revoked 1 key (k1).'])
 })
 
-test('key list, label and revoke', async () => {
+test('contact remove of an unknown contact fails before asking', async () => {
   const started = await start()
-  const deps = createDeps(remoteEnv(started))
-  expect(await runKeyCreate({ sameAs: 'k1', label: 'ci', externalId: 'user-7' }, deps)).toBe(0)
-  out = []
-  expect(await runKeyLabel({ id: 'k2', label: '', externalId: 'user-8' }, deps)).toBe(0)
-  expect(await runKeyRevoke({ id: 'k1' }, deps)).toBe(0)
-  expect(await runKeyList({ pairing: 'p1' }, deps)).toBe(0)
-  expect(out).toEqual([
-    'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   p1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
-    'Revoked key k1.',
-    'ID  BOT  PAIRING  LABEL  EXTERNAL ID  CREATED\n' +
-      `k2  b1   p1       -      user-8       ${new Date().toISOString().slice(0, 10)}`,
-  ])
+  const confirm = vi.fn(async () => true)
+  const deps = createDeps(remoteEnv(started), { prompt: createPrompts({ confirm }) })
+  expect(await runContactRemove({ id: 'c9' }, deps)).toBe(1)
+  expect(confirm).not.toHaveBeenCalled()
+  expect(err).toEqual(['unknown contact "c9"'])
 })
 
-test('key label needs a field to change', async () => {
-  expect(await runKeyLabel({ id: 'k1' }, createDeps({ HOME: tmp }))).toBe(2)
-  expect(err).toEqual(['give --label, --external-id or both (an empty value clears it)'])
+test('key revoke prints the result', async () => {
+  const started = await start()
+  expect(await runKeyRevoke({ id: 'k1' }, createDeps(remoteEnv(started)))).toBe(0)
+  expect(out).toEqual(['Revoked key k1.'])
 })
 
 test('key revoke of an unknown key prints the service error', async () => {
@@ -585,16 +602,7 @@ test('key revoke of an unknown key prints the service error', async () => {
   expect(err).toEqual(['unknown key "k9"'])
 })
 
-test('key list with no keys says so', async () => {
-  const started = await start()
-  const deps = createDeps(remoteEnv(started))
-  expect(await runKeyRevoke({ id: 'k1' }, deps)).toBe(0)
-  out = []
-  expect(await runKeyList({}, deps)).toBe(0)
-  expect(out).toEqual(['No keys.'])
-})
-
-test('admin-key rotate locally prints the new key, which the service saved', async () => {
+test('admin rotate-key locally prints the new key, which the service saved', async () => {
   const started = await start()
   const env = { HOME: tmp, JAYPOST_CONFIG: started.configPath, JAYPOST_PORT: String(started.port) }
   expect(await runAdminKeyRotate({}, createDeps(env))).toBe(0)
@@ -607,7 +615,7 @@ test('admin-key rotate locally prints the new key, which the service saved', asy
   expect(await runBotList({}, createDeps(env))).toBe(0)
 })
 
-test('admin-key rotate --json prints the new key and the old one stops working', async () => {
+test('admin rotate-key --json prints the new key and the old one stops working', async () => {
   const started = await start()
   expect(await runAdminKeyRotate({ json: true }, createDeps(remoteEnv(started)))).toBe(0)
   expect(JSON.parse(out.join('\n'))).toEqual({ adminKey: expect.stringMatching(/^jpa_/) })
@@ -617,7 +625,7 @@ test('admin-key rotate --json prints the new key and the old one stops working',
   expect(err).toEqual([ADMIN_KEY_REJECTED_MESSAGE])
 })
 
-test('admin-key rotate with JAYPOST_ADMIN_KEY set says to update it', async () => {
+test('admin rotate-key with JAYPOST_ADMIN_KEY set says to update it', async () => {
   const started = await start()
   expect(await runAdminKeyRotate({}, createDeps(remoteEnv(started)))).toBe(0)
   expect(err).toEqual([
@@ -629,7 +637,7 @@ test('admin-key rotate with JAYPOST_ADMIN_KEY set says to update it', async () =
 test('admin-key show prints the key file next to the config', async () => {
   const configPath = join(tmp, 'data', 'config.json')
   const key = `jpa_${'k'.repeat(43)}`
-  writeTokenFile(resolveAdminKeyPath(configPath), key)
+  writeAdminKeyFile(resolveAdminKeyPath(configPath), key)
   const print = vi.fn()
   const printError = vi.fn()
   expect(runAdminKeyShow({ JAYPOST_CONFIG: configPath }, print, printError)).toBe(0)
@@ -650,5 +658,172 @@ test('admin-key show fails without the file or with an invalid one, never quotin
   expect(printError.mock.calls).toEqual([
     [`no admin key in ${JSON.stringify(keyPath)} yet; start the service once so it writes one`],
     [`admin key file ${JSON.stringify(keyPath)} isn't a valid jaypost admin key`],
+  ])
+})
+
+test('admin commands pick the remote named by -s', async () => {
+  const started = await start()
+  writeRemotes(
+    { name: 'other', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'o'.repeat(43)}` },
+    remoteOf('x', started),
+  )
+  const env = { HOME: tmp, JAYPOST_URL: 'http://127.0.0.1:1', JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runBotList({}, createDeps(env, { service: 'x' }))).toBe(0)
+  expect(out).toEqual([
+    [
+      'ID  PROVIDER  LABEL  ACCOUNT  STATE    CONTACTS  KEYS',
+      'b1  fakepair  -      fake     running  1         1',
+    ].join('\n'),
+  ])
+  expect(await runBotList({}, createDeps(env, { service: 'nope' }))).toBe(1)
+  expect(err).toEqual(['no remote "nope"; known: other, x'])
+})
+
+test('admin -s with no remotes says how to add one', async () => {
+  expect(await runBotList({}, createDeps({ HOME: tmp }, { service: 'x' }))).toBe(1)
+  expect(err).toEqual(['no remote "x"; add one with "jaypost admin remote add"'])
+})
+
+test('admin without -s uses the local install and saves its admin key to the inbox', async () => {
+  const started = await start()
+  writeRemotes({ name: 'other', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'o'.repeat(43)}` })
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const quadlet = fakeTarget('quadlet', async () => started.adminKey)
+  const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
+  expect(await runBotList({}, deps)).toBe(0)
+  expect(readInbox(inboxPath).local).toEqual({
+    url: `http://127.0.0.1:${started.port}/`,
+    adminKey: started.adminKey,
+  })
+  expect(statSync(inboxPath).mode & 0o777).toBe(0o600)
+  expect(await runBotList({}, deps)).toBe(0)
+  expect(quadlet.readAdminKey).toHaveBeenCalledTimes(1)
+  expect(err).toEqual([])
+})
+
+test('admin without -s and no install uses the only remote', async () => {
+  const started = await start()
+  writeRemotes(remoteOf('x', started))
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(0)
+  expect(err).toEqual([])
+})
+
+test('admin without -s and two remotes asks for -s', async () => {
+  writeRemotes(
+    { name: 'a', url: 'http://127.0.0.1:1/', adminKey: `jpa_${'a'.repeat(43)}` },
+    { name: 'b', url: 'http://127.0.0.1:2/', adminKey: `jpa_${'b'.repeat(43)}` },
+  )
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
+  expect(err).toEqual(['several remotes; pick one with -s: a, b'])
+})
+
+test('admin with a corrupt inbox fails naming it and leaves it alone', async () => {
+  writeFileSync(inboxPath, '{not json')
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
+  expect(err).toEqual([`inbox ${JSON.stringify(inboxPath)} isn't valid: not JSON`])
+  expect(readFileSync(inboxPath, 'utf8')).toBe('{not json')
+})
+
+test('admin rotate-key writes the new key to the named remote', async () => {
+  const started = await start()
+  writeRemotes(remoteOf('x', started))
+  const deps = createDeps({ HOME: tmp }, { service: 'x' })
+  expect(await runAdminKeyRotate({}, deps)).toBe(0)
+  const saved = readInbox(inboxPath).remotes[0]?.adminKey
+  expect(saved).toMatch(/^jpa_/)
+  expect(saved).not.toBe(started.adminKey)
+  expect(out).toEqual([`New admin key: ${saved}`])
+  expect(err).toEqual(['The old admin key stopped working. Saved the new one in your inbox.'])
+  expect(await runBotList({}, deps)).toBe(0)
+})
+
+test('admin rotate-key on the local install writes the new key to the inbox', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const quadlet = fakeTarget('quadlet', async () => started.adminKey)
+  const deps = createDeps({ HOME: tmp }, { targets: targets({ quadlet }) })
+  expect(await runAdminKeyRotate({ json: true }, deps)).toBe(0)
+  const { adminKey } = JSON.parse(out.join('\n'))
+  expect(readInbox(inboxPath).local).toEqual({
+    url: `http://127.0.0.1:${started.port}/`,
+    adminKey,
+  })
+  expect(await runBotList({}, deps)).toBe(0)
+})
+
+test('a rejected remote admin key says to run remote add again, without a key', async () => {
+  const started = await start()
+  const wrong = `jpa_${'z'.repeat(43)}`
+  writeRemotes({ ...remoteOf('home', started), adminKey: wrong })
+  expect(await runBotList({}, createDeps({ HOME: tmp }, { service: 'home' }))).toBe(1)
+  expect(err).toEqual([
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
+  ])
+  expect(err.join('')).not.toContain(wrong)
+})
+
+test('a rejected saved remote key points at the remote even with JAYPOST_ADMIN_KEY set', async () => {
+  const started = await start()
+  const wrong = `jpa_${'z'.repeat(43)}`
+  writeRemotes({ ...remoteOf('home', started), adminKey: wrong })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runBotList({}, createDeps(env, { service: 'home' }))).toBe(1)
+  expect(err).toEqual([
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
+  ])
+})
+
+test("the inbox's only remote also points at the remote with JAYPOST_ADMIN_KEY set", async () => {
+  const started = await start()
+  writeRemotes({ ...remoteOf('home', started), adminKey: `jpa_${'z'.repeat(43)}` })
+  expect(await runBotList({}, createDeps({ HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }))).toBe(
+    1,
+  )
+  expect(err).toEqual([
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
+  ])
+})
+
+test('a rejected JAYPOST_ADMIN_KEY on a local install points at the env var', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: `jpa_${'z'.repeat(43)}` }
+  expect(await runBotList({}, createDeps(env))).toBe(1)
+  expect(err).toEqual([ADMIN_KEY_REJECTED_MESSAGE])
+})
+
+test('admin rotate-key on a local install with JAYPOST_ADMIN_KEY saves and says to update it', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runAdminKeyRotate({ json: true }, createDeps(env))).toBe(0)
+  const { adminKey } = JSON.parse(out.join('\n'))
+  expect(readInbox(inboxPath).local?.adminKey).toBe(adminKey)
+  out.length = 0
+  const again = { HOME: tmp, JAYPOST_ADMIN_KEY: adminKey }
+  expect(await runAdminKeyRotate({}, createDeps(again))).toBe(0)
+  expect(err).toEqual([
+    'The old admin key stopped working. Saved the new one in your inbox.',
+    'Set JAYPOST_ADMIN_KEY to the new key.',
+  ])
+})
+
+test('a rejected saved local admin key says to run service install again', async () => {
+  const started = await start()
+  const wrong = `jpa_${'z'.repeat(43)}`
+  writeInbox(inboxPath, {
+    version: 1,
+    local: { url: `http://127.0.0.1:${started.port}/`, adminKey: wrong },
+    remotes: [],
+    bots: [],
+  })
+  writeInstall(paths.installFile, {
+    target: 'quadlet',
+    port: started.port,
+    version: '1.0.0',
+  })
+  expect(await runBotList({}, createDeps({ HOME: tmp }))).toBe(1)
+  expect(err).toEqual([
+    'jaypost service rejected the saved admin key; run "jaypost service install" again (JAYPOST_ADMIN_KEY overrides it)',
   ])
 })

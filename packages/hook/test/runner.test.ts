@@ -169,9 +169,9 @@ async function freePort(): Promise<number> {
 }
 
 function spawnHook(port: number, input: string | undefined, env?: NodeJS.ProcessEnv) {
-  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'hook', '--port', String(port)], {
+  const child = spawn(process.execPath, ['apps/cli/src/cli.ts', 'hook'], {
     cwd: ROOT,
-    ...(env === undefined ? {} : { env }),
+    env: { ...(env ?? process.env), JAYPOST_URL: `http://127.0.0.1:${port}`, JAYPOST_BOT: '' },
   })
   const output = { stdout: '', stderr: '' }
   child.stdout.setEncoding('utf8')
@@ -709,11 +709,11 @@ async function createEmptyHome(): Promise<NodeJS.ProcessEnv> {
 }
 
 function unreachableLine(port: number): string {
-  return `jaypost isn't running on 127.0.0.1:${port}, so permission prompts stay in the terminal. Run \`jaypost init\` to set it up, or \`jaypost status\` to check an existing install.`
+  return `jaypost isn't running on 127.0.0.1:${port}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`
 }
 
 function tokenLine(message: string): string {
-  return `jaypost can't use its API token (${message}), so permission prompts stay in the terminal. Run \`jaypost init\`, or set JAYPOST_TOKEN in a container.`
+  return `jaypost can't use its API token (${message}), so permission prompts stay in the terminal. Run \`jaypost service install\`, or set JAYPOST_TOKEN in a container.`
 }
 
 test('session start with a paired service prints nothing', async () => {
@@ -750,7 +750,7 @@ test('session start when not paired says to pair', async () => {
   expect(out).toEqual([
     JSON.stringify({
       systemMessage:
-        "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost init` to pair.",
+        "jaypost isn't paired with your phone yet, so permission prompts stay in the terminal. Run `jaypost service install` to pair.",
     }),
   ])
 })
@@ -817,7 +817,7 @@ test('session start with an unreachable remote url says to check it', async () =
   expect(out).toEqual([
     JSON.stringify({
       systemMessage:
-        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check JAYPOST_URL and that the service there is running.",
+        "jaypost isn't reachable on http://0.0.0.0:9/relay, so permission prompts stay in the terminal. Check the bot with `jaypost inbox` (`-b` or JAYPOST_BOT picks another) and that the service there is running.",
     }),
   ])
 })

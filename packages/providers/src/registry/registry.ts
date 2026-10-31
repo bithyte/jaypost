@@ -3,7 +3,7 @@ import type { Provider } from '@jaypost/core'
 import { telegramProvider } from '../telegram/index.ts'
 import { terminalProvider } from '../terminal/index.ts'
 
-/** Every provider `init` offers and the installed service can use. */
+/** Every provider `service install` offers and the installed service can use. */
 export const PROVIDERS: readonly Provider[] = [telegramProvider, discordProvider]
 
 /** `PROVIDERS` plus the dev-only terminal provider, which only `JAYPOST_PROVIDER=terminal` picks. */

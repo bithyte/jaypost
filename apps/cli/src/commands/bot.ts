@@ -6,7 +6,7 @@ import type { AdminCaller } from '@jaypost/client'
 import type { AdminBot, BotsBody } from '@jaypost/protocol'
 import { openAdmin, openAdminCaller } from './admin-access.ts'
 import { formatCount, formatTable, printResult, runAdminCommand } from './admin.ts'
-import { STARTED_MEANWHILE_MESSAGE } from './constants.ts'
+import { STARTED_MEANWHILE_MESSAGE, toLocalUrl } from './constants.ts'
 import { resolveProviderSettings, selectProvider } from './provider-setup.ts'
 import type {
   AdminDeps,
@@ -44,20 +44,20 @@ function formatBots(body: BotsBody): string {
     return 'No bots.'
   }
   return formatTable(
-    ['ID', 'PROVIDER', 'LABEL', 'ACCOUNT', 'STATE', 'PAIRINGS', 'KEYS'],
+    ['ID', 'PROVIDER', 'LABEL', 'ACCOUNT', 'STATE', 'CONTACTS', 'KEYS'],
     body.bots.map((bot) => [
       bot.id,
       bot.provider,
       bot.label,
       bot.displayName,
       describeState(bot),
-      String(bot.pairingCount),
+      String(bot.contactCount),
       String(bot.keyCount),
     ]),
   )
 }
 
-/** The settings without the owner, which a bot never takes: pairings hold the people. */
+/** The settings without the owner, which a bot never takes: contacts hold the people. */
 function withoutOwner(provider: Provider, settings: SettingValues): SettingValues {
   const owner = findOwnerSetting(provider)
   return Object.fromEntries(
@@ -69,7 +69,7 @@ function withoutOwner(provider: Provider, settings: SettingValues): SettingValue
 function refuseStopped(endpoint: LocalAdminEndpoint, deps: AdminDeps): AddRoute {
   const name = endpoint.install === undefined ? 'jaypost' : endpoint.install.target
   deps.printError(
-    `The ${name} service isn't running. Start it first, then run jaypost bot add again.`,
+    `The ${name} service isn't running. Start it first, then run jaypost admin bot add again.`,
   )
   return { kind: 'refused' }
 }
@@ -90,7 +90,7 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
       deps.printError(opened.message)
       return { kind: 'refused' }
     }
-    const status = await deps.fetchStatus(endpoint.port, undefined)
+    const status = await deps.fetchStatus(toLocalUrl(endpoint.port), undefined)
     if (status.kind !== 'unreachable') {
       deps.printError(opened.message)
       return { kind: 'refused' }
@@ -128,7 +128,7 @@ async function chooseAddRoute(opened: OpenedAdmin, deps: AdminDeps): Promise<Add
  */
 async function recheckStopped(route: RegistryRoute, deps: AdminDeps): Promise<AddRoute> {
   if (route.caller === undefined) {
-    const status = await deps.fetchStatus(route.port, undefined)
+    const status = await deps.fetchStatus(toLocalUrl(route.port), undefined)
     if (status.kind === 'unreachable') {
       return route
     }
@@ -177,7 +177,7 @@ function addBotToStore(
   const registry = store.load()
   if (registry.seed === undefined && existsSync(configPath)) {
     deps.printError(
-      "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost bot add again.",
+      "The service isn't running and hasn't set up its registry yet. Start it once, then run jaypost admin bot add again.",
     )
     return 1
   }
@@ -250,7 +250,7 @@ export function runBotAdd(args: BotAddArgs, deps: AdminDeps): Promise<number> {
   })
 }
 
-/** Prints every bot with its state and how many pairings and keys it has. */
+/** Prints every bot with its state and how many contacts and keys it has. */
 export function runBotList(args: AdminOutputArgs, deps: AdminDeps): Promise<number> {
   return runAdminCommand(deps, async () => {
     const caller = await openAdminCaller(deps)
@@ -262,7 +262,7 @@ export function runBotList(args: AdminOutputArgs, deps: AdminDeps): Promise<numb
 }
 
 /**
- * Removes a bot with its pairings and keys, after saying how many keys go with it and asking
+ * Removes a bot with its contacts and keys, after saying how many keys go with it and asking
  * (unless `yes`). Returns 0, also when declined.
  */
 export function runBotRemove(args: AdminRemoveArgs, deps: AdminDeps): Promise<number> {
@@ -284,7 +284,7 @@ export function runBotRemove(args: AdminRemoveArgs, deps: AdminDeps): Promise<nu
       }
       const name = bot.label ?? bot.displayName ?? bot.provider
       const question =
-        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.pairingCount, 'pairing')} ` +
+        `Remove bot ${bot.id} (${name})? This removes ${formatCount(bot.contactCount, 'contact')} ` +
         `and revokes ${formatCount(bot.keyCount, 'key')}.`
       if (!(await deps.prompt.confirm(question, false))) {
         deps.printError('Nothing removed.')

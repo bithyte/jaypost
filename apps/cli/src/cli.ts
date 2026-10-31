@@ -7,17 +7,13 @@ import { isSea } from 'node:sea'
 import { fileURLToPath } from 'node:url'
 import {
   APPROVERS_ENV_VAR,
-  DEFAULT_PORT,
   isPortFree,
   loadConfig,
-  loadServiceConfig,
   MODE_ENV_VAR,
   parseSince,
-  PORT_ENV_VAR,
   realExec,
-  resolveClientToken,
-  resolveConfigDirectory,
-  resolveTokenFile,
+  resolveInboxPath,
+  resolveJaypostDirectory,
 } from '@jaypost/store'
 import {
   DEFAULT_PROVIDER,
@@ -29,13 +25,14 @@ import {
   VOTE_RULES,
 } from '@jaypost/core'
 import type { MessageFormat, VoteRule } from '@jaypost/core'
-import { DEFAULT_ATTACHMENT_NAME } from '@jaypost/client'
+import { DEFAULT_ATTACHMENT_NAME, resolveBot } from '@jaypost/client'
 import type { AttachmentSource } from '@jaypost/client'
 import {
   createClackPrompts,
   defaultFetchStatus,
   runAdminKeyRotate,
   runAdminKeyShow,
+  runAdminLog,
   runBotAdd,
   runBotList,
   runBotRemove,
@@ -44,21 +41,28 @@ import {
   runDirectSendNotify,
   runDirectSendRequest,
   runInit,
-  runKeyCreate,
-  runKeyLabel,
-  runKeyList,
+  runContactAdd,
+  runContactList,
+  runContactRemove,
+  runKeyAdd,
   runKeyRevoke,
   runLog,
   runOwner,
   runPairApprover,
-  runPairingCreate,
-  runPairingList,
-  runPairingRemove,
   runPing,
-  resolveResetOwnerToken,
+  runInboxDefault,
+  runInboxList,
+  runInboxRemove,
+  runInboxRename,
+  runJoin,
+  runRemoteAdd,
+  runRemoteList,
+  runRemoteRemove,
   runResetOwner,
   runSendNotify,
   runSendRequest,
+  runServiceStart,
+  runServiceStop,
   runSetupCi,
   runStatus,
   runUninstall,
@@ -71,12 +75,15 @@ import { createProgress, formatOnRail, resolveProgressMode } from './progress/in
 import type { Progress } from './progress/index.ts'
 import type {
   AdminDeps,
+  AdminLogArgs,
+  InboxDeps,
   DirectSendDeps,
   InitArgs,
   LogArgs,
   PairApproverArgs,
   SendDeps,
   SendRequestArgs,
+  ServiceControlDeps,
   SetupCiArgs,
 } from './commands/index.ts'
 import { formatOpenApiYaml, resolveApprovers, resolveSendMode, runService } from '@jaypost/service'
@@ -86,26 +93,24 @@ import type { HookDeps } from '@jaypost/hook'
 import {
   createTargets,
   NPM_LATEST_URL,
-  readInstall,
+  findExistingInstall,
   RELEASES_API_URL,
   resolveInstallPaths,
   resolveTargetOrder,
 } from '@jaypost/install'
-import { resolveMcpEndpoint, resolveMcpPort, runMcp } from '@jaypost/mcp'
+import { resolveMcpPort, runMcp } from '@jaypost/mcp'
 import type { CliLocation, InstallPaths, Target, TargetName } from '@jaypost/install'
 import { PROVIDERS, SERVICE_PROVIDERS } from '@jaypost/providers'
 import { VERSION } from './constants.ts'
 
 const DIGITS_PATTERN = /^\d+$/
 
-function resolvePort(): number {
-  try {
-    return loadServiceConfig(process.env).port
-  } catch {
-    const port = Number(process.env[PORT_ENV_VAR])
-    return Number.isInteger(port) && port > 0 ? port : DEFAULT_PORT
-  }
-}
+const BOT_FLAGS = '-b, --bot <alias>'
+
+const JSON_HELP = 'print the answer as JSON'
+
+const BOT_DESCRIPTION =
+  'inbox bot to use (default: JAYPOST_BOT, then JAYPOST_URL/JAYPOST_TOKEN, then the inbox default)'
 
 function parsePort(rawPort: string): number {
   const port = DIGITS_PATTERN.test(rawPort) ? Number(rawPort) : NaN
@@ -218,13 +223,14 @@ function createAnswerPrint(progress: Progress): (text: string) => void {
 }
 
 function createSendDeps(
-  flagPort: number | undefined,
+  bot: string | undefined,
   signal: AbortSignal,
   progress: Progress,
 ): SendDeps {
+  const resolved = resolveBot(process.env, bot)
   return {
-    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     signal,
     print: createAnswerPrint(progress),
     printError: (text) => console.error(text),
@@ -256,16 +262,17 @@ function requireSendMode(command: Command): Exclude<SendMode, { readonly kind: '
   return mode
 }
 
-function createHookDeps(flagPort: number | undefined, signal: AbortSignal): HookDeps {
+function createHookDeps(bot: string | undefined, signal: AbortSignal): HookDeps {
+  const resolved = resolveBot(process.env, bot)
   return {
-    endpoint: resolveMcpEndpoint(flagPort, process.env, resolveInstallPaths().installFile),
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     signal,
     readInput: () => readHookInput(process.stdin, signal),
     print: (line) => console.log(line),
     printError: (line) => console.error(line),
     env: process.env,
-    stopDirectory: join(resolveConfigDirectory(process.env), STOP_DIRECTORY_NAME),
+    stopDirectory: join(resolveJaypostDirectory(process.env), STOP_DIRECTORY_NAME),
   }
 }
 
@@ -324,6 +331,8 @@ function runInitCommand(args: InitArgs): Promise<number> {
         signal: controller.signal,
         version: VERSION,
         ...(timeZone === undefined ? {} : { timeZone }),
+        inboxPath: resolveInboxPath(process.env),
+        hostname: os.hostname(),
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
@@ -401,15 +410,15 @@ const SETUP_SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 const SETUP_RERAISED = ['SIGTERM'] as const
 
-function runSendRequestWithSignals(args: SendRequestArgs, flagPort: number | undefined) {
+function runSendRequestWithSignals(args: SendRequestArgs, bot: string | undefined) {
   const progress = createStderrProgress()
   if (progress.mode !== 'live') {
     return runWithSignals((controller) =>
-      runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+      runSendRequest(args, createSendDeps(bot, controller.signal, progress)),
     )
   }
   return runWithSignals(
-    (controller) => runSendRequest(args, createSendDeps(flagPort, controller.signal, progress)),
+    (controller) => runSendRequest(args, createSendDeps(bot, controller.signal, progress)),
     LIVE_SIGNALS,
     ['SIGTERM', 'SIGHUP'],
   )
@@ -427,35 +436,32 @@ function runDirectSendRequestWithSignals(args: SendRequestArgs): Promise<number>
   )
 }
 
-function runStatusCommand(): Promise<number> {
-  const tokenFile = resolveTokenFile(process.env)
+function runStatusCommand(bot: string | undefined): Promise<number> {
   const paths = resolveInstallPaths()
+  const targets = createRealTargets(paths)
+  const existing = findExistingInstall(paths, targets)
   return runStatus({
-    targets: createRealTargets(paths),
-    paths,
+    resolved: resolveBot(process.env, bot),
+    install:
+      existing === undefined
+        ? undefined
+        : { record: existing.record, target: targets[existing.record.target] },
     fetchStatus: defaultFetchStatus,
-    token: resolveClientToken(process.env, tokenFile),
-    tokenFile,
     print: (text) => console.log(text),
   })
 }
 
-function runLogCommand(args: LogArgs): Promise<number> {
-  const paths = resolveInstallPaths()
+function runLogCommand(args: LogArgs, bot: string | undefined): Promise<number> {
+  const resolved = resolveBot(process.env, bot)
   return runLog(args, {
-    targets: createRealTargets(paths),
-    paths,
-    env: process.env,
-    token: resolveClientToken(process.env, resolveTokenFile(process.env)),
-    version: VERSION,
-    now: () => new Date(),
+    endpoint: resolved.endpoint,
+    token: resolved.token,
     print: (text) => writeAll(`${text}\n`),
     printError: (text) => console.error(text),
   })
 }
 
 function runResetOwnerCommand(): Promise<number> {
-  const token = resolveResetOwnerToken(process.env, resolveTokenFile(process.env))
   const paths = resolveInstallPaths()
   const targets = createRealTargets(paths)
   return runWithSignals(
@@ -469,7 +475,7 @@ function runResetOwnerCommand(): Promise<number> {
         wait: waitForPairing,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
-        token,
+        inboxPath: resolveInboxPath(process.env),
         fetchStatus: defaultFetchStatus,
       }),
     SETUP_SIGNALS,
@@ -488,10 +494,261 @@ function runUninstallCommand(): Promise<number> {
         confirm: createClackPrompts(controller.signal).confirm,
         progress: createStderrProgress('plain'),
         signal: controller.signal,
+        inboxPath: resolveInboxPath(process.env),
       }),
     SETUP_SIGNALS,
     SETUP_RERAISED,
   )
+}
+
+/** What `service start` and `service stop` use. */
+function createServiceControlDeps(): ServiceControlDeps {
+  const paths = resolveInstallPaths()
+  return {
+    paths,
+    targets: createRealTargets(paths),
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+  }
+}
+
+/** The `service` group: install, uninstall, start, stop, run and update on this machine. */
+function addServiceCommands(program: Command, setCode: (code: number) => void): void {
+  const service = program
+    .command('service')
+    .description('install, remove, start, stop, run or update the service on this machine')
+  service
+    .command('install')
+    .description('set up the bot token and install the service')
+    .addArgument(new Argument('[target]').choices(resolveTargetOrder(process.platform)))
+    .option('--port <n>', "API port (default 8787, or the existing install's)", parsePort)
+    .option('--exposed', 'listen on all interfaces over plain http, not just this machine')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .option('--token', 'require an API token (default for new setups)')
+    .option('--no-token', "don't require an API token")
+    // Installs an unpublished build; for testing.
+    .addOption(new Option('--tarball <path>').hideHelp())
+    .action(
+      async (
+        target: TargetName | undefined,
+        options: {
+          readonly port?: number
+          readonly exposed?: boolean
+          readonly tarball?: string
+          readonly provider?: string
+          readonly token?: boolean
+        },
+      ) => {
+        setCode(
+          await runInitCommand({
+            ...(target ? { target } : {}),
+            ...(options.port === undefined ? {} : { port: options.port }),
+            ...(options.exposed === undefined ? {} : { exposed: options.exposed }),
+            ...(options.provider === undefined ? {} : { provider: options.provider }),
+            ...(options.token === undefined ? {} : { token: options.token }),
+            ...(options.tarball === undefined ? {} : { tarball: resolve(options.tarball) }),
+          }),
+        )
+      },
+    )
+  service
+    .command('uninstall')
+    .description('remove the service and its entries in the inbox')
+    .action(async () => {
+      setCode(await runUninstallCommand())
+    })
+  service
+    .command('start')
+    .description('start the installed service')
+    .action(async () => {
+      setCode(await runServiceStart(createServiceControlDeps()))
+    })
+  service
+    .command('stop')
+    .description('stop the installed service')
+    .action(async () => {
+      setCode(await runServiceStop(createServiceControlDeps()))
+    })
+  service
+    .command('run')
+    .description('run the service in the foreground')
+    .action(() => runService(VERSION))
+  service
+    .command('update')
+    .description('update the service or this CLI to the latest release')
+    // Run by the new CLI after `service update` fetched it, to rewrite the install's files.
+    .addOption(new Option('--finish').hideHelp())
+    .action(async (options: { readonly finish?: boolean }) => {
+      setCode(await runUpdateCommand(options.finish === true))
+    })
+}
+
+/** What the `inbox` and `admin remote` commands use; prompts abort with `signal`. */
+function createInboxDeps(signal?: AbortSignal): InboxDeps {
+  return {
+    inboxPath: resolveInboxPath(process.env),
+    prompt: createClackPrompts(signal),
+    isInteractive: process.stdin.isTTY === true,
+    print: (text) => console.log(text),
+    printError: (text) => console.error(text),
+  }
+}
+
+/** The `admin remote` group: services on other machines this one administers. */
+function addAdminRemoteCommands(admin: Command, setCode: (code: number) => void): void {
+  const remote = admin
+    .command('remote')
+    .description('add, list and remove services on other machines you administer')
+  remote
+    .command('add')
+    .description('check the admin key against a service and save it as a remote')
+    .argument('<name>', 'a short name for the remote')
+    .argument('<url>', 'the service url')
+    .argument('<admin-key>', "the service's admin key")
+    .action(async (name: string, url: string, adminKey: string) => {
+      setCode(
+        await runWithSignals(
+          (controller) => runRemoteAdd({ name, url, adminKey }, createInboxDeps(controller.signal)),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
+    })
+  remote
+    .command('remove')
+    .description('forget a remote; its bots stay')
+    .argument('<name>', 'the remote name')
+    .action(async (name: string) => {
+      setCode(await runRemoteRemove({ name }, createInboxDeps()))
+    })
+  remote
+    .command('list')
+    .description('show the remotes (names and urls, no keys)')
+    .action(async () => {
+      setCode(await runRemoteList(createInboxDeps()))
+    })
+}
+
+/** The `inbox` group: the bots in your inbox; with no subcommand it lists them. */
+function addInboxCommands(program: Command, setCode: (code: number) => void): void {
+  const inbox = program
+    .command('inbox')
+    .description(
+      'list the bots in your inbox, join one, or set the default, rename and remove them',
+    )
+    .action(async () => {
+      setCode(await runInboxList(createInboxDeps()))
+    })
+  inbox
+    .command('list')
+    .description('show the bots (aliases and services, no keys)')
+    .action(async () => {
+      setCode(await runInboxList(createInboxDeps()))
+    })
+  inbox
+    .command('join')
+    .description('save a bot from an invite and wait for its pairing code')
+    .argument('<invite>', 'the invite (jpi_...) the service owner sent you')
+    .option('--as <alias>', 'save the bot under this alias')
+    .action(async (invite: string, options: { readonly as?: string }) => {
+      setCode(
+        await runWithSignals(
+          (controller) =>
+            runJoin(
+              { invite, ...(options.as === undefined ? {} : { as: options.as }) },
+              {
+                ...createInboxDeps(controller.signal),
+                fetchStatus: defaultFetchStatus,
+                wait: waitForPairing,
+                progress: createStderrProgress('plain'),
+                signal: controller.signal,
+              },
+            ),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
+    })
+  inbox
+    .command('default')
+    .description('make a bot the default')
+    .argument('<alias>', 'the bot alias')
+    .action(async (alias: string) => {
+      setCode(await runInboxDefault({ alias }, createInboxDeps()))
+    })
+  inbox
+    .command('rename')
+    .description('give a bot a new alias')
+    .argument('<alias>', 'the current alias')
+    .argument('<new-alias>', 'the new alias')
+    .action(async (alias: string, newAlias: string) => {
+      setCode(await runInboxRename({ alias, newAlias }, createInboxDeps()))
+    })
+  inbox
+    .command('remove')
+    .description('remove a bot from your inbox')
+    .argument('<alias>', 'the bot alias')
+    .option('-y, --yes', 'skip the confirmation')
+    .action(async (alias: string, options: { readonly yes?: boolean }) => {
+      setCode(
+        await runWithSignals(
+          (controller) =>
+            runInboxRemove(
+              { alias, ...(options.yes === true ? { yes: true } : {}) },
+              createInboxDeps(controller.signal),
+            ),
+          SETUP_SIGNALS,
+          SETUP_RERAISED,
+        ),
+      )
+    })
+}
+
+/** The `pair` group: who answers, for CI (direct mode) and for the local service. */
+function addPairCommands(program: Command, setCode: (code: number) => void): void {
+  const pair = program
+    .command('pair')
+    .description('pair the owner or approvers for CI, or reset the owner of this machine')
+  pair
+    .command('ci')
+    .description('pair an owner for CI and print the env vars for direct mode')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      setCode(
+        await runSetupCiCommand(
+          options.provider === undefined ? {} : { provider: options.provider },
+        ),
+      )
+    })
+  pair
+    .command('approver')
+    .description('pair approvers for direct mode votes and print their ids')
+    .addOption(
+      new Option('--provider <name>', 'chat app to use').choices(
+        PROVIDERS.map((provider) => provider.name),
+      ),
+    )
+    .action(async (options: { readonly provider?: string }) => {
+      setCode(
+        await runPairApproverCommand(
+          options.provider === undefined ? {} : { provider: options.provider },
+        ),
+      )
+    })
+  pair
+    .command('reset-owner')
+    .description('clear the paired owner so a new one can pair')
+    .action(async () => {
+      setCode(await runResetOwnerCommand())
+    })
 }
 
 function runUpdateCommand(isFinish: boolean): Promise<number> {
@@ -522,8 +779,8 @@ function runUpdateCommand(isFinish: boolean): Promise<number> {
   )
 }
 
-/** What the admin commands use; prompts abort with `signal`. */
-function createAdminDeps(signal?: AbortSignal): AdminDeps {
+/** What the admin commands use, aimed at the `-s` remote; prompts abort with `signal`. */
+function createAdminDeps(service: string | undefined, signal?: AbortSignal): AdminDeps {
   const paths = resolveInstallPaths()
   return {
     env: process.env,
@@ -534,23 +791,33 @@ function createAdminDeps(signal?: AbortSignal): AdminDeps {
     print: (text) => console.log(text),
     printError: (text) => console.error(text),
     fetchStatus: defaultFetchStatus,
+    inboxPath: resolveInboxPath(process.env),
+    service,
+    isInteractive: process.stdin.isTTY === true,
     ...(signal === undefined ? {} : { signal }),
   }
 }
 
 /** Runs an admin command that may prompt, so Ctrl-C ends the prompt with exit 130. */
-function runPromptingAdminCommand(run: (deps: AdminDeps) => Promise<number>): Promise<number> {
+function runPromptingAdminCommand(
+  service: string | undefined,
+  run: (deps: AdminDeps) => Promise<number>,
+): Promise<number> {
   return runWithSignals(
-    (controller) => run(createAdminDeps(controller.signal)),
+    (controller) => run(createAdminDeps(service, controller.signal)),
     SETUP_SIGNALS,
     SETUP_RERAISED,
   )
 }
 
-/** The bot, key, pairing and admin-key commands, which call the admin routes. */
-function addAdminCommands(program: Command, setCode: (code: number) => void): void {
-  const jsonHelp = 'print the answer as JSON'
-  const bot = program.command('bot').description("add, list and remove the service's bots")
+/** The `-s` remote of an `admin` subcommand, given before or after the subcommand. */
+function findService(command: Command): string | undefined {
+  return command.optsWithGlobals<{ readonly service?: string }>().service
+}
+
+/** The `admin bot` commands. */
+function addAdminBotCommands(admin: Command, setCode: (code: number) => void): void {
+  const bot = admin.command('bot').description("manage the service's bots, their contacts and keys")
   bot
     .command('add')
     .description('add a bot; asks for its settings')
@@ -560,129 +827,182 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
       ),
     )
     .option('--label <text>', 'a name for the bot')
-    .option('--json', jsonHelp)
+    .option('--json', JSON_HELP)
     .action(
-      async (options: {
-        readonly provider?: string
-        readonly label?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runPromptingAdminCommand((deps) => runBotAdd(options, deps)))
+      async (
+        options: { readonly provider?: string; readonly label?: string; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) => runBotAdd(options, deps)),
+        )
       },
     )
   bot
     .command('list')
-    .description('show the bots with their state, pairings and keys')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly json?: boolean }) => {
-      setCode(await runBotList(options, createAdminDeps()))
+    .description('show the bots with their state, contacts and keys')
+    .option('--json', JSON_HELP)
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runBotList(options, createAdminDeps(findService(command))))
     })
   bot
     .command('remove')
-    .description('remove a bot with its pairings and keys')
+    .description('remove a bot with its contacts and keys')
     .argument('<id>', 'bot id, such as b2')
     .option('-y, --yes', "don't ask first")
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
-      setCode(await runPromptingAdminCommand((deps) => runBotRemove({ id, ...options }, deps)))
-    })
-  const key = program.command('key').description('create, list, label and revoke API keys')
-  key
-    .command('create')
-    .description('create an API key and print it once')
-    .option('--bot <id>', 'for a new pairing on this bot, with a pairing code')
-    .option('--pairing <id>', 'for this existing pairing')
-    .option('--same-as <key id>', 'for the pairing of this key')
-    .option('--label <text>', 'a free-form label')
-    .option('--external-id <id>', 'a free-form id from another system')
-    .option('--json', jsonHelp)
-    .action(
-      async (options: {
-        readonly bot?: string
-        readonly pairing?: string
-        readonly sameAs?: string
-        readonly label?: string
-        readonly externalId?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runKeyCreate(options, createAdminDeps()))
-      },
-    )
-  key
-    .command('list')
-    .description("show the keys (never the keys' values)")
-    .option('--bot <id>', "only this bot's keys")
-    .option('--pairing <id>', "only this pairing's keys")
-    .option('--json', jsonHelp)
-    .action(
-      async (options: {
-        readonly bot?: string
-        readonly pairing?: string
-        readonly json?: boolean
-      }) => {
-        setCode(await runKeyList(options, createAdminDeps()))
-      },
-    )
-  key
-    .command('label')
-    .description("set or clear a key's label and external id")
-    .argument('<id>', 'key id, such as k2')
-    .option('--label <text>', 'the new label; "" clears it')
-    .option('--external-id <id>', 'the new external id; "" clears it')
-    .option('--json', jsonHelp)
+    .option('--json', JSON_HELP)
     .action(
       async (
         id: string,
-        options: { readonly label?: string; readonly externalId?: string; readonly json?: boolean },
+        options: { readonly yes?: boolean; readonly json?: boolean },
+        command: Command,
       ) => {
-        setCode(await runKeyLabel({ id, ...options }, createAdminDeps()))
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runBotRemove({ id, ...options }, deps),
+          ),
+        )
+      },
+    )
+  addAdminContactCommands(bot, setCode)
+  addAdminKeyCommands(bot, setCode)
+}
+
+/** The `admin bot contact` commands. */
+function addAdminContactCommands(bot: Command, setCode: (code: number) => void): void {
+  const contact = bot
+    .command('contact')
+    .description('add, list and remove the people a bot can ask')
+  contact
+    .command('add')
+    .description('add a contact with no key (an approver) and print its pairing code')
+    .argument('<bot>', 'bot id, such as b1')
+    .option('--json', JSON_HELP)
+    .action(async (botId: string, options: { readonly json?: boolean }, command: Command) => {
+      setCode(
+        await runContactAdd({ bot: botId, ...options }, createAdminDeps(findService(command))),
+      )
+    })
+  contact
+    .command('list')
+    .description('show the contacts with their keys and the codes of pending ones')
+    .argument('[bot]', "only this bot's contacts, such as b1")
+    .option('--json', JSON_HELP)
+    .action(
+      async (botId: string | undefined, options: { readonly json?: boolean }, command: Command) => {
+        const args = botId === undefined ? options : { bot: botId, ...options }
+        setCode(await runContactList(args, createAdminDeps(findService(command))))
+      },
+    )
+  contact
+    .command('remove')
+    .description('remove a contact and revoke its keys')
+    .argument('<contact>', 'contact id, such as c2')
+    .option('-y, --yes', "don't ask first")
+    .option('--json', JSON_HELP)
+    .action(
+      async (
+        id: string,
+        options: { readonly yes?: boolean; readonly json?: boolean },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runContactRemove({ id, ...options }, deps),
+          ),
+        )
+      },
+    )
+}
+
+/** The `admin bot key` commands. */
+function addAdminKeyCommands(bot: Command, setCode: (code: number) => void): void {
+  const key = bot.command('key').description('add and revoke API keys')
+  key
+    .command('add')
+    .description(
+      "add an API key for a bot (new contact), a contact or a key's contact, and print it once",
+    )
+    .argument('<target>', 'bot, contact or key id, such as b1, c2 or k3')
+    .option('--label <text>', 'a free-form label')
+    .option(
+      '--save [alias]',
+      "also save the key to this machine's inbox, as ALIAS (default: the bot's name)",
+    )
+    .option('--invite', 'print a jaypost inbox join line to send instead of the key (remotes only)')
+    .option('--json', JSON_HELP)
+    .action(
+      async (
+        target: string,
+        options: {
+          readonly label?: string
+          readonly save?: boolean | string
+          readonly invite?: boolean
+          readonly json?: boolean
+        },
+        command: Command,
+      ) => {
+        setCode(
+          await runPromptingAdminCommand(findService(command), (deps) =>
+            runKeyAdd({ target, ...options }, deps),
+          ),
+        )
       },
     )
   key
     .command('revoke')
-    .description('revoke a key; its pairing stays')
-    .argument('<id>', 'key id, such as k2')
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly json?: boolean }) => {
-      setCode(await runKeyRevoke({ id, ...options }, createAdminDeps()))
+    .description('revoke a key; its contact stays')
+    .argument('<key>', 'key id, such as k2')
+    .option('--json', JSON_HELP)
+    .action(async (id: string, options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runKeyRevoke({ id, ...options }, createAdminDeps(findService(command))))
     })
-  const pairing = program
-    .command('pairing')
-    .description('create, list and remove pairings between a bot and a person')
-  pairing
-    .command('create')
-    .description('create a pairing with no key (an approver) and print its code')
-    .requiredOption('--bot <id>', 'the bot to pair with')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly bot: string; readonly json?: boolean }) => {
-      setCode(await runPairingCreate(options, createAdminDeps()))
+}
+
+/**
+ * The `admin` group, which calls a service's admin routes: the remote `-s` names, else the env,
+ * the local install or the only remote. Also the hidden top-level `admin-key show`.
+ */
+function addAdminCommands(program: Command, setCode: (code: number) => void): void {
+  const admin = program
+    .command('admin')
+    .description("manage a service's bots, contacts and keys, and the remotes you administer")
+    .option('-s, --service <name>', 'the remote to manage (default: the local service)')
+  addAdminBotCommands(admin, setCode)
+  addAdminRemoteCommands(admin, setCode)
+  admin
+    .command('rotate-key')
+    .description('replace the admin key, print the new one and save it to your inbox')
+    .option('--json', JSON_HELP)
+    .action(async (options: { readonly json?: boolean }, command: Command) => {
+      setCode(await runAdminKeyRotate(options, createAdminDeps(findService(command))))
     })
-  pairing
-    .command('list')
-    .description('show the pairings and the codes of pending ones')
-    .option('--bot <id>', "only this bot's pairings")
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly bot?: string; readonly json?: boolean }) => {
-      setCode(await runPairingList(options, createAdminDeps()))
-    })
-  pairing
-    .command('remove')
-    .description('remove a pairing and revoke its keys')
-    .argument('<id>', 'pairing id, such as p2')
-    .option('-y, --yes', "don't ask first")
-    .option('--json', jsonHelp)
-    .action(async (id: string, options: { readonly yes?: boolean; readonly json?: boolean }) => {
-      setCode(await runPromptingAdminCommand((deps) => runPairingRemove({ id, ...options }, deps)))
-    })
-  const adminKey = program.command('admin-key').description('rotate the admin key')
-  adminKey
-    .command('rotate')
-    .description('replace the admin key and print the new one')
-    .option('--json', jsonHelp)
-    .action(async (options: { readonly json?: boolean }) => {
-      setCode(await runAdminKeyRotate(options, createAdminDeps()))
+  admin
+    .command('log')
+    .description("show every bot's questions (the service's whole log)")
+    .option(
+      '--since <when>',
+      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
+      parseSinceOption,
+    )
+    .option('--project <name>', 'only questions from this project', parseProjectOption)
+    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
+    .option('--bot <id>', "only this bot's questions")
+    .option('--contact <id>', "only this contact's questions")
+    .option('--key <id>', "only this key's questions")
+    .option('--all', "every bot's questions (the default)")
+    .option('--json', 'print one JSON entry per line')
+    .action(async (options: AdminLogArgs, command: Command) => {
+      setCode(
+        await runAdminLog(options, {
+          ...createAdminDeps(findService(command)),
+          print: (text) => writeAll(`${text}\n`),
+          version: VERSION,
+        }),
+      )
     })
   // Runs inside containers to print the admin key from the data volume.
+  const adminKey = program.command('admin-key', { hidden: true })
   adminKey.command('show', { hidden: true }).action(() => {
     setCode(
       runAdminKeyShow(
@@ -694,207 +1014,24 @@ function addAdminCommands(program: Command, setCode: (code: number) => void): vo
   })
 }
 
-/** Maps the old `send request`, `send notify` and `test` spellings so existing scripts keep working. */
-function toCurrentArgv(argv: readonly string[]): readonly string[] {
-  const [first, second] = argv
-  if (first === 'send' && (second === 'request' || second === 'notify')) {
-    return argv.slice(1)
-  }
-  if (first === 'test') {
-    return ['ping', ...argv.slice(1)]
-  }
-  return argv
-}
-
 /** Takes argv without node and script path; returns the exit code (2 for usage errors). */
 export async function main(argv: readonly string[]): Promise<number> {
   let code = 0
   const program = new Command('jaypost').version(VERSION, '-v, --version').exitOverride()
-  program
-    .command('init')
-    .description('set up the bot token and install the service')
-    .addArgument(new Argument('[target]').choices(resolveTargetOrder(process.platform)))
-    .option('--port <n>', "API port (default 8787, or the existing install's)", parsePort)
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .option('--token', 'require an API token (default for new setups)')
-    .option('--no-token', "don't require an API token")
-    // Installs an unpublished build; for testing.
-    .addOption(new Option('--tarball <path>').hideHelp())
-    .action(
-      async (
-        target: TargetName | undefined,
-        options: {
-          readonly port?: number
-          readonly tarball?: string
-          readonly provider?: string
-          readonly token?: boolean
-        },
-      ) => {
-        code = await runInitCommand({
-          ...(target ? { target } : {}),
-          ...(options.port === undefined ? {} : { port: options.port }),
-          ...(options.provider === undefined ? {} : { provider: options.provider }),
-          ...(options.token === undefined ? {} : { token: options.token }),
-          ...(options.tarball === undefined ? {} : { tarball: resolve(options.tarball) }),
-        })
-      },
-    )
-  program
-    .command('setup-ci')
-    .description('pair an owner for CI and print the env vars for direct mode')
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .action(async (options: { readonly provider?: string }) => {
-      code = await runSetupCiCommand(
-        options.provider === undefined ? {} : { provider: options.provider },
-      )
-    })
-  const pair = program.command('pair').description('pair someone with the bot for CI')
-  pair
-    .command('approver')
-    .description('pair approvers for direct mode votes and print their ids')
-    .addOption(
-      new Option('--provider <name>', 'chat app to use').choices(
-        PROVIDERS.map((provider) => provider.name),
-      ),
-    )
-    .action(async (options: { readonly provider?: string }) => {
-      code = await runPairApproverCommand(
-        options.provider === undefined ? {} : { provider: options.provider },
-      )
-    })
-  program
-    .command('start')
-    .description('run the service in the foreground')
-    .action(() => runService(VERSION))
-  program
-    .command('status')
-    .description('show service and pairing state')
-    .action(async () => {
-      code = await runStatusCommand()
-    })
-  program
-    .command('log')
-    .description('show the questions the service asked and how they ended')
-    .option(
-      '--since <when>',
-      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
-      parseSinceOption,
-    )
-    .option('--project <name>', 'only questions from this project', parseProjectOption)
-    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
-    .option('--json', 'print one JSON entry per line')
-    .option('--bot <id>', "only this bot's questions; reads through the API")
-    .option('--pairing <id>', "only this pairing's questions; reads through the API")
-    .option('--key <id>', "only this key's questions; reads through the API")
-    .option('--all', "every bot's questions, not only the first bot's; reads through the API")
-    .action(
-      async (options: {
-        readonly since?: Date
-        readonly project?: string
-        readonly limit?: number
-        readonly json?: boolean
-        readonly bot?: string
-        readonly pairing?: string
-        readonly key?: string
-        readonly all?: boolean
-      }) => {
-        code = await runLogCommand({
-          ...(options.since === undefined ? {} : { since: options.since }),
-          ...(options.project === undefined ? {} : { project: options.project }),
-          ...(options.limit === undefined ? {} : { limit: options.limit }),
-          ...(options.json === undefined ? {} : { json: options.json }),
-          ...(options.bot === undefined ? {} : { bot: options.bot }),
-          ...(options.pairing === undefined ? {} : { pairing: options.pairing }),
-          ...(options.key === undefined ? {} : { key: options.key }),
-          ...(options.all === undefined ? {} : { all: options.all }),
-        })
-      },
-    )
-  program
-    .command('ping')
-    .description('send a test message to check the service and pairing')
-    .option(
-      '--port <n>',
-      'API port (default: the install, then JAYPOST_PORT, then 8787)',
-      parsePort,
-    )
-    .action(async (options: { readonly port?: number }) => {
-      const port =
-        options.port ?? readInstall(resolveInstallPaths().installFile)?.port ?? resolvePort()
-      const progress = createStderrProgress()
-      const runLive = (controller: AbortController) =>
-        runPing({
-          port,
-          token: resolveClientToken(process.env, resolveTokenFile(process.env)),
-          progress,
-          providers: PROVIDERS,
-          signal: controller.signal,
-          print: createAnswerPrint(progress),
-          printError: (text) => console.error(text),
-        })
-      // Off a terminal there's no signal handler, as before: a signal ends the process.
-      code =
-        progress.mode === 'live'
-          ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
-          : await runLive(new AbortController())
-    })
-  program
-    .command('reset-owner')
-    .description('clear the paired owner so a new one can pair')
-    .action(async () => {
-      code = await runResetOwnerCommand()
-    })
-  program
-    .command('uninstall')
-    .description('remove the service')
-    .action(async () => {
-      code = await runUninstallCommand()
-    })
-  program
-    .command('update')
-    .description('update the service or this CLI to the latest release')
-    // Run by the new CLI after `update` fetched it, to rewrite the install's files.
-    .addOption(new Option('--finish').hideHelp())
-    .action(async (options: { readonly finish?: boolean }) => {
-      code = await runUpdateCommand(options.finish === true)
-    })
-  program
-    .command('mcp')
-    .description('run an MCP server on stdin/stdout for agents')
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
-    .action(async (options: { readonly port?: number }) => {
-      // Not resolvePort(): that reads config.json, which an agent's container may not have.
-      const tokenFile = resolveTokenFile(process.env)
-      code = await runMcp({
-        version: VERSION,
-        endpoint: resolveMcpEndpoint(options.port, process.env, resolveInstallPaths().installFile),
-        readToken: () => resolveClientToken(process.env, tokenFile),
-      })
-    })
-  program
-    .command('openapi')
-    .description('print the OpenAPI spec of the HTTP API, or write it to a file')
-    .argument('[file]', 'file to write; prints to stdout without one')
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
-    .action((file: string | undefined, options: { readonly port?: number }) => {
-      code = runOpenApiCommand(file, options.port)
-    })
+  program.commandsGroup('Set up:')
+  addServiceCommands(program, (serviceCode) => {
+    code = serviceCode
+  })
+  addInboxCommands(program, (inboxCode) => {
+    code = inboxCode
+  })
+  addPairCommands(program, (pairCode) => {
+    code = pairCode
+  })
+  addAdminCommands(program, (adminCode) => {
+    code = adminCode
+  })
+  program.commandsGroup('Ask and notify:')
   const request = program
     .command('request')
     .description('ask a question and print the answer')
@@ -940,11 +1077,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--attach-name <name>',
       'file name shown in the chat app (default: the file\'s basename, "attachment.txt" for stdin)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .action(
       async (
         text: string,
@@ -961,7 +1094,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly json?: boolean
           readonly attach?: string
           readonly attachName?: string
-          readonly port?: number
+          readonly bot?: string
         },
       ) => {
         const mode = requireSendMode(request)
@@ -1016,7 +1149,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         code =
           mode.kind === 'direct'
             ? await runDirectSendRequestWithSignals(args)
-            : await runSendRequestWithSignals(args, options.port)
+            : await runSendRequestWithSignals(args, options.bot)
       },
     )
   const notify = program
@@ -1038,11 +1171,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       '--delete-after <seconds|timestamp>',
       'delete the message after this many seconds or at this ISO 8601 time (default 8h; ignored in direct mode)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .action(
       async (
         text: string,
@@ -1052,7 +1181,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           readonly attach?: string
           readonly attachName?: string
           readonly deleteAfter?: string
-          readonly port?: number
+          readonly bot?: string
         },
       ) => {
         const mode = requireSendMode(notify)
@@ -1082,7 +1211,7 @@ export async function main(argv: readonly string[]): Promise<number> {
             : await runWithSignals((controller) =>
                 runSendNotify(
                   args,
-                  createSendDeps(options.port, controller.signal, createStderrProgress()),
+                  createSendDeps(options.bot, controller.signal, createStderrProgress()),
                 ),
               )
       },
@@ -1092,11 +1221,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     .description(
       'answer Claude Code permission prompts, forward notifications and ask for the next prompt when Claude stops (reads a hook event on stdin)',
     )
-    .option(
-      '--port <n>',
-      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
-      parsePort,
-    )
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
     .option('--project <name>', 'shown as [name] (default: the Claude Code project folder)')
     .option(
       '--timeout <seconds>',
@@ -1105,7 +1230,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     )
     .action(
       async (options: {
-        readonly port?: number
+        readonly bot?: string
         readonly project?: string
         readonly timeout?: number
       }) => {
@@ -1114,14 +1239,98 @@ export async function main(argv: readonly string[]): Promise<number> {
           ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
         }
         code = await runWithSignals(
-          (controller) => runHook(args, createHookDeps(options.port, controller.signal)),
+          (controller) => runHook(args, createHookDeps(options.bot, controller.signal)),
           ['SIGINT', 'SIGTERM'],
         )
       },
     )
-  addAdminCommands(program, (adminCode) => {
-    code = adminCode
-  })
+  program
+    .command('mcp')
+    .description('run an MCP server on stdin/stdout for agents')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
+      code = await runMcp({
+        version: VERSION,
+        endpoint: resolved.endpoint,
+        readToken: () => resolved.token,
+      })
+    })
+  program.commandsGroup('Check:')
+  program
+    .command('status')
+    .description('show the bot and its pairing state')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      code = await runStatusCommand(options.bot)
+    })
+  program
+    .command('ping')
+    .description('send a test message to check the service and pairing')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(async (options: { readonly bot?: string }) => {
+      const resolved = resolveBot(process.env, options.bot)
+      const progress = createStderrProgress()
+      const runLive = (controller: AbortController) =>
+        runPing({
+          endpoint: resolved.endpoint,
+          token: resolved.token,
+          progress,
+          providers: PROVIDERS,
+          signal: controller.signal,
+          print: createAnswerPrint(progress),
+          printError: (text) => console.error(text),
+        })
+      // Off a terminal there's no signal handler, as before: a signal ends the process.
+      code =
+        progress.mode === 'live'
+          ? await runWithSignals(runLive, LIVE_SIGNALS, LIVE_SIGNALS)
+          : await runLive(new AbortController())
+    })
+  program
+    .command('log')
+    .description('show the questions the service asked and how they ended')
+    .option(
+      '--since <when>',
+      'only newer questions: 12h, 7d, 2026-10-18 or an ISO date-time',
+      parseSinceOption,
+    )
+    .option('--project <name>', 'only questions from this project', parseProjectOption)
+    .option('-n, --limit <n>', 'show the last N (default 20, or all with --since)', parseLimit)
+    .option('--json', 'print one JSON entry per line')
+    .option(BOT_FLAGS, BOT_DESCRIPTION)
+    .action(
+      async (options: {
+        readonly since?: Date
+        readonly project?: string
+        readonly limit?: number
+        readonly json?: boolean
+        readonly bot?: string
+      }) => {
+        code = await runLogCommand(
+          {
+            ...(options.since === undefined ? {} : { since: options.since }),
+            ...(options.project === undefined ? {} : { project: options.project }),
+            ...(options.limit === undefined ? {} : { limit: options.limit }),
+            ...(options.json === undefined ? {} : { json: options.json }),
+          },
+          options.bot,
+        )
+      },
+    )
+  // For developers; docs/http-api.md points to it.
+  program
+    .command('openapi', { hidden: true })
+    .description('print the OpenAPI spec of the HTTP API, or write it to a file')
+    .argument('[file]', 'file to write; prints to stdout without one')
+    .option(
+      '--port <n>',
+      'API port on this machine, overrides JAYPOST_URL (default: JAYPOST_PORT, then the install, then 8787)',
+      parsePort,
+    )
+    .action((file: string | undefined, options: { readonly port?: number }) => {
+      code = runOpenApiCommand(file, options.port)
+    })
   // Runs inside containers to read or clear the owner in the data volume.
   program
     .command('owner', { hidden: true })
@@ -1137,7 +1346,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       code = runAudit(args)
     })
   try {
-    await program.parseAsync(argv.length === 0 ? ['--help'] : toCurrentArgv(argv), {
+    await program.parseAsync(argv.length === 0 ? ['--help'] : argv, {
       from: 'user',
     })
   } catch (error) {
@@ -1152,8 +1361,8 @@ export async function main(argv: readonly string[]): Promise<number> {
 
 if (import.meta.main) {
   const code = await main(process.argv.slice(2))
-  // `start` keeps the process alive via the server and bot; only exit for other commands.
-  if (process.argv[2] !== 'start') {
+  // `service run` keeps the process alive via the server and bot; only exit for other commands.
+  if (!(process.argv[2] === 'service' && process.argv[3] === 'run')) {
     process.exit(code)
   }
 }

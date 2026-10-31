@@ -1,29 +1,20 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vite-plus/test'
-import {
-  generateToken,
-  parseToken,
-  readTokenFile,
-  removeTokenFile,
-  resolveClientToken,
-  resolveTokenFile,
-  writeTokenFile,
-} from '../../src/auth/index.ts'
+import { generateToken, parseToken, readTokenFile, resolveEnvToken } from '../../src/auth/index.ts'
+import { resolveClientSecret } from '../../src/auth/token.ts'
+import type { ClientToken } from '../../src/auth/index.ts'
 
 const TOKEN = 'a'.repeat(43)
 const HAND_SET = 'Ab+/._~-'.repeat(5)
+const NAMES = { envVar: 'JAYPOST_TOKEN', fileName: 'token file', valueName: 'jaypost token' }
 let directory: string
 let file: string
+
+function resolveTokenSecret(env: NodeJS.ProcessEnv, path: string): ClientToken {
+  return resolveClientSecret(env, path, NAMES)
+}
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), 'jaypost-auth-'))
@@ -63,64 +54,39 @@ test('parseToken rejects short, long, padded, split and non-ascii values', () =>
   }
 })
 
-test('resolveTokenFile uses the install directory and ignores JAYPOST_CONFIG', () => {
-  expect(
-    resolveTokenFile({
-      XDG_CONFIG_HOME: '/x',
-      HOME: '/h',
-      JAYPOST_CONFIG: '/c/config.json',
-    }),
-  ).toBe('/x/jaypost/token')
-  expect(resolveTokenFile({ HOME: '/h' })).toBe('/h/.config/jaypost/token')
-})
-
-test('writeTokenFile writes 0600 with a trailing newline through a new inode', () => {
-  writeFileSync(file, 'old', { mode: 0o644 })
-  const before = statSync(file).ino
-  writeTokenFile(file, TOKEN)
-  const after = statSync(file)
-  expect(readFileSync(file, 'utf8')).toBe(`${TOKEN}\n`)
-  expect(after.mode & 0o777).toBe(0o600)
-  expect(after.ino).not.toBe(before)
-  expect(readdirSync(directory)).toEqual(['token'])
-})
-
-test('readTokenFile returns undefined for a missing file and removeTokenFile tolerates one', () => {
+test('readTokenFile returns undefined for a missing file and the raw text otherwise', () => {
   expect(readTokenFile(file)).toBeUndefined()
-  removeTokenFile(file)
-  writeTokenFile(file, TOKEN)
+  writeFileSync(file, `${TOKEN}\n`)
   expect(readTokenFile(file)).toBe(`${TOKEN}\n`)
-  removeTokenFile(file)
-  expect(readdirSync(directory)).toEqual([])
 })
 
-test('resolveClientToken prefers the env, then the file, then none', () => {
-  writeTokenFile(file, TOKEN)
-  expect(resolveClientToken({ JAYPOST_TOKEN: HAND_SET }, file)).toEqual({
+test('resolveClientSecret prefers the env, then the file, then none', () => {
+  writeFileSync(file, `${TOKEN}\n`)
+  expect(resolveTokenSecret({ JAYPOST_TOKEN: HAND_SET }, file)).toEqual({
     kind: 'token',
     token: HAND_SET,
     source: 'env',
   })
-  expect(resolveClientToken({ JAYPOST_TOKEN: '' }, file)).toEqual({
+  expect(resolveTokenSecret({ JAYPOST_TOKEN: '' }, file)).toEqual({
     kind: 'token',
     token: TOKEN,
     source: 'file',
   })
-  expect(resolveClientToken({}, join(directory, 'none'))).toEqual({ kind: 'none' })
+  expect(resolveTokenSecret({}, join(directory, 'none'))).toEqual({ kind: 'none' })
 })
 
 test('a token file with CRLF and spaces is read trimmed', () => {
   writeFileSync(file, `  ${TOKEN}  \r\n`)
-  expect(resolveClientToken({}, file)).toEqual({ kind: 'token', token: TOKEN, source: 'file' })
+  expect(resolveTokenSecret({}, file)).toEqual({ kind: 'token', token: TOKEN, source: 'file' })
 })
 
 test('an invalid env or file token is unusable and the message never quotes it', () => {
-  expect(resolveClientToken({ JAYPOST_TOKEN: 'short-secret' }, file)).toEqual({
+  expect(resolveTokenSecret({ JAYPOST_TOKEN: 'short-secret' }, file)).toEqual({
     kind: 'unusable',
     message: "JAYPOST_TOKEN isn't a valid jaypost token",
   })
   writeFileSync(file, `${TOKEN}=\n`)
-  const result = resolveClientToken({}, file)
+  const result = resolveTokenSecret({}, file)
   expect(result).toEqual({
     kind: 'unusable',
     message: `token file ${JSON.stringify(file)} isn't a valid jaypost token`,
@@ -130,7 +96,7 @@ test('an invalid env or file token is unusable and the message never quotes it',
 
 test('an unreadable token file is unusable', () => {
   mkdirSync(file)
-  const result = resolveClientToken({}, file)
+  const result = resolveTokenSecret({}, file)
   expect(result.kind).toBe('unusable')
   if (result.kind !== 'unusable') {
     return
@@ -138,4 +104,16 @@ test('an unreadable token file is unusable', () => {
   expect(result.message.startsWith(`token file ${JSON.stringify(file)} couldn't be read: `)).toBe(
     true,
   )
+})
+
+test('resolveEnvToken reads only JAYPOST_TOKEN and reports a bad one without quoting it', () => {
+  expect(resolveEnvToken({})).toEqual({ kind: 'none' })
+  expect(resolveEnvToken({ JAYPOST_TOKEN: TOKEN })).toEqual({
+    kind: 'token',
+    token: TOKEN,
+    source: 'env',
+  })
+  const bad = resolveEnvToken({ JAYPOST_TOKEN: 'secret value!' })
+  expect(bad).toEqual({ kind: 'unusable', message: "JAYPOST_TOKEN isn't a valid jaypost token" })
+  expect(JSON.stringify(bad)).not.toContain('secret value!')
 })

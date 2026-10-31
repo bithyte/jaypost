@@ -3,7 +3,7 @@ import type { z } from 'zod'
 import {
   addBotBodySchema,
   createKeyBodySchema,
-  createPairingBodySchema,
+  createContactBodySchema,
   updateKeyBodySchema,
 } from '@jaypost/protocol'
 import { UNAUTHORIZED_ERROR } from '@jaypost/store'
@@ -102,24 +102,24 @@ export function registerAdminRoutes(app: FastifyInstance, admin: AdminApi): void
       scope.delete<WithId>('/bots/:id', async (request, reply) =>
         send(reply, await admin.removeBot(request.params.id), 200),
       )
-      scope.get<WithQuery>('/pairings', async (request, reply) => {
+      scope.get<WithQuery>('/contacts', async (request, reply) => {
         const query = parseIdFilters(request.query, ['bot'])
         if (!query.ok) {
           return reply.code(400).send({ error: query.error })
         }
-        return send(reply, admin.listPairings(query.value), 200)
+        return send(reply, admin.listContacts(query.value), 200)
       })
-      scope.post<WithBody>('/pairings', async (request, reply) =>
-        withBody(request, reply, createPairingBodySchema, (body) => admin.createPairing(body), 201),
+      scope.post<WithBody>('/contacts', async (request, reply) =>
+        withBody(request, reply, createContactBodySchema, (body) => admin.createContact(body), 201),
       )
-      scope.post<WithId>('/pairings/:id/reset', async (request, reply) =>
-        send(reply, admin.resetPairing(request.params.id), 200),
+      scope.post<WithId>('/contacts/:id/reset', async (request, reply) =>
+        send(reply, admin.resetContact(request.params.id), 200),
       )
-      scope.delete<WithId>('/pairings/:id', async (request, reply) =>
-        send(reply, admin.removePairing(request.params.id), 200),
+      scope.delete<WithId>('/contacts/:id', async (request, reply) =>
+        send(reply, admin.removeContact(request.params.id), 200),
       )
       scope.get<WithQuery>('/keys', async (request, reply) => {
-        const query = parseIdFilters(request.query, ['bot', 'pairing'])
+        const query = parseIdFilters(request.query, ['bot', 'contact'])
         if (!query.ok) {
           return reply.code(400).send({ error: query.error })
         }

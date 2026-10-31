@@ -348,7 +348,7 @@ test.each([
     404,
     '{"error":"not found"}',
     'tooOld',
-    'jaypost service is too old for notifications (run jaypost init to upgrade)',
+    'jaypost service is too old for notifications (run jaypost service install to upgrade)',
   ],
   [501, '{"error":"x"}', 'notSupported', 'notifications not supported by this provider'],
   [501, '{"error":"attachments not supported"}', 'notSupported', ATTACHMENT_NOT_SUPPORTED_MESSAGE],

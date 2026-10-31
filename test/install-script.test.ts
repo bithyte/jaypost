@@ -72,7 +72,7 @@ function createHome(system: string, machine: string): { home: string; path: stri
   return { home, path: `${fakeBin}:${process.env.PATH ?? ''}` }
 }
 
-// detached starts a new session, so the script has no /dev/tty and skips init
+// detached starts a new session, so the script has no /dev/tty and skips the install
 function runScript(
   home: string,
   path: string,
@@ -106,7 +106,7 @@ test('installs the binary for the platform into ~/.local/bin', async () => {
   expect(readFileSync(binary, 'utf8')).toBe(BINARY)
   expect(statSync(binary).mode & 0o111).not.toBe(0)
   expect(readdirSync(join(home, '.local', 'bin'))).toEqual(['jaypost'])
-  expect(result.stdout).toContain(`run ${binary} init`)
+  expect(result.stdout).toContain(`run ${binary} service install`)
 })
 
 test('picks the arm64 binary on aarch64', async () => {
@@ -161,7 +161,7 @@ test('points to npx on an unsupported os', async () => {
   const result = await runScript(home, path, 'http://127.0.0.1:9')
   expect(result.status).toBe(1)
   expect(result.stderr).toBe(
-    'jaypost install: no binary for MINGW64_NT-10.0; use npx jaypost init instead (needs Node 24.15+)\n',
+    'jaypost install: no binary for MINGW64_NT-10.0; use npx jaypost service install instead (needs Node 24.15+)\n',
   )
 })
 
@@ -169,7 +169,7 @@ test('points to npx on an unsupported architecture', async () => {
   const { home, path } = createHome('Linux', 'riscv64')
   const result = await runScript(home, path, 'http://127.0.0.1:9')
   expect(result.status).toBe(1)
-  expect(result.stderr).toContain('no binary for riscv64; use npx jaypost init')
+  expect(result.stderr).toContain('no binary for riscv64; use npx jaypost service install')
 })
 
 test('installs into JAYPOST_INSTALL_DIR when set', async () => {
@@ -187,5 +187,5 @@ test('stops after installing when JAYPOST_NO_INIT is 1', async () => {
   const { home, path } = createHome('Linux', 'x86_64')
   const result = await runScript(home, path, releaseUrl, { JAYPOST_NO_INIT: '1' })
   expect(result.status, result.stderr).toBe(0)
-  expect(result.stdout).not.toContain('init')
+  expect(result.stdout).not.toContain('service install')
 })

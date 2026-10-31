@@ -9,7 +9,7 @@ export function findProvider(providers: readonly Provider[], name: string): Prov
 export function requireProvider(providers: readonly Provider[], name: string): Provider {
   const provider = findProvider(providers, name)
   if (provider === undefined) {
-    throw new Error(`unknown provider ${JSON.stringify(name)}; run \`jaypost init\``)
+    throw new Error(`unknown provider ${JSON.stringify(name)}; run \`jaypost service install\``)
   }
   return provider
 }

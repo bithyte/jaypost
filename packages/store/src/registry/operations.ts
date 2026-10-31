@@ -6,7 +6,7 @@ import {
   LOCAL_PERSON,
   NO_CODES,
   NOT_PENDING,
-  PAIRING_ID_PREFIX,
+  CONTACT_ID_PREFIX,
   REGISTRY_VERSION,
   WRONG_CODE,
 } from './constants.ts'
@@ -16,18 +16,18 @@ import type {
   BotInput,
   BotRecord,
   ClaimCodeResult,
-  ClaimPairingResult,
+  ClaimContactResult,
   CreateKeyResult,
-  CreatePairingResult,
+  CreateContactResult,
   KeyDetails,
   KeyPatch,
   KeyRecord,
   KeyTarget,
   NotFound,
-  PairingRecord,
+  ContactRecord,
   Registry,
   RemoveResult,
-  ResetPairingResult,
+  ResetContactResult,
   RevokeKeyResult,
   SeedInput,
   SeedRecord,
@@ -56,10 +56,10 @@ function resolvePatchedValue(
   return patch === null ? undefined : patch
 }
 
-function replacePairing(registry: Registry, pairing: PairingRecord): Registry {
+function replaceContact(registry: Registry, contact: ContactRecord): Registry {
   return {
     ...registry,
-    pairings: registry.pairings.map((other) => (other.id === pairing.id ? pairing : other)),
+    contacts: registry.contacts.map((other) => (other.id === contact.id ? contact : other)),
   }
 }
 
@@ -76,17 +76,17 @@ function insertBot(registry: Registry, fields: Omit<BotRecord, 'id'>): Added<Bot
   }
 }
 
-function insertPairing(
+function insertContact(
   registry: Registry,
-  fields: Omit<PairingRecord, 'id'>,
-): Added<PairingRecord> {
-  const number = registry.lastIds.pairing + 1
-  const record = { id: `${PAIRING_ID_PREFIX}${number}`, ...fields }
+  fields: Omit<ContactRecord, 'id'>,
+): Added<ContactRecord> {
+  const number = registry.lastIds.contact + 1
+  const record = { id: `${CONTACT_ID_PREFIX}${number}`, ...fields }
   return {
     registry: {
       ...registry,
-      lastIds: { ...registry.lastIds, pairing: number },
-      pairings: [...registry.pairings, record],
+      lastIds: { ...registry.lastIds, contact: number },
+      contacts: [...registry.contacts, record],
     },
     record,
   }
@@ -105,83 +105,83 @@ function insertKey(registry: Registry, fields: Omit<KeyRecord, 'id'>): Added<Key
   }
 }
 
-/** A pending pairing with `code`, or without `pairs` the bot's one local pairing. */
-function addPairing(
+/** A pending contact with `code`, or without `pairs` the bot's one local contact. */
+function addContact(
   registry: Registry,
   botId: string,
   code: string,
   pairs: boolean,
   at: Date,
-): Added<PairingRecord> {
+): Added<ContactRecord> {
   if (!pairs) {
-    const local = registry.pairings.find(
-      (pairing) => pairing.botId === botId && pairing.person === LOCAL_PERSON,
+    const local = registry.contacts.find(
+      (contact) => contact.botId === botId && contact.person === LOCAL_PERSON,
     )
     if (local !== undefined) {
       return { registry, record: local }
     }
   }
-  return insertPairing(registry, {
+  return insertContact(registry, {
     botId,
     ...(pairs ? { code } : { person: LOCAL_PERSON }),
     createdAt: at.toISOString(),
   })
 }
 
-/** Moves every key of the `fromIds` pairings to `into` and deletes those pairings. */
-function mergePairings(
+/** Moves every key of the `fromIds` contacts to `into` and deletes those contacts. */
+function mergeContacts(
   registry: Registry,
   fromIds: readonly string[],
-  into: PairingRecord,
+  into: ContactRecord,
 ): Registry {
   const seed = registry.seed
   return {
     ...registry,
-    pairings: registry.pairings.filter((pairing) => !fromIds.includes(pairing.id)),
+    contacts: registry.contacts.filter((contact) => !fromIds.includes(contact.id)),
     keys: registry.keys.map((key) =>
-      fromIds.includes(key.pairingId) ? { ...key, pairingId: into.id } : key,
+      fromIds.includes(key.contactId) ? { ...key, contactId: into.id } : key,
     ),
     ...(seed === undefined
       ? {}
-      : { seed: fromIds.includes(seed.pairingId) ? { ...seed, pairingId: into.id } : seed }),
+      : { seed: fromIds.includes(seed.contactId) ? { ...seed, contactId: into.id } : seed }),
   }
 }
 
 function claim(
   registry: Registry,
-  pairing: PairingRecord,
+  contact: ContactRecord,
   person: string,
-): Exclude<ClaimPairingResult, typeof NOT_PENDING> {
-  const existing = registry.pairings.find(
-    (other) => other.id !== pairing.id && other.botId === pairing.botId && other.person === person,
+): Exclude<ClaimContactResult, typeof NOT_PENDING> {
+  const existing = registry.contacts.find(
+    (other) => other.id !== contact.id && other.botId === contact.botId && other.person === person,
   )
   if (existing !== undefined) {
     return {
       kind: 'merged',
-      registry: mergePairings(registry, [pairing.id], existing),
-      pairing: existing,
+      registry: mergeContacts(registry, [contact.id], existing),
+      contact: existing,
     }
   }
-  const { code: _code, ...rest } = pairing
+  const { code: _code, ...rest } = contact
   const claimed = { ...rest, person }
-  return { kind: 'claimed', registry: replacePairing(registry, claimed), pairing: claimed }
+  return { kind: 'claimed', registry: replaceContact(registry, claimed), contact: claimed }
 }
 
-function toPending(pairing: PairingRecord, code: string): PairingRecord {
-  const { person: _person, code: _code, ...rest } = pairing
+function toPending(contact: ContactRecord, code: string): ContactRecord {
+  const { person: _person, code: _code, ...rest } = contact
   return { ...rest, code }
 }
 
-function insertSeedPairing(
+function insertSeedContact(
   registry: Registry,
   botId: string,
   seed: SeedInput,
   pairs: boolean,
   generateCode: () => string,
   at: Date,
-): Added<PairingRecord> {
+): Added<ContactRecord> {
   const person = pairs ? seed.owner : LOCAL_PERSON
-  return insertPairing(registry, {
+  return insertContact(registry, {
     botId,
     ...(person === undefined ? { code: generateCode() } : { person }),
     ...(seed.quietHours === undefined ? {} : { quietHours: seed.quietHours }),
@@ -192,12 +192,12 @@ function insertSeedPairing(
 
 function insertSeedKey(
   registry: Registry,
-  pairingId: string,
+  contactId: string,
   seed: SeedInput,
   at: Date,
 ): Added<KeyRecord> {
   return insertKey(registry, {
-    pairingId,
+    contactId,
     ...(seed.tokenHash === undefined ? {} : { hash: seed.tokenHash }),
     createdAt: at.toISOString(),
   })
@@ -206,13 +206,13 @@ function insertSeedKey(
 function toSeedRecord(
   seed: SeedInput,
   botId: string,
-  pairingId: string,
+  contactId: string,
   keyId: string,
 ): SeedRecord {
   return {
     fingerprint: seed.fingerprint,
     botId,
-    pairingId,
+    contactId,
     keyId,
     isOpen: seed.tokenHash === undefined,
   }
@@ -230,15 +230,15 @@ function createSeed(
     settings: seed.settings,
     createdAt: at.toISOString(),
   })
-  const pairing = insertSeedPairing(bot.registry, bot.record.id, seed, pairs, generateCode, at)
-  const key = insertSeedKey(pairing.registry, pairing.record.id, seed, at)
+  const contact = insertSeedContact(bot.registry, bot.record.id, seed, pairs, generateCode, at)
+  const key = insertSeedKey(contact.registry, contact.record.id, seed, at)
   return {
     ...key.registry,
-    seed: toSeedRecord(seed, bot.record.id, pairing.record.id, key.record.id),
+    seed: toSeedRecord(seed, bot.record.id, contact.record.id, key.record.id),
   }
 }
 
-/** Updates the seed bot in place, or re-creates it; a new provider resets its pairings. */
+/** Updates the seed bot in place, or re-creates it; a new provider resets its contacts. */
 function updateSeedBot(
   registry: Registry,
   botId: string,
@@ -266,8 +266,8 @@ function updateSeedBot(
   return {
     registry: {
       ...updated,
-      pairings: updated.pairings.map((pairing) =>
-        pairing.botId === botId ? toPending(pairing, generateCode()) : pairing,
+      contacts: updated.contacts.map((contact) =>
+        contact.botId === botId ? toPending(contact, generateCode()) : contact,
       ),
     },
     record: bot,
@@ -275,51 +275,51 @@ function updateSeedBot(
 }
 
 /**
- * The seed pairing on `botId`; when it is gone, the bot's pairing for the seed person (the owner,
- * or `LOCAL_PERSON` without `pairs`), so there is still one pairing per bot and person.
+ * The seed contact on `botId`; when it is gone, the bot's contact for the seed person (the owner,
+ * or `LOCAL_PERSON` without `pairs`), so there is still one contact per bot and person.
  */
-function findSeedPairing(
+function findSeedContact(
   registry: Registry,
-  pairingId: string,
+  contactId: string,
   botId: string,
   person: string | undefined,
-): PairingRecord | undefined {
-  const seedPairing = registry.pairings.find(
-    (pairing) => pairing.id === pairingId && pairing.botId === botId,
+): ContactRecord | undefined {
+  const seedContact = registry.contacts.find(
+    (contact) => contact.id === contactId && contact.botId === botId,
   )
-  if (seedPairing !== undefined || person === undefined) {
-    return seedPairing
+  if (seedContact !== undefined || person === undefined) {
+    return seedContact
   }
-  return registry.pairings.find((pairing) => pairing.botId === botId && pairing.person === person)
+  return registry.contacts.find((contact) => contact.botId === botId && contact.person === person)
 }
 
-/** A bot that doesn't pair has one local pairing, so every other one folds into `pairing`. */
-function foldIntoLocal(registry: Registry, pairing: PairingRecord): Added<PairingRecord> {
-  const { code: _code, ...rest } = pairing
+/** A bot that doesn't pair has one local contact, so every other one folds into `contact`. */
+function foldIntoLocal(registry: Registry, contact: ContactRecord): Added<ContactRecord> {
+  const { code: _code, ...rest } = contact
   const local = { ...rest, person: LOCAL_PERSON }
-  const otherIds = registry.pairings
-    .filter((other) => other.botId === pairing.botId && other.id !== pairing.id)
+  const otherIds = registry.contacts
+    .filter((other) => other.botId === contact.botId && other.id !== contact.id)
     .map((other) => other.id)
   return {
-    registry: mergePairings(replacePairing(registry, local), otherIds, local),
+    registry: mergeContacts(replaceContact(registry, local), otherIds, local),
     record: local,
   }
 }
 
-/** The seed pairing on `botId`, re-created if gone, claimed by the owner when it has no person. */
-function updateSeedPairing(
+/** The seed contact on `botId`, re-created if gone, claimed by the owner when it has no person. */
+function updateSeedContact(
   registry: Registry,
-  pairingId: string,
+  contactId: string,
   botId: string,
   seed: SeedInput,
   pairs: boolean,
   generateCode: () => string,
   at: Date,
-): Added<PairingRecord> {
-  const found = findSeedPairing(registry, pairingId, botId, pairs ? seed.owner : LOCAL_PERSON)
+): Added<ContactRecord> {
+  const found = findSeedContact(registry, contactId, botId, pairs ? seed.owner : LOCAL_PERSON)
   const resolved =
     found === undefined
-      ? insertSeedPairing(registry, botId, seed, pairs, generateCode, at)
+      ? insertSeedContact(registry, botId, seed, pairs, generateCode, at)
       : { registry, record: found }
   if (!pairs) {
     return foldIntoLocal(resolved.registry, resolved.record)
@@ -328,19 +328,19 @@ function updateSeedPairing(
     return resolved
   }
   const claimed = claim(resolved.registry, resolved.record, seed.owner)
-  return { registry: claimed.registry, record: claimed.pairing }
+  return { registry: claimed.registry, record: claimed.contact }
 }
 
 function updateSeedKey(
   registry: Registry,
   keyId: string,
-  pairingId: string,
+  contactId: string,
   seed: SeedInput,
   at: Date,
 ): Added<KeyRecord> {
   const existing = registry.keys.find((key) => key.id === keyId)
   if (existing === undefined) {
-    return insertSeedKey(registry, pairingId, seed, at)
+    return insertSeedKey(registry, contactId, seed, at)
   }
   const { hash: _hash, ...rest } = existing
   const key = { ...rest, ...(seed.tokenHash === undefined ? {} : { hash: seed.tokenHash }) }
@@ -362,19 +362,19 @@ function updateSeed(
   at: Date,
 ): Registry {
   const bot = updateSeedBot(registry, record.botId, seed, pairs, generateCode, at)
-  const pairing = updateSeedPairing(
+  const contact = updateSeedContact(
     bot.registry,
-    record.pairingId,
+    record.contactId,
     bot.record.id,
     seed,
     pairs,
     generateCode,
     at,
   )
-  const key = updateSeedKey(pairing.registry, record.keyId, pairing.record.id, seed, at)
+  const key = updateSeedKey(contact.registry, record.keyId, contact.record.id, seed, at)
   return {
     ...key.registry,
-    seed: toSeedRecord(seed, bot.record.id, pairing.record.id, key.record.id),
+    seed: toSeedRecord(seed, bot.record.id, contact.record.id, key.record.id),
   }
 }
 
@@ -393,9 +393,9 @@ export function withoutOwner(input: BotInput): SettingValues {
 export function createEmptyRegistry(): Registry {
   return {
     version: REGISTRY_VERSION,
-    lastIds: { bot: 0, pairing: 0, key: 0 },
+    lastIds: { bot: 0, contact: 0, key: 0 },
     bots: [],
-    pairings: [],
+    contacts: [],
     keys: [],
   }
 }
@@ -423,23 +423,23 @@ export function addBot(registry: Registry, input: BotInput, at: Date): AddBotRes
   return { kind: 'added', registry: added.registry, bot: added.record }
 }
 
-/** Removes a bot with its pairings and their keys. Never throws. */
+/** Removes a bot with its contacts and their keys. Never throws. */
 export function removeBot(registry: Registry, botId: string): RemoveResult {
   if (!registry.bots.some((bot) => bot.id === botId)) {
     return notFound('bot', botId)
   }
-  const pairingIds = registry.pairings
-    .filter((pairing) => pairing.botId === botId)
-    .map((pairing) => pairing.id)
+  const contactIds = registry.contacts
+    .filter((contact) => contact.botId === botId)
+    .map((contact) => contact.id)
   const keyIds = registry.keys
-    .filter((key) => pairingIds.includes(key.pairingId))
+    .filter((key) => contactIds.includes(key.contactId))
     .map((key) => key.id)
   return {
     kind: 'removed',
     registry: {
       ...registry,
       bots: registry.bots.filter((bot) => bot.id !== botId),
-      pairings: registry.pairings.filter((pairing) => pairing.botId !== botId),
+      contacts: registry.contacts.filter((contact) => contact.botId !== botId),
       keys: registry.keys.filter((key) => !keyIds.includes(key.id)),
     },
     keyIds,
@@ -447,26 +447,26 @@ export function removeBot(registry: Registry, botId: string): RemoveResult {
 }
 
 /**
- * A pending pairing waiting for `code`. Without `pairs` (the provider has no owner setting) it is
- * the bot's one local pairing instead, created claimed if missing. Never throws.
+ * A pending contact waiting for `code`. Without `pairs` (the provider has no owner setting) it is
+ * the bot's one local contact instead, created claimed if missing. Never throws.
  */
-export function createPairing(
+export function createContact(
   registry: Registry,
   botId: string,
   code: string,
   pairs: boolean,
   at: Date,
-): CreatePairingResult {
+): CreateContactResult {
   if (!registry.bots.some((bot) => bot.id === botId)) {
     return notFound('bot', botId)
   }
-  const added = addPairing(registry, botId, code, pairs, at)
-  return { kind: 'created', registry: added.registry, pairing: added.record }
+  const added = addContact(registry, botId, code, pairs, at)
+  return { kind: 'created', registry: added.registry, contact: added.record }
 }
 
 /**
- * A key on `target`'s pairing; a `newPairing` target creates one as `createPairing` does. `code`
- * is used only for a new pending pairing. Never throws.
+ * A key on `target`'s contact; a `newContact` target creates one as `createContact` does. `code`
+ * is used only for a new pending contact. Never throws.
  */
 export function createKey(
   registry: Registry,
@@ -482,13 +482,13 @@ export function createKey(
     return resolved
   }
   const added = insertKey(resolved.registry, {
-    pairingId: resolved.record.id,
+    contactId: resolved.record.id,
     hash,
     ...(details.label === undefined ? {} : { label: details.label }),
     ...(details.externalId === undefined ? {} : { externalId: details.externalId }),
     createdAt: at.toISOString(),
   })
-  return { kind: 'created', registry: added.registry, key: added.record, pairing: resolved.record }
+  return { kind: 'created', registry: added.registry, key: added.record, contact: resolved.record }
 }
 
 function resolveKeyTarget(
@@ -497,55 +497,55 @@ function resolveKeyTarget(
   code: string,
   pairs: boolean,
   at: Date,
-): Added<PairingRecord> | NotFound {
+): Added<ContactRecord> | NotFound {
   switch (target.kind) {
-    case 'newPairing': {
+    case 'newContact': {
       if (!registry.bots.some((bot) => bot.id === target.botId)) {
         return notFound('bot', target.botId)
       }
-      return addPairing(registry, target.botId, code, pairs, at)
+      return addContact(registry, target.botId, code, pairs, at)
     }
-    case 'pairing': {
-      const pairing = registry.pairings.find((other) => other.id === target.pairingId)
-      return pairing === undefined
-        ? notFound('pairing', target.pairingId)
-        : { registry, record: pairing }
+    case 'contact': {
+      const contact = registry.contacts.find((other) => other.id === target.contactId)
+      return contact === undefined
+        ? notFound('contact', target.contactId)
+        : { registry, record: contact }
     }
     case 'sameAsKey': {
       const key = registry.keys.find((other) => other.id === target.keyId)
       if (key === undefined) {
         return notFound('key', target.keyId)
       }
-      const pairing = registry.pairings.find((other) => other.id === key.pairingId)
-      return pairing === undefined
-        ? notFound('pairing', key.pairingId)
-        : { registry, record: pairing }
+      const contact = registry.contacts.find((other) => other.id === key.contactId)
+      return contact === undefined
+        ? notFound('contact', key.contactId)
+        : { registry, record: contact }
     }
   }
 }
 
 /**
- * `person` redeemed the code of a pending pairing on `botId`. One pairing per bot and person: when
- * another pairing on the bot has them, this one's keys move there and it is deleted (`merged`). A
- * pairing that isn't pending on `botId` (a late code from a replaced runtime) is `notPending`, so
+ * `person` redeemed the code of a pending contact on `botId`. One contact per bot and person: when
+ * another contact on the bot has them, this one's keys move there and it is deleted (`merged`). A
+ * contact that isn't pending on `botId` (a late code from a replaced runtime) is `notPending`, so
  * a person already set is never replaced. Never throws.
  */
-export function claimPairing(
+export function claimContact(
   registry: Registry,
   botId: string,
-  pairingId: string,
+  contactId: string,
   person: string,
-): ClaimPairingResult {
-  const pairing = registry.pairings.find((other) => other.id === pairingId)
-  if (pairing === undefined || pairing.botId !== botId || !isPending(pairing)) {
+): ClaimContactResult {
+  const contact = registry.contacts.find((other) => other.id === contactId)
+  if (contact === undefined || contact.botId !== botId || !isPending(contact)) {
     return NOT_PENDING
   }
-  return claim(registry, pairing, person)
+  return claim(registry, contact, person)
 }
 
 /**
- * `person` sent `text` to `botId`: claims the bot's pending pairing whose code it is (case, dashes
- * and whitespace ignored), merging like `claimPairing`. A code already claimed, reset or removed is
+ * `person` sent `text` to `botId`: claims the bot's pending contact whose code it is (case, dashes
+ * and whitespace ignored), merging like `claimContact`. A code already claimed, reset or removed is
  * `wrong`. Never throws.
  */
 export function claimCode(
@@ -554,37 +554,37 @@ export function claimCode(
   text: string,
   person: string,
 ): ClaimCodeResult {
-  const pending = registry.pairings.filter((pairing) => pairing.botId === botId).filter(isPending)
+  const pending = registry.contacts.filter((contact) => contact.botId === botId).filter(isPending)
   if (pending.length === 0) {
     return NO_CODES
   }
   const typed = normalizeCode(text)
-  const pairing = pending.find((other) => normalizeCode(other.code) === typed)
-  return pairing === undefined ? WRONG_CODE : claim(registry, pairing, person)
+  const contact = pending.find((other) => normalizeCode(other.code) === typed)
+  return contact === undefined ? WRONG_CODE : claim(registry, contact, person)
 }
 
 /**
- * Drops the pairing's person and makes it wait for `code`; keys and quiet settings stay. `pairs`
- * says whether the pairing's bot pairs; without it the reset is `notPairing`. Never throws.
+ * Drops the contact's person and makes it wait for `code`; keys and quiet settings stay. `pairs`
+ * says whether the contact's bot pairs; without it the reset is `notPairing`. Never throws.
  */
-export function resetPairing(
+export function resetContact(
   registry: Registry,
-  pairingId: string,
+  contactId: string,
   code: string,
   pairs: boolean,
-): ResetPairingResult {
-  const pairing = registry.pairings.find((other) => other.id === pairingId)
-  if (pairing === undefined) {
-    return notFound('pairing', pairingId)
+): ResetContactResult {
+  const contact = registry.contacts.find((other) => other.id === contactId)
+  if (contact === undefined) {
+    return notFound('contact', contactId)
   }
   if (!pairs) {
-    return { kind: 'notPairing', botId: pairing.botId }
+    return { kind: 'notPairing', botId: contact.botId }
   }
-  const pending = toPending(pairing, code)
-  return { kind: 'reset', registry: replacePairing(registry, pending), pairing: pending }
+  const pending = toPending(contact, code)
+  return { kind: 'reset', registry: replaceContact(registry, pending), contact: pending }
 }
 
-/** Removes one key; its pairing stays. Never throws. */
+/** Removes one key; its contact stays. Never throws. */
 export function revokeKey(registry: Registry, keyId: string): RevokeKeyResult {
   if (!registry.keys.some((key) => key.id === keyId)) {
     return notFound('key', keyId)
@@ -595,18 +595,18 @@ export function revokeKey(registry: Registry, keyId: string): RevokeKeyResult {
   }
 }
 
-/** Removes a pairing and its keys. Never throws. */
-export function removePairing(registry: Registry, pairingId: string): RemoveResult {
-  if (!registry.pairings.some((pairing) => pairing.id === pairingId)) {
-    return notFound('pairing', pairingId)
+/** Removes a contact and its keys. Never throws. */
+export function removeContact(registry: Registry, contactId: string): RemoveResult {
+  if (!registry.contacts.some((contact) => contact.id === contactId)) {
+    return notFound('contact', contactId)
   }
-  const keyIds = registry.keys.filter((key) => key.pairingId === pairingId).map((key) => key.id)
+  const keyIds = registry.keys.filter((key) => key.contactId === contactId).map((key) => key.id)
   return {
     kind: 'removed',
     registry: {
       ...registry,
-      pairings: registry.pairings.filter((pairing) => pairing.id !== pairingId),
-      keys: registry.keys.filter((key) => key.pairingId !== pairingId),
+      contacts: registry.contacts.filter((contact) => contact.id !== contactId),
+      keys: registry.keys.filter((key) => key.contactId !== contactId),
     },
     keyIds,
   }
@@ -636,20 +636,20 @@ export function updateKey(registry: Registry, keyId: string, patch: KeyPatch): U
   }
 }
 
-/** Applies a quiet patch to one pairing; an unknown pairing returns `registry` as is. */
-export function updatePairingQuiet(
+/** Applies a quiet patch to one contact; an unknown contact returns `registry` as is. */
+export function updateContactQuiet(
   registry: Registry,
-  pairingId: string,
+  contactId: string,
   patch: QuietPatch,
 ): Registry {
-  const existing = registry.pairings.find((pairing) => pairing.id === pairingId)
+  const existing = registry.contacts.find((contact) => contact.id === contactId)
   if (existing === undefined) {
     return registry
   }
   const { quietHours: currentQuietHours, mutedUntil: currentMutedUntil, ...rest } = existing
   const quietHours = resolvePatchedValue(currentQuietHours, patch.quietHours)
   const mutedUntil = resolvePatchedValue(currentMutedUntil, patch.mutedUntil)
-  return replacePairing(registry, {
+  return replaceContact(registry, {
     ...rest,
     ...(quietHours === undefined ? {} : { quietHours }),
     ...(mutedUntil === undefined ? {} : { mutedUntil }),
@@ -657,7 +657,7 @@ export function updatePairingQuiet(
 }
 
 /**
- * Seeds bot 1, pairing 1 and key 1 from init or the env. A registry without a seed record gets
+ * Seeds bot 1, contact 1 and key 1 from init or the env. A registry without a seed record gets
  * them created (`isNew`, which means the seed record was created, not that the registry was empty
  * or that anything changed); an unchanged fingerprint returns `registry` as is, so admin changes survive a
  * restart; a new fingerprint updates the seed records in place, re-creating any that were

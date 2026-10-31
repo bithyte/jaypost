@@ -1,20 +1,22 @@
 import type { DatabaseSync, SQLInputValue, SQLOutputValue } from 'node:sqlite'
 import { isDeepStrictEqual } from 'node:util'
 import { findDatabasePath } from '../database/index.ts'
-import { parseToken, readTokenFile, resolveClientSecret, writeTokenFile } from '../auth/token.ts'
+import { parseToken, readTokenFile, resolveClientSecret } from '../auth/token.ts'
+import { SECRET_FILE_MODE } from '../config/constants.ts'
+import { writeFileAtomic } from '../system/files.ts'
 import type { ClientToken } from '../auth/types.ts'
 import { ADMIN_KEY_ENV_VAR, REGISTRY_VERSION } from './constants.ts'
 import { generateAdminKey } from './keys.ts'
 import { registrySchema } from './schema.ts'
-import type { BotRecord, KeyRecord, PairingRecord, Registry, SeedRecord } from './types.ts'
+import type { BotRecord, KeyRecord, ContactRecord, Registry, SeedRecord } from './types.ts'
 
 type Row = Record<string, SQLOutputValue>
 
 type Identified = { readonly id: string }
 
-const TABLE_NAMES = ['bots', 'pairings', 'keys'] as const
+const TABLE_NAMES = ['bots', 'contacts', 'keys'] as const
 
-const COUNTER_NAMES = ['bot', 'pairing', 'key'] as const
+const COUNTER_NAMES = ['bot', 'contact', 'key'] as const
 
 const UPSERT_BOT_SQL = `
 INSERT INTO bots (id, provider, settings, label, created_at)
@@ -22,17 +24,17 @@ VALUES (:id, :provider, :settings, :label, :createdAt)
 ON CONFLICT (id) DO UPDATE SET provider = excluded.provider, settings = excluded.settings,
   label = excluded.label, created_at = excluded.created_at`
 
-const UPSERT_PAIRING_SQL = `
-INSERT INTO pairings (id, bot_id, person, code, quiet_hours, muted_until, created_at)
+const UPSERT_CONTACT_SQL = `
+INSERT INTO contacts (id, bot_id, person, code, quiet_hours, muted_until, created_at)
 VALUES (:id, :botId, :person, :code, :quietHours, :mutedUntil, :createdAt)
 ON CONFLICT (id) DO UPDATE SET bot_id = excluded.bot_id, person = excluded.person,
   code = excluded.code, quiet_hours = excluded.quiet_hours, muted_until = excluded.muted_until,
   created_at = excluded.created_at`
 
 const UPSERT_KEY_SQL = `
-INSERT INTO keys (id, pairing_id, hash, label, external_id, created_at)
-VALUES (:id, :pairingId, :hash, :label, :externalId, :createdAt)
-ON CONFLICT (id) DO UPDATE SET pairing_id = excluded.pairing_id, hash = excluded.hash,
+INSERT INTO keys (id, contact_id, hash, label, external_id, created_at)
+VALUES (:id, :contactId, :hash, :label, :externalId, :createdAt)
+ON CONFLICT (id) DO UPDATE SET contact_id = excluded.contact_id, hash = excluded.hash,
   label = excluded.label, external_id = excluded.external_id, created_at = excluded.created_at`
 
 const UPSERT_COUNTER_SQL = `
@@ -40,10 +42,10 @@ INSERT INTO counters (name, value) VALUES (:name, :value)
 ON CONFLICT (name) DO UPDATE SET value = excluded.value`
 
 const UPSERT_SEED_SQL = `
-INSERT INTO seed (only, fingerprint, bot_id, pairing_id, key_id, is_open)
-VALUES (1, :fingerprint, :botId, :pairingId, :keyId, :isOpen)
+INSERT INTO seed (only, fingerprint, bot_id, contact_id, key_id, is_open)
+VALUES (1, :fingerprint, :botId, :contactId, :keyId, :isOpen)
 ON CONFLICT (only) DO UPDATE SET fingerprint = excluded.fingerprint, bot_id = excluded.bot_id,
-  pairing_id = excluded.pairing_id, key_id = excluded.key_id, is_open = excluded.is_open`
+  contact_id = excluded.contact_id, key_id = excluded.key_id, is_open = excluded.is_open`
 
 /** Thrown inside `load` for a row that isn't valid JSON, so the message can't quote it. */
 class InvalidRowError extends Error {}
@@ -118,7 +120,7 @@ export class RegistryStore {
         version: REGISTRY_VERSION,
         lastIds: Object.fromEntries(COUNTER_NAMES.map((name) => [name, counters.get(name) ?? 0])),
         bots: readRows(database, 'bots').map(toBot),
-        pairings: readRows(database, 'pairings').map(toPairing),
+        contacts: readRows(database, 'contacts').map(toContact),
         keys: readRows(database, 'keys').map(toKey),
         ...(seedRow === undefined ? {} : { seed: toSeed(seedRow) }),
       }
@@ -165,7 +167,7 @@ function toBot(row: Row): unknown {
   }
 }
 
-function toPairing(row: Row): unknown {
+function toContact(row: Row): unknown {
   return {
     id: row.id,
     botId: row.bot_id,
@@ -180,7 +182,7 @@ function toPairing(row: Row): unknown {
 function toKey(row: Row): unknown {
   return {
     id: row.id,
-    pairingId: row.pairing_id,
+    contactId: row.contact_id,
     ...optional('hash', row.hash),
     ...optional('label', row.label),
     ...optional('externalId', row.external_id),
@@ -192,7 +194,7 @@ function toSeed(row: Row): unknown {
   return {
     fingerprint: row.fingerprint,
     botId: row.bot_id,
-    pairingId: row.pairing_id,
+    contactId: row.contact_id,
     keyId: row.key_id,
     // Anything but 0 or 1 stays as is, so the schema rejects it.
     isOpen: row.is_open === 1 ? true : row.is_open === 0 ? false : row.is_open,
@@ -209,22 +211,22 @@ function toBotParameters(bot: BotRecord): Record<string, SQLInputValue> {
   }
 }
 
-function toPairingParameters(pairing: PairingRecord): Record<string, SQLInputValue> {
+function toContactParameters(contact: ContactRecord): Record<string, SQLInputValue> {
   return {
-    id: pairing.id,
-    botId: pairing.botId,
-    person: pairing.person ?? null,
-    code: pairing.code ?? null,
-    quietHours: pairing.quietHours ?? null,
-    mutedUntil: pairing.mutedUntil ?? null,
-    createdAt: pairing.createdAt,
+    id: contact.id,
+    botId: contact.botId,
+    person: contact.person ?? null,
+    code: contact.code ?? null,
+    quietHours: contact.quietHours ?? null,
+    mutedUntil: contact.mutedUntil ?? null,
+    createdAt: contact.createdAt,
   }
 }
 
 function toKeyParameters(key: KeyRecord): Record<string, SQLInputValue> {
   return {
     id: key.id,
-    pairingId: key.pairingId,
+    contactId: key.contactId,
     hash: key.hash ?? null,
     label: key.label ?? null,
     externalId: key.externalId ?? null,
@@ -269,7 +271,7 @@ function upsertRows<T>(
 }
 
 /**
- * Removed keys go first, freeing their hashes; pairings and bots go last, after moved keys point
+ * Removed keys go first, freeing their hashes; contacts and bots go last, after moved keys point
  * elsewhere, so their cascades only reach rows the registry dropped too.
  */
 function writeDifference(database: DatabaseSync, previous: Registry, next: Registry): void {
@@ -278,12 +280,12 @@ function writeDifference(database: DatabaseSync, previous: Registry, next: Regis
   upsertRows(database, UPSERT_BOT_SQL, listChanged(previous.bots, next.bots), toBotParameters)
   upsertRows(
     database,
-    UPSERT_PAIRING_SQL,
-    listChanged(previous.pairings, next.pairings),
-    toPairingParameters,
+    UPSERT_CONTACT_SQL,
+    listChanged(previous.contacts, next.contacts),
+    toContactParameters,
   )
   upsertRows(database, UPSERT_KEY_SQL, listChanged(previous.keys, next.keys), toKeyParameters)
-  deleteRows(database, 'pairings', 'id', listRemovedIds(previous.pairings, next.pairings))
+  deleteRows(database, 'contacts', 'id', listRemovedIds(previous.contacts, next.contacts))
   deleteRows(database, 'bots', 'id', removedBotIds)
   deleteRows(database, 'requests', 'bot_id', removedBotIds)
   deleteRows(database, 'notifications', 'bot_id', removedBotIds)
@@ -312,7 +314,7 @@ function writeSeed(
   database.prepare(UPSERT_SEED_SQL).run({
     fingerprint: next.fingerprint,
     botId: next.botId,
-    pairingId: next.pairingId,
+    contactId: next.contactId,
     keyId: next.keyId,
     isOpen: next.isOpen ? 1 : 0,
   })
@@ -320,7 +322,7 @@ function writeSeed(
 
 /** Atomically writes `key` plus a newline, readable by the owner only. */
 export function writeAdminKeyFile(path: string, key: string): void {
-  writeTokenFile(path, key)
+  writeFileAtomic(path, `${key}\n`, SECRET_FILE_MODE)
 }
 
 /**
@@ -345,7 +347,7 @@ export function ensureAdminKey(path: string, log: (line: string) => void): strin
 
 /**
  * Client side: JAYPOST_ADMIN_KEY (empty counts as unset), then the file, else none; same shape and
- * messages as resolveClientToken, never quoting the value. Never throws.
+ * messages as resolveEnvToken, never quoting the value. Never throws.
  */
 export function resolveAdminKey(env: NodeJS.ProcessEnv, path: string): ClientToken {
   return resolveClientSecret(env, path, {

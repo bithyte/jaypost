@@ -6,11 +6,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
-import { writeTokenFile } from '@jaypost/store'
 import { runFinishUpdate, runUpdate } from '../../src/commands/index.ts'
 import type { UpdateDeps } from '../../src/commands/index.ts'
 import {
   createQuadletTarget,
+  createTargets,
   formatLaunchdPlist,
   readInstall,
   resolveInstallPaths,
@@ -48,6 +48,8 @@ let calls: Call[]
 let server: Server | undefined
 let base: string
 let holdAsset: boolean
+/** What the fake targets' `readApiToken` returns: the token the service holds. */
+let heldToken: string | undefined
 
 beforeEach(async () => {
   tmp = mkdtempSync(join(tmpdir(), 'update-'))
@@ -55,6 +57,7 @@ beforeEach(async () => {
   recording = createRecordingProgress()
   calls = []
   holdAsset = false
+  heldToken = undefined
   base = await serve({
     '/release': JSON.stringify({
       tag_name: 'v0.5.0',
@@ -118,6 +121,7 @@ function fake(name: TargetName): Mutable<Target> {
     restart: vi.fn(),
     clearOwner: vi.fn(),
     isRunning: vi.fn(async () => true),
+    readApiToken: vi.fn(async () => heldToken),
     logsHint: vi.fn(() => 'logs hint'),
   } as unknown as Mutable<Target>
 }
@@ -248,7 +252,7 @@ test('binary systemd install swaps the copy then hands off to it', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(copy)).toEqual(NEW_BINARY)
-  expect(lastCall()).toEqual([copy, ['update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([copy, ['service', 'update', '--finish'], { inherit: true }])
   expect(notes()).toEqual([])
 })
 
@@ -260,7 +264,7 @@ test('npm systemd install runs npm i -g then hands off with the unit node', asyn
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 function seedLaunchd(cliKind: 'npm' | 'binary', cliPath: string): void {
@@ -272,6 +276,7 @@ function seedLaunchd(cliKind: 'npm' | 'binary', cliPath: string): void {
       exec: cliKind === 'npm' ? [NODE, cliPath] : [cliPath],
       config: join(tmp, 'config.json'),
       logFile: paths.launchdLogFile,
+      exposed: false,
     }),
   )
   writeInstall(paths.installFile, {
@@ -291,7 +296,7 @@ test('launchd npm install updates the package the plist runs', async () => {
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('launchd binary install replaces the recorded copy', async () => {
@@ -302,7 +307,7 @@ test('launchd binary install replaces the recorded copy', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(readFileSync(copy)).toEqual(NEW_BINARY)
-  expect(lastCall()).toEqual([copy, ['update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([copy, ['service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm install under the fallback prefix passes --prefix', async () => {
@@ -314,7 +319,7 @@ test('npm install under the fallback prefix passes --prefix', async () => {
     'npm',
     ['i', '-g', '--prefix', paths.userNpmPrefix, 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [cliPath, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [cliPath, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('legacy install takes cliPath and node from the unit', async () => {
@@ -325,7 +330,7 @@ test('legacy install takes cliPath and node from the unit', async () => {
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm install that already reports the latest skips npm and hands off', async () => {
@@ -333,7 +338,7 @@ test('npm install that already reports the latest skips npm and hands off', asyn
   const d = deps({ exec: createExec({ [NPM_CLI]: '0.5.0' }) })
   expect(await runUpdate(d)).toBe(0)
   expect(calls.filter(([command]) => command === 'npm')).toEqual([])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('npm failure exits 1 without handing off', async () => {
@@ -404,7 +409,7 @@ test('container install with an old npx CLI asks for npx jaypost@latest', async 
   const d = deps({ cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js') })
   expect(await runUpdate(d)).toBe(1)
   expect(notes()).toEqual([
-    `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
+    `Can't update this copy; run "npx jaypost@latest service update" or download the latest binary.`,
   ])
   expect(d.targets.quadlet.upgrade).not.toHaveBeenCalled()
   expect(calls.filter(([command, args]) => command === 'npm' && args[0] === 'i')).toEqual([])
@@ -412,7 +417,7 @@ test('container install with an old npx CLI asks for npx jaypost@latest', async 
 
 test('container install already on the latest CLI finishes in-process', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({
     cli: npmCli('/home/u/.npm/_npx/abc/node_modules/jaypost/dist/cli.js'),
     version: '0.5.0',
@@ -435,7 +440,7 @@ test('container install with a global npm CLI runs npm i -g then hands off', asy
     'npm',
     ['i', '-g', 'jaypost@0.5.0'],
   ])
-  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'update', '--finish'], { inherit: true }])
+  expect(lastCall()).toEqual([NODE, [NPM_CLI, 'service', 'update', '--finish'], { inherit: true }])
 })
 
 test('nothing installed updates the running binary only', async () => {
@@ -453,7 +458,7 @@ test('failed handoff prints the retry hint', async () => {
   const d = deps({ exec: createExec({ [copy]: '0.4.0' }, { handoff: 1 }) })
   expect(await runUpdate(d)).toBe(1)
   expect(notes()).toEqual([
-    'The new version is in place; run "jaypost update" again or "jaypost init".',
+    'The new version is in place; run "jaypost service update" again or "jaypost service install".',
   ])
 })
 
@@ -476,7 +481,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
     version: '0.4.0',
     provider: 'telegram',
   })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0', timeZone: 'Europe/Paris' })
   expect(await runFinishUpdate(d)).toBe(0)
   const [options, previous] = vi.mocked(d.targets.quadlet.upgrade).mock.calls[0] ?? []
@@ -498,7 +503,7 @@ test('runFinishUpdate upgrades with the saved secrets and token', async () => {
   expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
 })
 
-test('runFinishUpdate without a token file warns and installs without auth', async () => {
+test('runFinishUpdate without a token in the service warns and installs without auth', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
   const d = deps({ version: '0.5.0' })
   expect(await runFinishUpdate(d)).toBe(0)
@@ -506,14 +511,83 @@ test('runFinishUpdate without a token file warns and installs without auth', asy
     auth: { kind: 'none' },
   })
   expect(notes()).toEqual([
-    `No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'The service has no API token, so it still won\'t require one. Run "jaypost service install" to set one.',
     'Updated jaypost 0.4.0 -> 0.5.0.',
   ])
 })
 
+test('update keeps the token the service holds', async () => {
+  writeInstall(paths.installFile, { target: 'systemd', port: 9000, version: '0.4.0' })
+  heldToken = TOKEN
+  const d = deps({ version: '0.5.0' })
+  expect(await runFinishUpdate(d)).toBe(0)
+  expect(d.targets.systemd.readApiToken).toHaveBeenCalledWith({
+    target: 'systemd',
+    port: 9000,
+    version: '0.4.0',
+  })
+  expect(vi.mocked(d.targets.systemd.upgrade).mock.calls[0]?.[0]).toMatchObject({
+    auth: { kind: 'token', token: TOKEN },
+  })
+  expect(notes()).toEqual(['Updated jaypost 0.4.0 -> 0.5.0.'])
+  expect(notes().join('\n')).not.toContain(TOKEN)
+})
+
+test('update refuses an invalid token in the service without quoting it', async () => {
+  writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
+  heldToken = 'short-secret'
+  const d = deps({ version: '0.5.0' })
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(d.targets.compose.upgrade).not.toHaveBeenCalled()
+  expect(notes()).toEqual([
+    'Update failed: the service\'s API token isn\'t valid; run "jaypost service install" to make a new one',
+  ])
+})
+
+test('update refuses an invalid apiToken in a native install', async () => {
+  mkdirSync(dirname(paths.configFile), { recursive: true })
+  writeFileSync(
+    paths.configFile,
+    JSON.stringify({ provider: 'telegram', botToken: '1:abc', apiToken: 'short-secret' }),
+  )
+  writeInstall(paths.installFile, {
+    target: 'systemd',
+    port: 9000,
+    version: '0.4.0',
+    configFile: paths.configFile,
+  })
+  const { systemd } = createTargets(
+    {
+      exec: async () => ({ code: 0, stdout: '', stderr: '' }),
+      paths,
+      env: { HOME: tmp, XDG_CONFIG_HOME: join(tmp, 'cfg') },
+      user: 'u',
+      providers: [telegramProvider],
+      platform: 'linux',
+      uid: 1000,
+    },
+    npmCli(NPM_CLI),
+  )
+  const d = deps({
+    version: '0.5.0',
+    targets: {
+      systemd,
+      quadlet: fake('quadlet'),
+      compose: fake('compose'),
+      launchd: fake('launchd'),
+    },
+  })
+  expect(await runFinishUpdate(d)).toBe(1)
+  expect(notes()).toEqual([
+    'Update failed: the service\'s API token isn\'t valid; run "jaypost service install" to make a new one',
+  ])
+  expect(JSON.parse(readFileSync(paths.configFile, 'utf8')).apiToken).toBe('short-secret')
+  expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
+})
+
 test('runFinishUpdate failure keeps install.json and exits 1', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0' })
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)
@@ -523,7 +597,7 @@ test('runFinishUpdate failure keeps install.json and exits 1', async () => {
 
 test('runFinishUpdate refuses a container .env with the old names and leaves it as is', async () => {
   writeInstall(paths.installFile, { target: 'quadlet', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const envPath = join(paths.quadletDirectory, '.env')
   const oldEnv = 'PROVIDER=telegram\nBOT_TOKEN=123:old-secret\nPORT=9000\nOWNER_ID=42\n'
   mkdirSync(paths.quadletDirectory, { recursive: true })
@@ -554,7 +628,7 @@ test('runFinishUpdate refuses a container .env with the old names and leaves it 
   expect(await runFinishUpdate(d)).toBe(1)
   expect(readFileSync(envPath, 'utf8')).toBe(oldEnv)
   expect(notes()).toEqual([
-    `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
+    `Update failed: missing JAYPOST_BOT_TOKEN in "${envPath}"; rename the variables in it to the JAYPOST_ names and run "jaypost service update" again`,
   ])
   expect(notes().join('\n')).not.toContain('old-secret')
   expect(readInstall(paths.installFile)?.version).toBe('0.4.0')
@@ -661,7 +735,7 @@ test('finish update streams the service upgrade output', async () => {
   })
   expect(await runFinishUpdate(d)).toBe(0)
   expect(recording.events).toEqual([
-    `note:No API token file at ${paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+    'note:The service has no API token, so it still won\'t require one. Run "jaypost service install" to set one.',
     'start:Updating the compose service',
     'output:building image\n',
     'note:hint',
@@ -672,7 +746,7 @@ test('finish update streams the service upgrade output', async () => {
 
 test('finish update failure fails the service step', async () => {
   writeInstall(paths.installFile, { target: 'compose', port: 9000, version: '0.4.0' })
-  writeTokenFile(paths.tokenFile, TOKEN)
+  heldToken = TOKEN
   const d = deps({ version: '0.5.0' })
   vi.mocked(d.targets.compose.upgrade).mockRejectedValue(new Error('build failed'))
   expect(await runFinishUpdate(d)).toBe(1)

@@ -151,7 +151,7 @@ function describeBot(route: KeyRoute | undefined): string {
  * POST /vote, POST /notify, GET /status, GET /log, GET /openapi.yaml) without listening. Every
  * route but /openapi.yaml asks `router` for the call's key first and answers 401 when there is
  * none, before parsing the body; routes with a body ask again once it's read. A key whose bot
- * isn't running gets 503 `bot unavailable` and one whose pairing waits for its code 503
+ * isn't running gets 503 `bot unavailable` and one whose contact waits for its code 503
  * `not paired` on the question routes. Aborting the connection cancels a pending /request or
  * /vote; background questions outlive their connections and only their key reads or cancels them.
  * Errors return JSON bodies. A bot without notifications answers POST /notify 501. With `admin`,
@@ -266,7 +266,7 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
   )
   // Replies 401/503/400/501 itself and returns undefined, or returns the bot and what `parse` made
   // of the body. The key is routed again because the upload can take a while: a key revoked or a
-  // pairing reset meanwhile must not reach the old person. Drops the raw body from the Fastify
+  // contact reset meanwhile must not reach the old person. Drops the raw body from the Fastify
   // request so a long wait doesn't keep an attachment's bytes alive; the parsed JSON goes out of
   // scope on return for the same reason.
   const readBody = <T>(

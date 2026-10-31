@@ -187,7 +187,7 @@ test('a missing owner exits 1 before anything is sent', async () => {
   })
   expect(await runDirectSendRequest(REQUEST, deps)).toBe(1)
   expect(errors).toEqual([
-    'jaypost: missing fake owner; set FAKE_OWNER (jaypost setup-ci prints it)',
+    'jaypost: missing fake owner; set FAKE_OWNER (jaypost pair ci prints it)',
   ])
   expect(provider.runtimes).toEqual([])
 })

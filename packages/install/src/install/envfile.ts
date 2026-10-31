@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { collectSettings, DEFAULT_PROVIDER, findOwnerSetting, findProvider } from '@jaypost/core'
 import type { Provider } from '@jaypost/core'
-import { isMissingFileError, PROVIDER_ENV_VAR, writeFileAtomic } from '@jaypost/store'
+import {
+  isMissingFileError,
+  PROVIDER_ENV_VAR,
+  TOKEN_ENV_VAR,
+  writeFileAtomic,
+} from '@jaypost/store'
 import type { ExecResult } from '@jaypost/store'
 import { SECRET_FILE_MODE } from './constants.ts'
 import type { Secrets } from './types.ts'
@@ -37,6 +42,12 @@ export function readEnvFile(path: string): Readonly<Record<string, string>> {
     }
   }
   return values
+}
+
+/** The JAYPOST_TOKEN in an env file; undefined when the file or the line is missing or empty. */
+export function readEnvApiToken(path: string): string | undefined {
+  const token = readEnvFile(path)[TOKEN_ENV_VAR]
+  return token === undefined || token === '' ? undefined : token
 }
 
 /** Atomic write with owner-only permissions, since the file holds credentials. */

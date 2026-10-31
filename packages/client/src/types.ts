@@ -16,11 +16,31 @@ export type ClientOptions = {
   /** Shown as `[project]` on the first line of every message, unless a call sets its own. */
   readonly project?: string
   /**
-   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, else `~/.config/jaypost/token`,
-   * looked up on every call. Throws a `RangeError` at construction if it isn't a valid token.
+   * Sent as a bearer token. Default: `JAYPOST_TOKEN`, looked up on every call (with `url`, `host`
+   * or `port`). Throws a `RangeError` at construction if it isn't a valid token. Without `url`,
+   * `host`, `port` or `token`, the inbox entry and its key are fixed at construction instead.
    */
   readonly token?: string
+  /**
+   * An inbox alias: its url and key are used. Throws a `RangeError` at construction when
+   * combined with `url`, `host`, `port` or `token`. Without any of them, $JAYPOST_BOT, else env
+   * mode, else the inbox's default.
+   */
+  readonly bot?: string
 }
+
+/** What `resolveBot` found: where to send, with which token, and the inbox alias if any. */
+export type ResolvedBot = {
+  readonly endpoint: ServiceEndpoint
+  readonly token: ClientToken
+  /** The inbox alias, or undefined in env mode or on failure. */
+  readonly alias: string | undefined
+  /** Set exactly when `endpoint` is `invalid`. */
+  readonly failure: ResolvedBotFailure | undefined
+}
+
+/** `noBot` is nothing to send to yet, with no name asked for; the rest is `unresolvable`. */
+export type ResolvedBotFailure = 'noBot' | 'unresolvable'
 
 /**
  * One file sent along with a message: read from `path` (named by its basename unless `name` is
@@ -282,6 +302,8 @@ export type AdminCallerOptions = {
   readonly adminKey: string
   /** HTTP timeout per call; default `FETCH_GRACE_MS`. */
   readonly fetchTimeoutMs?: number
+  /** Shown when the service answers 401; default `ADMIN_KEY_REJECTED_MESSAGE`. Never holds a key. */
+  readonly rejectedMessage?: string
 }
 
 /** An admin route's parsed answer, or why there isn't one; `message` is ready to show. */
@@ -299,6 +321,6 @@ export type LogFilter = {
 /** What `AdminCaller.readLog` narrows every bot's log to; absent fields don't filter. */
 export type AdminLogFilter = LogFilter & {
   readonly bot?: string
-  readonly pairing?: string
+  readonly contact?: string
   readonly key?: string
 }

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join, sep } from 'node:path'
-import { NO_AUTH, parseToken, readTokenFile } from '@jaypost/store'
+import { NO_AUTH, parseToken } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import {
   compareVersions,
@@ -14,7 +14,14 @@ import {
   resolveRecordProvider,
   writeInstall,
 } from '@jaypost/install'
-import type { ExistingInstall, InstallPaths, LatestRelease, TargetName } from '@jaypost/install'
+import type {
+  ExistingInstall,
+  InstallPaths,
+  InstallRecord,
+  LatestRelease,
+  Target,
+  TargetName,
+} from '@jaypost/install'
 import { runStep } from '../progress/index.ts'
 import type { ProgressStep } from '../progress/index.ts'
 import { requireProvider } from '@jaypost/core'
@@ -26,7 +33,7 @@ const PACKAGE_NAME = 'jaypost'
 /**
  * What step 1 brings to the latest version: a binary file, an npm package run by `nodePath`, or
  * nothing because the running CLI can't update itself (`stuck`, which is always the running CLI).
- * `isRunning` marks the CLI running `update`.
+ * `isRunning` marks the CLI running `service update`.
  */
 type Subject =
   | { readonly kind: 'binary'; readonly path: string; readonly isRunning: boolean }
@@ -234,20 +241,24 @@ async function replaceSubjectBinary(
   })
 }
 
-/** Runs the new CLI's `update --finish` with inherited stdio; returns its exit code. */
+/** Runs the new CLI's `service update --finish` with inherited stdio; returns its exit code. */
 async function handOff(deps: UpdateDeps, subject: Subject): Promise<number> {
   const [command, ...args] = formatCliWords(subject)
   if (command === undefined) {
     throw new Error('no CLI to hand off to')
   }
-  const result = await deps.exec(command, [...args, 'update', '--finish'], { inherit: true })
+  const result = await deps.exec(command, [...args, 'service', 'update', '--finish'], {
+    inherit: true,
+  })
   if (deps.signal?.aborted) {
     return 130
   }
   if (result.code === 0 || result.code === 130) {
     return result.code
   }
-  deps.progress.note('The new version is in place; run "jaypost update" again or "jaypost init".')
+  deps.progress.note(
+    'The new version is in place; run "jaypost service update" again or "jaypost service install".',
+  )
   return result.code
 }
 
@@ -275,7 +286,7 @@ async function update(deps: UpdateDeps): Promise<number> {
     switch (subject.kind) {
       case 'stuck':
         print(
-          `Can't update this copy; run "npx jaypost@latest update" or download the latest binary.`,
+          `Can't update this copy; run "npx jaypost@latest service update" or download the latest binary.`,
         )
         return 1
       case 'binary':
@@ -306,7 +317,7 @@ async function update(deps: UpdateDeps): Promise<number> {
     print(`Updated jaypost ${current} -> ${latest.version}.`)
     return 0
   }
-  // `npx jaypost@latest update` is already the new code: finish here, no second process.
+  // `npx jaypost@latest service update` is already the new code: finish here, no second process.
   if (isSkipped && (subject.kind === 'stuck' || subject.isRunning)) {
     return runFinishUpdate(deps)
   }
@@ -317,9 +328,9 @@ async function update(deps: UpdateDeps): Promise<number> {
 
 /**
  * Brings the installed service (or, with nothing installed, this CLI) to the latest release: gets
- * the new CLI onto the machine, then hands off to its `update --finish`, which rewrites the
- * install's files. Returns 0 on success or when already current, 1 on failure, 130 on interrupt.
- * A failed download or npm install leaves the old CLI and service untouched.
+ * the new CLI onto the machine, then hands off to its `service update --finish`, which rewrites
+ * the install's files. Returns 0 on success or when already current, 1 on failure, 130 on
+ * interrupt. A failed download or npm install leaves the old CLI and service untouched.
  */
 export async function runUpdate(deps: UpdateDeps): Promise<number> {
   try {
@@ -334,11 +345,22 @@ export async function runUpdate(deps: UpdateDeps): Promise<number> {
   }
 }
 
-/** A valid token from the token file, else no auth; an unreadable file throws. */
-function readAuth(tokenFile: string): ApiAuth {
-  const raw = readTokenFile(tokenFile)
-  const token = raw === undefined ? undefined : parseToken(raw)
-  return token === undefined ? NO_AUTH : { kind: 'token', token }
+/**
+ * The token the installed service enforces, else no auth. Throws when it can't be read or isn't a
+ * valid token, never quoting it: upgrading without it would quietly open the API.
+ */
+async function readAuth(target: Target, record: InstallRecord): Promise<ApiAuth> {
+  const raw = await target.readApiToken(record)
+  if (raw === undefined) {
+    return NO_AUTH
+  }
+  const token = parseToken(raw)
+  if (token === undefined) {
+    throw new Error(
+      `the service's API token isn't valid; run "jaypost service install" to make a new one`,
+    )
+  }
+  return { kind: 'token', token }
 }
 
 /** The `.env` a container target rewrites on upgrade; undefined for the native targets. */
@@ -375,15 +397,16 @@ function requireContainerSettings(
     return
   }
   throw new Error(
-    `missing ${missing.envVar} in ${JSON.stringify(envFile)}; rename the variables in it to the JAYPOST_ names and run "jaypost update" again`,
+    `missing ${missing.envVar} in ${JSON.stringify(envFile)}; rename the variables in it to the JAYPOST_ names and run "jaypost service update" again`,
   )
 }
 
 /**
- * The `update --finish` step run by the new CLI: rewrites the install's files from this version's
- * templates with the saved port, provider, secrets and API token, restarts the service and records
- * this version in install.json. A container `.env` missing a required setting is refused before
- * any file is written. Returns 0 on success, 1 when not installed or on failure, 130 on interrupt.
+ * The `service update --finish` step run by the new CLI: rewrites the install's files from this
+ * version's templates with the saved port, provider, secrets and API token, restarts the service
+ * and records this version in install.json. A container `.env` missing a required setting is
+ * refused before any file is written. Returns 0 on success, 1 when not installed or on failure,
+ * 130 on interrupt.
  */
 export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
   const print = deps.progress.note
@@ -398,11 +421,10 @@ export async function runFinishUpdate(deps: UpdateDeps): Promise<number> {
     const provider = requireProvider(deps.providers, resolveRecordProvider(record))
     const { settings } = await target.readSecrets(record)
     requireContainerSettings(deps.paths, record.target, provider, settings)
-    const auth = readAuth(deps.paths.tokenFile)
-    // install.json doesn't record whether the old service required a token, so always say so.
+    const auth = await readAuth(target, record)
     if (auth.kind === 'none') {
       print(
-        `No API token file at ${deps.paths.tokenFile}; the service will not require an API token. Run "jaypost init" to set one.`,
+        `The service has no API token, so it still won't require one. Run "jaypost service install" to set one.`,
       )
     }
     const next = await runUpdateStep(
