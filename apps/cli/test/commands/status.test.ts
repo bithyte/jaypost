@@ -25,6 +25,7 @@ function bot(url: string, alias: string | undefined, token: ClientToken = NO_CLI
     endpoint: { kind: 'url', url: new URL(url) },
     token,
     alias,
+    failure: undefined,
   } satisfies ResolvedBot
 }
 
@@ -140,6 +141,7 @@ test('status with no bot and no install says how to get one', async () => {
       },
       token: NO_CLIENT_TOKEN,
       alias: undefined,
+      failure: 'noBot',
     },
     install: undefined,
     fetchStatus,
@@ -158,6 +160,7 @@ test('status prints the message of an unresolvable bot and returns 1', async () 
       },
       token: NO_CLIENT_TOKEN,
       alias: undefined,
+      failure: 'unresolvable',
     },
   })
   expect(await runStatus(deps)).toBe(1)

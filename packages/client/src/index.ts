@@ -53,6 +53,7 @@ export type {
   Question,
   QuestionState,
   ResolvedBot,
+  ResolvedBotFailure,
   ServiceEndpoint,
   VoteOutcome,
   VoteRequest,

@@ -3,8 +3,6 @@ import type { StatusInfo } from '@jaypost/protocol'
 import { formatPairingText } from './pairing-text.ts'
 import type { StatusDeps } from './types.ts'
 
-const NO_BOT_MESSAGE = 'no bot to send to'
-
 /** The key and contact lines, and the bot's error when it failed; older services send neither. */
 function printKey(status: StatusInfo, print: (text: string) => void): void {
   if (status.key !== undefined && status.contact !== undefined) {
@@ -33,7 +31,7 @@ function toDefaultPort(url: URL): number {
 export async function runStatus(deps: StatusDeps): Promise<number> {
   const { print, resolved, install } = deps
   if (resolved.endpoint.kind === 'invalid') {
-    const isNoBot = install === undefined && resolved.endpoint.message.startsWith(NO_BOT_MESSAGE)
+    const isNoBot = install === undefined && resolved.failure === 'noBot'
     print(
       isNoBot
         ? 'No bot. Run "jaypost service install" or "jaypost inbox join".'

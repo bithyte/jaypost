@@ -35,7 +35,12 @@ export type ResolvedBot = {
   readonly token: ClientToken
   /** The inbox alias, or undefined in env mode or on failure. */
   readonly alias: string | undefined
+  /** Set exactly when `endpoint` is `invalid`. */
+  readonly failure: ResolvedBotFailure | undefined
 }
+
+/** `noBot` is nothing to send to yet, with no name asked for; the rest is `unresolvable`. */
+export type ResolvedBotFailure = 'noBot' | 'unresolvable'
 
 /**
  * One file sent along with a message: read from `path` (named by its basename unless `name` is

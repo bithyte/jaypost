@@ -87,7 +87,42 @@ test('resolveBot turns an unknown alias into an invalid endpoint listing the kno
     },
     token: { kind: 'none' },
     alias: undefined,
+    failure: 'unresolvable',
   })
+})
+
+test('resolveBot prefers the alias, then JAYPOST_BOT, then env mode, then the default', () => {
+  saveInbox(INBOX)
+  const env = envFor({ JAYPOST_BOT: 'open', JAYPOST_URL: 'https://x.example.com/' })
+  expect(resolveBot(env, 'HOME').alias).toBe('home')
+  expect(resolveBot(env, undefined).alias).toBe('open')
+  expect(resolveBot(envFor({ JAYPOST_URL: 'https://x.example.com/' }), undefined).alias).toBe(
+    undefined,
+  )
+  expect(resolveBot(envFor(), undefined).alias).toBe('home')
+})
+
+test('resolveBot says an unknown JAYPOST_BOT has an empty inbox to pick from', () => {
+  expect(resolveBot(envFor({ JAYPOST_BOT: 'nope' }), undefined).endpoint).toEqual({
+    kind: 'invalid',
+    message: 'no bot "nope" in your inbox; it\'s empty',
+  })
+})
+
+test('resolveBot with no inbox and no env fails as no bot, saying how to add one', () => {
+  expect(resolveBot(envFor(), undefined)).toEqual({
+    endpoint: {
+      kind: 'invalid',
+      message: 'no bot to send to; run "jaypost service install" or "jaypost inbox join"',
+    },
+    token: { kind: 'none' },
+    alias: undefined,
+    failure: 'noBot',
+  })
+})
+
+test('resolveBot marks an invalid JAYPOST_URL as unresolvable, not as no bot', () => {
+  expect(resolveBot(envFor({ JAYPOST_URL: 'not a url' }), undefined).failure).toBe('unresolvable')
 })
 
 test('resolveBot reports an unreadable inbox by its path, not its contents', () => {

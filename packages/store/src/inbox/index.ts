@@ -22,7 +22,5 @@ export {
   setLocal,
   toServiceUrl,
 } from './operations.ts'
-export { resolveBotTarget } from './target.ts'
-export type { BotTarget } from './target.ts'
 export { readInbox, writeInbox } from './store.ts'
 export type { Inbox, InboxBot, InboxChange, InboxLocal, InboxRemote, Invite } from './types.ts'
