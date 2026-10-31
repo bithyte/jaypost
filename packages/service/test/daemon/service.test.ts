@@ -64,6 +64,7 @@ async function start(
     readonly providers?: readonly Provider[]
     /** False to listen without waiting for the bots' first start attempts. */
     readonly waitForBots?: boolean
+    readonly now?: () => Date
   } = {},
 ): Promise<{ url: string; runtime: FakeRuntime; configPath: string }> {
   const configPath = options.configPath ?? createConfigPath(provider)
@@ -75,6 +76,7 @@ async function start(
     seed: loadSeed({ JAYPOST_CONFIG: configPath }, providers),
     log: options.log ?? vi.fn(),
     generateCode: () => CODE,
+    ...(options.now === undefined ? {} : { now: options.now }),
   })
   if (options.waitForBots !== false) {
     await running.started
@@ -427,7 +429,9 @@ test('GET /log only returns the caller key lines', async () => {
   const provider = createFakeProvider()
   const configPath = createConfigPath(provider)
   writeSavedQuestion(configPath)
-  const { url, runtime } = await start(provider, { configPath })
+  // A fixed clock, since the saved question's date would otherwise age out of the 30-day log.
+  const now = (): Date => new Date('2026-10-03T00:00:00.000Z')
+  const { url, runtime } = await start(provider, { configPath, now })
   const other = createKeyFor('k1')
   for (const token of [undefined, other.key]) {
     const response = post(url, '/request', REQUEST, token)
