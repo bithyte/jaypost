@@ -762,6 +762,52 @@ test('a rejected remote admin key says to run remote add again, without a key', 
   expect(err.join('')).not.toContain(wrong)
 })
 
+test('a rejected saved remote key points at the remote even with JAYPOST_ADMIN_KEY set', async () => {
+  const started = await start()
+  const wrong = `jpa_${'z'.repeat(43)}`
+  writeRemotes({ ...remoteOf('home', started), adminKey: wrong })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runBotList({}, createDeps(env, { service: 'home' }))).toBe(1)
+  expect(err).toEqual([
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
+  ])
+})
+
+test("the inbox's only remote also points at the remote with JAYPOST_ADMIN_KEY set", async () => {
+  const started = await start()
+  writeRemotes({ ...remoteOf('home', started), adminKey: `jpa_${'z'.repeat(43)}` })
+  expect(await runBotList({}, createDeps({ HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }))).toBe(
+    1,
+  )
+  expect(err).toEqual([
+    'jaypost service rejected the admin key saved for remote "home"; run "jaypost admin remote add home URL NEWKEY" again with the current key',
+  ])
+})
+
+test('a rejected JAYPOST_ADMIN_KEY on a local install points at the env var', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: `jpa_${'z'.repeat(43)}` }
+  expect(await runBotList({}, createDeps(env))).toBe(1)
+  expect(err).toEqual([ADMIN_KEY_REJECTED_MESSAGE])
+})
+
+test('admin rotate-key on a local install with JAYPOST_ADMIN_KEY saves and says to update it', async () => {
+  const started = await start()
+  writeInstall(paths.installFile, { target: 'quadlet', port: started.port, version: '1.0.0' })
+  const env = { HOME: tmp, JAYPOST_ADMIN_KEY: started.adminKey }
+  expect(await runAdminKeyRotate({ json: true }, createDeps(env))).toBe(0)
+  const { adminKey } = JSON.parse(out.join('\n'))
+  expect(readInbox(inboxPath).local?.adminKey).toBe(adminKey)
+  out.length = 0
+  const again = { HOME: tmp, JAYPOST_ADMIN_KEY: adminKey }
+  expect(await runAdminKeyRotate({}, createDeps(again))).toBe(0)
+  expect(err).toEqual([
+    'The old admin key stopped working. Saved the new one in your inbox.',
+    'Set JAYPOST_ADMIN_KEY to the new key.',
+  ])
+})
+
 test('a rejected saved local admin key says to run service install again', async () => {
   const started = await start()
   const wrong = `jpa_${'z'.repeat(43)}`

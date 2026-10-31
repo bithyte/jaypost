@@ -8,10 +8,9 @@ import {
   writeInbox,
 } from '@jaypost/store'
 import type { Inbox } from '@jaypost/store'
-import { isLoopbackEndpoint } from '@jaypost/client'
 import type { AdminCaller, AdminResult } from '@jaypost/client'
 import type { CreatedKey } from '@jaypost/protocol'
-import { loadInbox, openAdmin, openAdminCaller } from './admin-access.ts'
+import { isInviteAllowed, loadInbox, openAdmin, openAdminCaller } from './admin-access.ts'
 import { printResult, runAdminCommand } from './admin.ts'
 import { KEY_SHOWN_ONCE_NOTE } from './constants.ts'
 import { formatInvite } from './contact.ts'
@@ -194,13 +193,7 @@ export function runKeyAdd(args: KeyAddArgs, deps: AdminDeps): Promise<number> {
       deps.printError(endpoint.message)
       return 1
     }
-    // An env-mode JAYPOST_URL on this machine is the local service in disguise; a named remote is
-    // the user's choice (a tunnel, say) and stays allowed.
-    const isLocalInDisguise =
-      opened.endpoint.kind === 'remote' &&
-      opened.endpoint.name === undefined &&
-      isLoopbackEndpoint(endpoint.url)
-    if (args.invite === true && (opened.endpoint.kind !== 'remote' || isLocalInDisguise)) {
+    if (args.invite === true && !isInviteAllowed(opened)) {
       deps.printError('invites need a remote; add one with "jaypost admin remote add" and use -s')
       return 1
     }

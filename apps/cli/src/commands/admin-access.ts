@@ -10,6 +10,7 @@ import {
   resolveAdminKey,
   resolveAdminKeyPath,
   resolveConfigPath,
+  saveRemote,
   writeInbox,
 } from '@jaypost/store'
 import type { Inbox, InboxRemote } from '@jaypost/store'
@@ -17,21 +18,25 @@ import {
   ADMIN_KEY_REJECTED_MESSAGE,
   AdminCaller,
   findEnvEndpoint,
+  isLoopbackEndpoint,
   LOCAL_KEY_REJECTED_MESSAGE,
   toLocalEndpoint,
   toRemoteKeyRejectedMessage,
 } from '@jaypost/client'
 import { findExistingInstall } from '@jaypost/install'
 import type { InstallRecord, Target } from '@jaypost/install'
-import { toLocalUrl } from './constants.ts'
+import { ENV_KEY_SOURCE, FILE_KEY_SOURCE, INSTALL_KEY_SOURCE, toLocalUrl } from './constants.ts'
 import type {
+  AdminAccess,
   AdminDeps,
   AdminEndpoint,
   AdminKeyLookup,
+  AdminKeySource,
   LoadedInbox,
   OpenedAdmin,
-  ReachableEndpoint,
 } from './types.ts'
+
+const ROTATED_AND_SAVED_NOTE = 'The old admin key stopped working. Saved the new one in your inbox.'
 
 /** True for the installs whose service runs on this machine's files, not in a container. */
 export function isNativeInstall(record: InstallRecord): boolean {
@@ -56,23 +61,78 @@ export async function openAdmin(deps: AdminAccessDeps): Promise<OpenedAdmin> {
   const caller = new AdminCaller({
     endpoint: endpoint.endpoint,
     adminKey: endpoint.adminKey.adminKey,
-    rejectedMessage: describeRejectedKey(endpoint, findEnvValue(deps.env, ADMIN_KEY_ENV_VAR)),
+    rejectedMessage: describeRejectedKey(endpoint.adminKey.source),
   })
-  return { kind: 'opened', caller, endpoint }
+  return { kind: 'opened', caller, endpoint, keySource: endpoint.adminKey.source }
 }
 
-// What fixes a refused key depends on where the key came from: the inbox's remote, the install's
-// saved copy, or the environment (then the default message applies).
-function describeRejectedKey(endpoint: ReachableEndpoint, envKey: string | undefined): string {
-  if (envKey !== undefined) {
-    return ADMIN_KEY_REJECTED_MESSAGE
+// What fixes a refused key depends on where the key came from.
+function describeRejectedKey(source: AdminKeySource): string {
+  switch (source.kind) {
+    case 'remote':
+      return toRemoteKeyRejectedMessage(source.name)
+    case 'install':
+      return LOCAL_KEY_REJECTED_MESSAGE
+    case 'env':
+    case 'keyFile':
+      return ADMIN_KEY_REJECTED_MESSAGE
+  }
+}
+
+/**
+ * Writes a rotated key to the inbox entry its key came through: the named remote, or `local` for
+ * the install. `JAYPOST_URL` and a service run by hand have no entry, so the inbox stays as it is.
+ * Returns the lines that tell the admin what happened. Throws when the inbox can't be read or
+ * written.
+ */
+export function saveRotatedKey(
+  access: AdminAccess,
+  adminKey: string,
+  inboxPath: string,
+): readonly string[] {
+  const note = writeRotatedKey(access, adminKey, inboxPath)
+  return access.keySource.kind === 'env'
+    ? [note, `Set ${ADMIN_KEY_ENV_VAR} to the new key.`]
+    : [note]
+}
+
+function writeRotatedKey(access: AdminAccess, adminKey: string, inboxPath: string): string {
+  const { endpoint, keySource } = access
+  if (keySource.kind === 'remote') {
+    const inbox = readInbox(inboxPath)
+    const remote = findRemote(inbox, keySource.name)
+    if (remote !== undefined) {
+      writeInbox(inboxPath, saveRemote(inbox, { ...remote, adminKey }))
+    }
+    return ROTATED_AND_SAVED_NOTE
   }
   if (endpoint.kind === 'remote') {
-    return endpoint.name === undefined
-      ? ADMIN_KEY_REJECTED_MESSAGE
-      : toRemoteKeyRejectedMessage(endpoint.name)
+    return 'The old admin key stopped working.'
   }
-  return endpoint.install === undefined ? ADMIN_KEY_REJECTED_MESSAGE : LOCAL_KEY_REJECTED_MESSAGE
+  if (endpoint.install === undefined) {
+    return 'The old admin key stopped working. The service saved the new one to its admin key file, where commands on this machine find it.'
+  }
+  const inbox = readInbox(inboxPath)
+  writeInbox(inboxPath, withLocalKey(inbox, endpoint.port, adminKey))
+  return ROTATED_AND_SAVED_NOTE
+}
+
+function withLocalKey(inbox: Inbox, port: number, adminKey: string): Inbox {
+  return { ...inbox, local: { url: inbox.local?.url ?? toLocalUrl(port).href, adminKey } }
+}
+
+/** True when an invite made through `access` would work from another machine. */
+export function isInviteAllowed(access: AdminAccess): boolean {
+  const { endpoint, keySource } = access
+  if (endpoint.kind !== 'remote') {
+    return false
+  }
+  // An env-mode JAYPOST_URL on this machine is the local service in disguise; a named remote is
+  // the user's choice (a tunnel, say) and stays allowed.
+  return (
+    keySource.kind === 'remote' ||
+    (endpoint.endpoint.kind === 'url' && !isLoopbackEndpoint(endpoint.endpoint.url))
+  )
 }
 
 /** `openAdmin`'s caller, or undefined once the reason is printed. Never throws. */
@@ -124,12 +184,11 @@ async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoin
     }
     return {
       kind: 'remote',
-      name: undefined,
       endpoint: remote,
       adminKey:
         envKey === undefined
           ? { kind: 'missing', message: 'JAYPOST_URL is set, so set JAYPOST_ADMIN_KEY too' }
-          : { kind: 'found', adminKey: envKey },
+          : { kind: 'found', adminKey: envKey, source: ENV_KEY_SOURCE },
     }
   }
   const install = findExistingInstall(paths, targets, env)?.record
@@ -141,7 +200,7 @@ async function resolveAdminEndpoint(deps: AdminAccessDeps): Promise<AdminEndpoin
       adminKey:
         envKey === undefined
           ? await resolveInstallAdminKey(inbox, deps.inboxPath, targets[install.target], install)
-          : { kind: 'found', adminKey: envKey },
+          : { kind: 'found', adminKey: envKey, source: ENV_KEY_SOURCE },
       install,
       configPath: isNativeInstall(install)
         ? (install.configFile ?? resolveConfigPath(env))
@@ -186,9 +245,12 @@ function resolveNamedRemote(inbox: Inbox, name: string): AdminEndpoint {
 function toRemoteEndpoint(remote: InboxRemote): AdminEndpoint {
   return {
     kind: 'remote',
-    name: remote.name,
     endpoint: { kind: 'url', url: new URL(remote.url) },
-    adminKey: { kind: 'found', adminKey: remote.adminKey },
+    adminKey: {
+      kind: 'found',
+      adminKey: remote.adminKey,
+      source: { kind: 'remote', name: remote.name },
+    },
   }
 }
 
@@ -204,15 +266,14 @@ async function resolveInstallAdminKey(
 ): Promise<AdminKeyLookup> {
   const saved = inbox.local?.adminKey
   if (saved !== undefined) {
-    return { kind: 'found', adminKey: saved }
+    return { kind: 'found', adminKey: saved, source: INSTALL_KEY_SOURCE }
   }
   const read = await readTargetAdminKey(target, record)
   if (read.kind === 'missing') {
     return read
   }
-  const url = inbox.local?.url ?? toLocalUrl(record.port).href
   try {
-    writeInbox(inboxPath, { ...inbox, local: { url, adminKey: read.adminKey } })
+    writeInbox(inboxPath, withLocalKey(inbox, record.port, read.adminKey))
   } catch {
     // The inbox only saves a lookup; the key just read works without it.
   }
@@ -221,7 +282,11 @@ async function resolveInstallAdminKey(
 
 async function readTargetAdminKey(target: Target, record: InstallRecord): Promise<AdminKeyLookup> {
   try {
-    return { kind: 'found', adminKey: await target.readAdminKey(record) }
+    return {
+      kind: 'found',
+      adminKey: await target.readAdminKey(record),
+      source: INSTALL_KEY_SOURCE,
+    }
   } catch (error) {
     return { kind: 'missing', message: error instanceof Error ? error.message : String(error) }
   }
@@ -233,7 +298,11 @@ function toAdminKeyLookup(
 ): AdminKeyLookup {
   switch (token.kind) {
     case 'token':
-      return { kind: 'found', adminKey: token.token }
+      return {
+        kind: 'found',
+        adminKey: token.token,
+        source: token.source === 'env' ? ENV_KEY_SOURCE : FILE_KEY_SOURCE,
+      }
     case 'unusable':
       return { kind: 'missing', message: token.message }
     case 'none':

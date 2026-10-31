@@ -1,19 +1,10 @@
-import {
-  ADMIN_KEY_ENV_VAR,
-  findEnvValue,
-  findRemote,
-  readInbox,
-  resolveConfigPath,
-  saveRemote,
-  writeInbox,
-} from '@jaypost/store'
+import { resolveConfigPath } from '@jaypost/store'
 import { readAdminKeyFile } from '@jaypost/install'
 import type { AdminResult } from '@jaypost/client'
-import { openAdmin } from './admin-access.ts'
+import { openAdmin, saveRotatedKey } from './admin-access.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact } from './provider-setup.ts'
-import { toLocalUrl } from './constants.ts'
-import type { AdminDeps, AdminOutputArgs, ReachableEndpoint } from './types.ts'
+import type { AdminDeps, AdminOutputArgs } from './types.ts'
 
 /** What `formatTable` puts in an empty cell. */
 const EMPTY_CELL = '-'
@@ -99,49 +90,15 @@ export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promi
     if (result.kind === 'failed') {
       return code
     }
-    const { endpoint } = opened
-    saveRotatedKey(endpoint, result.value.adminKey, deps.inboxPath)
+    const notes = saveRotatedKey(opened, result.value.adminKey, deps.inboxPath)
     if (args.json) {
       return code
     }
-    const isSaved =
-      endpoint.kind === 'remote' ? endpoint.name !== undefined : endpoint.install !== undefined
-    if (isSaved) {
-      deps.printError('The old admin key stopped working. Saved the new one in your inbox.')
-    } else if (endpoint.kind === 'local') {
-      deps.printError(
-        'The old admin key stopped working. The service saved the new one to its admin key file, where commands on this machine find it.',
-      )
-    } else {
-      deps.printError('The old admin key stopped working.')
-    }
-    const isEnvKey =
-      findEnvValue(deps.env, ADMIN_KEY_ENV_VAR) !== undefined &&
-      !(endpoint.kind === 'remote' && endpoint.name !== undefined)
-    if (isEnvKey) {
-      deps.printError(`Set ${ADMIN_KEY_ENV_VAR} to the new key.`)
+    for (const note of notes) {
+      deps.printError(note)
     }
     return code
   })
-}
-
-/**
- * Writes `adminKey` to the inbox entry `endpoint` came from: the named remote, or `local` for the
- * install. `JAYPOST_URL` and a service run by hand have no entry, so the inbox stays as it is.
- */
-function saveRotatedKey(endpoint: ReachableEndpoint, adminKey: string, inboxPath: string): void {
-  const inbox = readInbox(inboxPath)
-  if (endpoint.kind === 'remote') {
-    const remote = endpoint.name === undefined ? undefined : findRemote(inbox, endpoint.name)
-    if (remote !== undefined) {
-      writeInbox(inboxPath, saveRemote(inbox, { ...remote, adminKey }))
-    }
-    return
-  }
-  if (endpoint.install !== undefined) {
-    const url = inbox.local?.url ?? toLocalUrl(endpoint.port).href
-    writeInbox(inboxPath, { ...inbox, local: { url, adminKey } })
-  }
 }
 
 /**

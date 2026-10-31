@@ -357,8 +357,19 @@ export type OpenedRuntime =
 
 /** The admin key for the service, or why there is none (already worded for the user). */
 export type AdminKeyLookup =
-  | { readonly kind: 'found'; readonly adminKey: string }
+  | { readonly kind: 'found'; readonly adminKey: string; readonly source: AdminKeySource }
   | { readonly kind: 'missing'; readonly message: string }
+
+/**
+ * Where a found admin key came from: a remote saved in the inbox, the environment, the install
+ * (its inbox copy or its target) or the admin key file. Only admin-access reads it; commands ask
+ * that module what follows from it.
+ */
+export type AdminKeySource =
+  | { readonly kind: 'remote'; readonly name: string }
+  | { readonly kind: 'env' }
+  | { readonly kind: 'install' }
+  | { readonly kind: 'keyFile' }
 
 /**
  * Where the admin commands send their calls: a remote from the inbox or `JAYPOST_URL` (its key from
@@ -368,8 +379,6 @@ export type AdminKeyLookup =
 export type AdminEndpoint =
   | {
       readonly kind: 'remote'
-      /** The inbox's name for the remote; undefined for `JAYPOST_URL`. */
-      readonly name: string | undefined
       readonly endpoint: ServiceEndpoint
       readonly adminKey: AdminKeyLookup
     }
@@ -396,17 +405,21 @@ export type ReachableEndpoint = Exclude<AdminEndpoint, { readonly kind: 'failed'
  * says why); `failed` is no usable endpoint.
  */
 export type OpenedAdmin =
-  | {
-      readonly kind: 'opened'
-      readonly caller: AdminCaller
-      readonly endpoint: ReachableEndpoint
-    }
+  | AdminAccess
   | {
       readonly kind: 'noKey'
       readonly endpoint: ReachableEndpoint
       readonly message: string
     }
   | { readonly kind: 'failed'; readonly message: string }
+
+/** The `opened` variant of `OpenedAdmin`. */
+export type AdminAccess = {
+  readonly kind: 'opened'
+  readonly caller: AdminCaller
+  readonly endpoint: ReachableEndpoint
+  readonly keySource: AdminKeySource
+}
 
 /** The inbox, or why it can't be read (the message names the file, never a value). */
 export type LoadedInbox =
