@@ -15,6 +15,15 @@ function printKey(status: StatusInfo, print: (text: string) => void): void {
   }
 }
 
+/** True for a url on this machine and the install's port; a loopback url can be another service. */
+function isInstallUrl(url: URL, port: number): boolean {
+  return isLoopbackEndpoint(url) && Number(url.port || toDefaultPort(url)) === port
+}
+
+function toDefaultPort(url: URL): number {
+  return url.protocol === 'https:' ? 443 : 80
+}
+
 /**
  * Prints the bot (alias or "env" and where it is), the install lines when it is the service on
  * this machine, then the key and contact from /status. Returns 0 only when /status answered; 1
@@ -34,7 +43,7 @@ export async function runStatus(deps: StatusDeps): Promise<number> {
   }
   const { url } = resolved.endpoint
   print(`Bot:     ${resolved.alias ?? 'env'} (${describeEndpoint(url)})`)
-  if (install !== undefined && isLoopbackEndpoint(url)) {
+  if (install !== undefined && isInstallUrl(url, install.record.port)) {
     const { record, target } = install
     let running = false
     try {

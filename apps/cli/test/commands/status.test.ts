@@ -91,6 +91,35 @@ test('status prints the bot and pairing for a remote bot without install lines',
   expect(fetchStatus).toHaveBeenCalledWith(new URL('https://relay.example.com/team'), KEY)
 })
 
+test('status for a loopback url on another port than the install asks that url', async () => {
+  const isRunning = vi.fn(async () => false)
+  const target = { isRunning, logsHint: vi.fn(() => 'logs hint') } as unknown as Target
+  const fetchStatus = vi.fn(async () => answered({ paired: true, bot: 'b' }))
+  const { deps, out } = setup({
+    resolved: bot('http://127.0.0.1:9999/', undefined),
+    install: { record: RECORD, target },
+    fetchStatus,
+  })
+  expect(await runStatus(deps)).toBe(0)
+  expect(out).toEqual(['Bot:     env (127.0.0.1:9999)', 'Pairing: paired'])
+  expect(isRunning).not.toHaveBeenCalled()
+})
+
+test('status treats localhost on the install port as the install', async () => {
+  const { deps, out } = setup({ resolved: bot('http://localhost:9000/', 'local') })
+  expect(await runStatus(deps)).toBe(0)
+  expect(out).toContain('Target:  systemd')
+})
+
+test('status treats a loopback url with no port as its scheme default', async () => {
+  const { deps, out } = setup({
+    resolved: bot('http://127.0.0.1/', undefined),
+    install: { record: { ...RECORD, port: 80 }, target: installed()?.target as Target },
+  })
+  expect(await runStatus(deps)).toBe(0)
+  expect(out).toContain('Port:    80')
+})
+
 test('status names env mode', async () => {
   const { deps, out } = setup({
     resolved: bot('http://127.0.0.1:9000/', undefined),
