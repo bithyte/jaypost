@@ -1,28 +1,10 @@
-import { findEnvValue, URL_ENV_VAR } from '@jaypost/store'
+import { findEnvValue, parseServiceUrl, URL_ENV_VAR } from '@jaypost/store'
 import { HOST, INVALID_URL_MESSAGE } from './constants.ts'
 import type { ServiceEndpoint } from './types.ts'
 
 /** The local service on `host:port` over plain HTTP. */
 export function toLocalEndpoint(port: number, host: string = HOST): ServiceEndpoint {
   return { kind: 'url', url: new URL(`http://${host.includes(':') ? `[${host}]` : host}:${port}/`) }
-}
-
-/**
- * `raw` as a service base URL: http or https, no credentials, query or fragment; a path is kept
- * as the prefix of every API path. Undefined when it isn't one. Never throws.
- */
-export function parseEndpointUrl(raw: string): URL | undefined {
-  if (!URL.canParse(raw)) {
-    return undefined
-  }
-  const url = new URL(raw)
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    return undefined
-  }
-  if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
-    return undefined
-  }
-  return url
 }
 
 /**
@@ -35,7 +17,7 @@ export function findEnvEndpoint(env: NodeJS.ProcessEnv): ServiceEndpoint | undef
   if (raw === undefined) {
     return undefined
   }
-  const url = parseEndpointUrl(raw)
+  const url = parseServiceUrl(raw)
   return url === undefined
     ? { kind: 'invalid', message: INVALID_URL_MESSAGE }
     : { kind: 'url', url }

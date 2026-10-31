@@ -9,6 +9,7 @@ import {
   saveRemote,
   setDefaultBot,
   setLocal,
+  parseServiceUrl,
   toServiceUrl,
 } from '../../src/inbox/index.ts'
 import type { Inbox, InboxBot, InboxChange } from '../../src/inbox/index.ts'
@@ -95,6 +96,14 @@ test('findRemote matches the name case-insensitively and the url host', () => {
   expect(findRemote(inbox, 'hOME')).toEqual(remote)
   expect(findRemote(inbox, 'home.example:8443')).toEqual(remote)
   expect(findRemote(inbox, 'nope')).toBeUndefined()
+})
+
+test('parseServiceUrl keeps a path as a prefix and refuses what toServiceUrl refuses', () => {
+  expect(parseServiceUrl('https://relay.example.com/team')?.href).toBe(
+    'https://relay.example.com/team',
+  )
+  expect(parseServiceUrl('ftp://host/')).toBeUndefined()
+  expect(parseServiceUrl('nonsense')).toBeUndefined()
 })
 
 test('toServiceUrl rejects credentials, query, fragment and non-http schemes', () => {

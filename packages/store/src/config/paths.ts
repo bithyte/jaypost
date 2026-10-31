@@ -1,11 +1,22 @@
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { INBOX_FILE_NAME } from '../inbox/constants.ts'
+import { PORT_ENV_VAR, PORT_PATTERN } from './constants.ts'
 
 /** Env value, with an empty string counting as unset. */
 export function findEnvValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
   const value = env[key]
   return value === undefined || value === '' ? undefined : value
+}
+
+/** `JAYPOST_PORT` when it's a port number, else undefined. Never throws. */
+export function findEnvPort(env: NodeJS.ProcessEnv): number | undefined {
+  const raw = findEnvValue(env, PORT_ENV_VAR)
+  if (raw === undefined || !PORT_PATTERN.test(raw)) {
+    return undefined
+  }
+  const port = Number(raw)
+  return port >= 1 && port <= 65_535 ? port : undefined
 }
 
 /** The jaypost config root: $XDG_CONFIG_HOME/jaypost or ~/.config/jaypost; ignores $JAYPOST_CONFIG. */

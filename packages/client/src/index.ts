@@ -6,7 +6,6 @@ export {
   describeEndpoint,
   findEnvEndpoint,
   isLoopbackEndpoint,
-  parseEndpointUrl,
   toLocalEndpoint,
 } from './endpoint.ts'
 export {

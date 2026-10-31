@@ -49,6 +49,7 @@ export {
   saveRemote,
   setDefaultBot,
   setLocal,
+  parseServiceUrl,
   toServiceUrl,
   writeInbox,
 } from './inbox/index.ts'
@@ -87,7 +88,7 @@ export {
   updateConfigFile,
 } from './config/index.ts'
 export type { Config, ServiceConfig } from './config/index.ts'
-export { findEnvValue } from './config/paths.ts'
+export { findEnvPort, findEnvValue } from './config/paths.ts'
 export {
   addBot,
   ADMIN_KEY_ENV_VAR,

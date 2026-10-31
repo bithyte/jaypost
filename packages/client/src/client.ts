@@ -1,7 +1,13 @@
-import { DEFAULT_PORT, NO_CLIENT_TOKEN, parseToken, resolveEnvToken } from '@jaypost/store'
+import {
+  DEFAULT_PORT,
+  NO_CLIENT_TOKEN,
+  parseServiceUrl,
+  parseToken,
+  resolveEnvToken,
+} from '@jaypost/store'
 import type { ClientToken } from '@jaypost/store'
 import { Caller } from './caller.ts'
-import { findEnvEndpoint, parseEndpointUrl, toLocalEndpoint } from './endpoint.ts'
+import { findEnvEndpoint, toLocalEndpoint } from './endpoint.ts'
 import { resolveBot } from './target.ts'
 import type { VoteReport } from '@jaypost/core'
 import type {
@@ -143,7 +149,7 @@ function toClientEndpoint(options: ClientOptions): ServiceEndpoint {
     if (options.host !== undefined || options.port !== undefined) {
       throw new RangeError("url can't be combined with host or port")
     }
-    const url = parseEndpointUrl(options.url)
+    const url = parseServiceUrl(options.url)
     if (url === undefined) {
       throw new RangeError("url isn't an http or https URL without credentials, query or fragment")
     }

@@ -4,6 +4,7 @@ import { TOKEN_ENV_VAR } from '../auth/constants.ts'
 export const PROVIDER_ENV_VAR = 'JAYPOST_PROVIDER'
 /** Env var that sets the API port. */
 export const PORT_ENV_VAR = 'JAYPOST_PORT'
+export const PORT_PATTERN = /^\d+$/
 /** Env var that sets the API bind host. */
 export const HOST_ENV_VAR = 'JAYPOST_HOST'
 /** Env var that points clients at a service by URL, local or remote. */

@@ -20,6 +20,7 @@ export {
   saveRemote,
   setDefaultBot,
   setLocal,
+  parseServiceUrl,
   toServiceUrl,
 } from './operations.ts'
 export { readInbox, writeInbox } from './store.ts'

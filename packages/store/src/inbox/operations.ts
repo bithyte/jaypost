@@ -1,20 +1,26 @@
 import type { Inbox, InboxBot, InboxChange, InboxLocal, InboxRemote } from './types.ts'
 
-/** The normalized http(s) url, or undefined for credentials, a query, a fragment or another scheme. */
-export function toServiceUrl(raw: string): string | undefined {
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
+/**
+ * `raw` as a service base URL: http or https, no credentials, query or fragment; a path is kept
+ * as the prefix of every API path. Undefined when it isn't one. Never throws.
+ */
+export function parseServiceUrl(raw: string): URL | undefined {
+  if (!URL.canParse(raw)) {
     return undefined
   }
+  const url = new URL(raw)
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return undefined
   }
   if (url.username !== '' || url.password !== '' || url.search !== '' || url.hash !== '') {
     return undefined
   }
-  return url.href
+  return url
+}
+
+/** `parseServiceUrl`'s normalized form, for storing in the inbox. */
+export function toServiceUrl(raw: string): string | undefined {
+  return parseServiceUrl(raw)?.href
 }
 
 /** The bot with this alias, ignoring case. */

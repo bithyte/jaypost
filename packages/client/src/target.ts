@@ -2,9 +2,9 @@ import {
   BOT_ENV_VAR,
   DEFAULT_PORT,
   findBot,
+  findEnvPort,
   findEnvValue,
   NO_CLIENT_TOKEN,
-  PORT_ENV_VAR,
   readInbox,
   resolveInboxPath,
   resolveEnvToken,
@@ -86,15 +86,6 @@ function resolveEnvBot(env: NodeJS.ProcessEnv): ResolvedBot {
     alias: undefined,
     failure: endpoint.kind === 'invalid' ? 'unresolvable' : undefined,
   }
-}
-
-function findEnvPort(env: NodeJS.ProcessEnv): number | undefined {
-  const raw = findEnvValue(env, PORT_ENV_VAR)
-  if (raw === undefined || !/^\d+$/.test(raw)) {
-    return undefined
-  }
-  const port = Number(raw)
-  return port >= 1 && port <= 65535 ? port : undefined
 }
 
 function toFailure(message: string, failure: ResolvedBotFailure): ResolvedBot {

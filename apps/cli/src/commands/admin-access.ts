@@ -1,10 +1,10 @@
 import {
   ADMIN_KEY_ENV_VAR,
   DEFAULT_PORT,
+  findEnvPort,
   findEnvValue,
   findRemote,
   parseToken,
-  PORT_ENV_VAR,
   readInbox,
   readConfigFile,
   resolveAdminKey,
@@ -32,8 +32,6 @@ import type {
   OpenedAdmin,
   ReachableEndpoint,
 } from './types.ts'
-
-const PORT_PATTERN = /^\d{1,5}$/
 
 /** True for the installs whose service runs on this machine's files, not in a container. */
 export function isNativeInstall(record: InstallRecord): boolean {
@@ -248,9 +246,8 @@ function toAdminKeyLookup(
 
 /** `JAYPOST_PORT` when valid, else the config file's port, else the default. Never throws. */
 function resolveLocalPort(env: NodeJS.ProcessEnv, configPath: string): number {
-  const raw = findEnvValue(env, PORT_ENV_VAR)
-  const envPort = raw !== undefined && PORT_PATTERN.test(raw) ? Number(raw) : undefined
-  if (envPort !== undefined && envPort >= 1 && envPort <= 65_535) {
+  const envPort = findEnvPort(env)
+  if (envPort !== undefined) {
     return envPort
   }
   try {
