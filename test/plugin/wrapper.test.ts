@@ -1,7 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, test } from 'vite-plus/test'
@@ -95,14 +93,6 @@ async function waitForStarted(sandbox: Sandbox): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
   return false
-}
-
-async function freePort(): Promise<number> {
-  const server = createServer()
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const { port } = server.address() as AddressInfo
-  await new Promise<void>((resolve) => server.close(() => resolve()))
-  return port
 }
 
 test('hook passes the event through and prints the decision', async () => {
@@ -281,7 +271,6 @@ test('session start against the real cli reports a stopped service', async () =>
   )
   const configHome = join(sandbox.root, 'config')
   await mkdir(configHome)
-  const botPort = await freePort()
   await mkdir(join(configHome, 'jaypost'), { recursive: true })
   await writeFile(
     join(configHome, 'jaypost', 'inbox.json'),
@@ -289,7 +278,7 @@ test('session start against the real cli reports a stopped service', async () =>
       version: 1,
       default: 'home',
       remotes: [],
-      bots: [{ alias: 'home', url: `http://127.0.0.1:${botPort}/` }],
+      bots: [{ alias: 'home', url: 'http://127.0.0.1:1/' }],
     }),
   )
   const result = run(
@@ -300,6 +289,6 @@ test('session start against the real cli reports a stopped service', async () =>
   )
   expect(result.status).toBe(0)
   expect(JSON.parse(result.stdout)).toEqual({
-    systemMessage: `jaypost isn't running on 127.0.0.1:${botPort}, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`,
+    systemMessage: `jaypost isn't running on 127.0.0.1:1, so permission prompts stay in the terminal. Run \`jaypost service install\` to set it up, or \`jaypost status\` to check an existing install.`,
   })
 })
