@@ -139,6 +139,22 @@ test('vote posts to /request and returns the report', async () => {
   expect(seen).toEqual({ url: '/request', body: { ...vote, project: 'app' } })
 })
 
+test('a vote with no ballot still sends require all so the service sees a vote', async () => {
+  const report = {
+    answer: 'Approve',
+    timedOut: false,
+    approved: true,
+    require: 'all',
+    votes: { owner: 'Approve' },
+    rounds: 1,
+  }
+  const { port, seen } = await startStub(200, JSON.stringify(report))
+  const client = new Client({ port })
+  const vote = { text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }
+  expect(await client.vote(vote)).toEqual(report)
+  expect(seen).toEqual({ url: '/request', body: { ...vote, require: 'all' } })
+})
+
 test('vote answered as a plain question throws the upgrade message', async () => {
   const { port } = await startStub(200, '{"answer":"Approve","timedOut":false}')
   const client = new Client({ port })

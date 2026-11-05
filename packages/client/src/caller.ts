@@ -91,7 +91,8 @@ export class Caller {
       ...toAskBody(question, attachment.body),
       ...toRetryField(question),
       ...(ballot.voters === undefined ? {} : { voters: ballot.voters }),
-      ...(ballot.rule === undefined ? {} : { require: ballot.rule }),
+      // Always sent: the service tells a vote from a plain question by `voters` or `require`.
+      require: ballot.rule ?? 'all',
     }
     return voteApi(session.endpoint, body, this.#apiOptions(session, call.signal))
   }
