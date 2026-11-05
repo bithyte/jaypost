@@ -1109,11 +1109,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         if (
           isVote &&
           (options.allowText === true ||
-            options.option?.length !== 1 ||
-            options.option[0] === options.default)
+            toButtons(options.option ?? [], options.default, undefined).length < 2)
         ) {
           request.error(
-            'error: a vote needs exactly one -o and a different -d, without --allow-text',
+            'error: a vote needs at least two answers from -o and -d, without --allow-text',
             {
               exitCode: 2,
             },

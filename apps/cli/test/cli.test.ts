@@ -869,7 +869,7 @@ test('JAYPOST_APPROVERS makes the question a vote', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')
   vi.stubEnv('JAYPOST_APPROVERS', '1,2')
-  const args = ['request', 'Deploy?', '-o', 'Yes', '-o', 'Maybe', '-d', 'No']
+  const args = ['request', 'Deploy?', '-o', 'No', '-d', 'No']
   expect(await main(args)).toBe(2)
 })
 
@@ -881,11 +881,10 @@ test('notify ignores JAYPOST_APPROVERS', async () => {
   expect(await main(['notify', 'done'])).toBe(1)
 })
 
-test('a vote needs one -o and a different -d without --allow-text', async () => {
+test('a vote needs two answers from -o and -d without --allow-text', async () => {
   vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
   vi.stubEnv('JAYPOST_MODE', 'direct')
   const base = ['request', 'Deploy?']
-  expect(await main([...base, '-o', 'Yes', '-o', 'Maybe', '-d', 'No', '-u', '1'])).toBe(2)
   expect(await main([...base, '--allow-text', '-d', 'No', '--require', 'all'])).toBe(2)
   expect(await main([...base, '-o', 'No', '-d', 'No', '-u', '1'])).toBe(2)
 })
@@ -911,6 +910,9 @@ test('valid vote and retry flags pass validation and reach the direct send', asy
   const flags = ['-u', '1', '-u', '2', '--require', 'majority', '--retry', '3']
   expect(await main([...REQUEST_ARGS, ...flags])).toBe(1)
   expect(await main([...REQUEST_ARGS, '--retry', '0'])).toBe(1)
+  expect(
+    await main(['request', 'Deploy?', '-o', 'Ship', '-o', 'Hold', '-d', 'No', '-u', '1']),
+  ).toBe(1)
 })
 
 test('a bad url in the inbox fails inbox, ping -b and admin -s naming the file, with no stack', () => {

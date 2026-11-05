@@ -578,13 +578,28 @@ test('a vote names the voter the service could not reach', async () => {
   expect(errors).toEqual(["jaypost: couldn't send the message to 7"])
 })
 
-test('a vote against a service without /vote says it is too old', async () => {
-  const port = await startFakeService(404, { error: 'not found' })
+test('a vote answered as a plain question says the service is too old', async () => {
+  const port = await startFakeService(200, { answer: 'Approve', timedOut: false })
   const { deps, errors } = createDeps(port)
   expect(await runSendRequest({ ...ASK, voters: ['1'] }, deps)).toBe(1)
   expect(errors).toEqual([
     'jaypost: jaypost service is too old for votes (run jaypost service install to upgrade)',
   ])
+})
+
+test('a three-way vote through the service exits 0 on a non-default winner', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out } = createDeps(port)
+  const pending = runSendRequest(
+    { ...ASK, options: ['Ship', 'Hold', 'Decline'], voters: ['1', '2'], rule: 'majority' },
+    deps,
+  )
+  await waitFor(() => messenger.sent.length === 2)
+  for (const sent of messenger.sent) {
+    service.tap(sent.id, 1)
+  }
+  expect(await pending).toBe(0)
+  expect(out).toEqual(['Hold'])
 })
 
 test('retry re-asks through the service', async () => {
