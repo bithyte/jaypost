@@ -541,7 +541,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
             '500': errorResponse('Internal error, or the request was cancelled.'),
             '502': {
               description:
-                "A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.",
+                "Message couldn't be sent; on a vote, `voter` names who. The messages already sent are cancelled.",
               content: {
                 'application/json': {
                   schema: {

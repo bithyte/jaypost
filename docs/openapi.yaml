@@ -51,7 +51,7 @@ paths:
         "501":
           $ref: "#/components/responses/NotSupported"
         "502":
-          description: A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.
+          description: Message couldn't be sent; on a vote, `voter` names who. The messages already sent are cancelled.
           content:
             application/json:
               schema:

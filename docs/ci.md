@@ -128,8 +128,8 @@ So `-d No` works as a gate: the step fails unless someone approves. In service m
 
 `-u ID` sends the question to a paired user instead of the owner. Repeat it for each approver, and each one gets their own message. `--require` sets how the votes decide:
 
-- `all` (the default with `-u`): approved when every approver answers the `-o` button, rejected on the first `-d`.
-- `majority`: approved when more than half of the listed approvers answer `-o`, rejected once that can't happen. A tie rejects.
+- `all` (the default with `-u`): wins an option when every approver picks it, and ends on the `-d` answer once no other option can win.
+- `majority`: wins an option when more than half of the approvers pick the same one, with the same early end. A tie rejects.
 
 ```yaml
 - run: npx jaypost request 'Publish v123?' -o Yes -d No -u 111 -u 222 -u 333 --require majority --retry 10
