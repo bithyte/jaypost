@@ -220,7 +220,7 @@ test('maxOptionCount becomes maxItems on request options', () => {
   )
 })
 
-test('/vote is documented with its body and report', () => {
+test('/request takes a vote body and answers with its report', () => {
   const document = createOpenApiDocument({
     version: TEST_VERSION,
     port: 8787,
@@ -228,8 +228,16 @@ test('/vote is documented with its body and report', () => {
     maxAttachmentBytes: 0,
   })
   const { VoteRequest, VoteReport, ApprovalRequest } = document.components.schemas
-  expect(document.paths['/vote'].post.responses['200']).toMatchObject({
-    content: { 'application/json': { schema: { $ref: '#/components/schemas/VoteReport' } } },
+  expect(document.paths).not.toHaveProperty('/vote')
+  const post = document.paths['/request'].post
+  expect(post.requestBody.content['application/json'].schema).toEqual({
+    anyOf: [
+      { $ref: '#/components/schemas/ApprovalRequest' },
+      { $ref: '#/components/schemas/VoteRequest' },
+    ],
+  })
+  expect(post.responses['200'].content['application/json'].schema).toEqual({
+    anyOf: [{ $ref: '#/components/schemas/Outcome' }, { $ref: '#/components/schemas/VoteReport' }],
   })
   expect(VoteRequest.allOf[0]).toEqual({ $ref: '#/components/schemas/ApprovalRequest' })
   expect(VoteRequest.allOf[1]?.properties).toMatchObject({

@@ -67,10 +67,13 @@ const VOTE_DESCRIPTIONS: Readonly<Record<string, JsonSchema>> = {
     description:
       'User ids to ask, one message each; default the owner. Each must have started a chat with the bot. Duplicates count once.',
   },
-  require: { description: '`all` voters must approve (default), or a `majority` of them.' },
+  require: {
+    description:
+      'How the vote decides: an option wins once `all` voters (default) or a `majority` of them pick it. Once no option but `timeoutOption` can win, `timeoutOption` does.',
+  },
   retry: {
     description:
-      'Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds rejects.',
+      'Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds ends on `timeoutOption`.',
   },
 }
 
@@ -503,26 +506,52 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           operationId: 'request',
           summary: 'Ask a question and wait for the answer',
           description:
-            'Stays open until the owner answers (tap, or text reply with `allowText`) or the timeout fires. Disconnecting cancels the question.',
+            "Stays open until the owner answers (tap, or text reply with `allowText`) or the timeout fires. With `voters` or `require` it's a vote instead: one message per voter, open until the vote is decided or its rounds run out, answered with the vote's report. Disconnecting cancels every open message.",
           requestBody: {
             required: true,
             content: {
-              'application/json': { schema: { $ref: '#/components/schemas/ApprovalRequest' } },
+              'application/json': {
+                schema: {
+                  anyOf: [
+                    { $ref: '#/components/schemas/ApprovalRequest' },
+                    { $ref: '#/components/schemas/VoteRequest' },
+                  ],
+                },
+              },
             },
           },
           responses: {
             '200': {
               description:
-                'The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked.',
+                "The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked. A vote answers with its decision and each voter's answer.",
               content: {
-                'application/json': { schema: { $ref: '#/components/schemas/Outcome' } },
+                'application/json': {
+                  schema: {
+                    anyOf: [
+                      { $ref: '#/components/schemas/Outcome' },
+                      { $ref: '#/components/schemas/VoteReport' },
+                    ],
+                  },
+                },
               },
             },
             '400': { $ref: '#/components/responses/BadRequest' },
             '401': { $ref: '#/components/responses/Unauthorized' },
             '413': { $ref: '#/components/responses/PayloadTooLarge' },
             '500': errorResponse('Internal error, or the request was cancelled.'),
-            '502': { $ref: '#/components/responses/SendFailed' },
+            '502': {
+              description:
+                "A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.",
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { error: { type: 'string' }, voter: { type: 'string' } },
+                    required: ['error'],
+                  },
+                },
+              },
+            },
             '501': { $ref: '#/components/responses/NotSupported' },
             '503': { $ref: '#/components/responses/NotPaired' },
           },
@@ -533,7 +562,7 @@ export function createOpenApiDocument(options: OpenApiOptions) {
           operationId: 'requestAsync',
           summary: 'Ask a question with buttons and return at once',
           description:
-            'Returns once the message is sent. Poll `GET /request/{id}` for the answer. The question outlives the connection and is cancelled only by `DELETE /request/{id}`, the timeout or the owner.',
+            'Returns once the message is sent. Poll `GET /request/{id}` for the answer. The question outlives the connection and is cancelled only by `DELETE /request/{id}`, the timeout or the owner. It answers 400 to `retry`, `voters` and `require`.',
           requestBody: {
             required: true,
             content: {
@@ -607,47 +636,6 @@ export function createOpenApiDocument(options: OpenApiOptions) {
             '401': { $ref: '#/components/responses/Unauthorized' },
             '404': { $ref: '#/components/responses/UnknownRequest' },
             '503': { $ref: '#/components/responses/BotUnavailable' },
-          },
-        },
-      },
-      '/vote': {
-        post: {
-          operationId: 'vote',
-          summary: 'Ask several people the same yes/no question and wait for the decision',
-          description:
-            'Sends one message per voter and stays open until the vote is decided or its rounds run out. `options` must be `[approve, reject]` and `timeoutOption` the reject answer, without `allowText`. Once decided, every open message is closed with the result. Disconnecting cancels every open message.',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/VoteRequest' } },
-            },
-          },
-          responses: {
-            '200': {
-              description: "The decision and each voter's answer.",
-              content: {
-                'application/json': { schema: { $ref: '#/components/schemas/VoteReport' } },
-              },
-            },
-            '400': { $ref: '#/components/responses/BadRequest' },
-            '401': { $ref: '#/components/responses/Unauthorized' },
-            '413': { $ref: '#/components/responses/PayloadTooLarge' },
-            '500': errorResponse('Internal error, or the vote was cancelled.'),
-            '501': { $ref: '#/components/responses/NotSupported' },
-            '502': {
-              description:
-                "A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.",
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: { error: { type: 'string' }, voter: { type: 'string' } },
-                    required: ['error', 'voter'],
-                  },
-                },
-              },
-            },
-            '503': { $ref: '#/components/responses/NotPaired' },
           },
         },
       },
