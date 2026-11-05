@@ -328,11 +328,16 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
       return reply
     }
     const signal = abortOnClose(reply)
-    const { bot, value: question } = read
-    switch (question.kind) {
+    // No local may hold the parsed question across an await, or the attachment bytes stay alive.
+    switch (read.value.kind) {
       case 'ask': {
-        const { retryCount } = question
-        const pending = askWithRetries(bot.service, question.request, retryCount ?? 0, signal)
+        const { retryCount } = read.value
+        const pending = askWithRetries(
+          read.bot.service,
+          read.value.request,
+          retryCount ?? 0,
+          signal,
+        )
         // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
         read = undefined
         const result = await pending
@@ -346,8 +351,8 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
           : { ...result.outcome, rounds: result.roundCount }
       }
       case 'vote': {
-        const { rule } = question.vote
-        const pending = runVote(bot.service, question.vote, signal)
+        const { rule } = read.value.vote
+        const pending = runVote(read.bot.service, read.value.vote, signal)
         read = undefined
         const result = await pending
         if (result.kind === 'cancelled') {
