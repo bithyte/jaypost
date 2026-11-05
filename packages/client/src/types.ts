@@ -104,12 +104,12 @@ export type Answer = {
 }
 
 /**
- * A yes/no question for several people, one message each: `options` are `[approve, reject]` and
- * `timeoutOption` the reject answer. `voters` (provider user ids) default to the owner and
- * `require` to `all`; `retry` re-asks only voters who haven't voted. Needs a service with votes.
+ * A question for several people, one message each, with any number of `options`; `timeoutOption`
+ * is the reject answer. `voters` (provider user ids) default to the owner and `require` to `all`;
+ * `retry` re-asks only voters who haven't voted. Needs a service with votes.
  */
 export type VoteRequest = Omit<AskRequest, 'options' | 'allowText'> & {
-  readonly options: readonly [string, string]
+  readonly options: readonly string[]
   readonly voters?: readonly string[]
   readonly require?: VoteRule
 }
@@ -138,7 +138,6 @@ export type ApiPath =
   | '/request'
   | '/notify'
   | '/request/async'
-  | '/vote'
   | '/status'
   | '/log'
   | `/log?${string}`
@@ -175,7 +174,7 @@ export type AskBody = {
   readonly retry?: number
 }
 
-/** The body of a /vote call: a two-way question and who votes on it. */
+/** The body of a vote sent to /request: a question and who votes on it. */
 export type VoteBody = AskBody & {
   readonly voters?: readonly string[]
   readonly require?: VoteRule
@@ -241,7 +240,7 @@ export type Question = Omit<AskRequest, 'attachment' | 'signal'> & {
 }
 
 /**
- * Who votes on a two-way question and how: `voters` default to the owner and `rule` to `all`.
+ * Who votes on a question and how: `voters` default to the owner and `rule` to `all`.
  * Ids are the provider's user ids.
  */
 export type Ballot = {

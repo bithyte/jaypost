@@ -103,7 +103,7 @@ export async function fetchApi(
 const KEEPALIVE_MS = 60_000
 
 /**
- * HTTP timeout for a /request or /vote call: the capped approval timeout for every round plus a
+ * HTTP timeout for a /request call: the capped approval timeout for every round plus a
  * grace period, and more when the call uploads an attachment, at most `MAX_TIMER_MS`.
  */
 function toFetchTimeoutMs(body: AskBody): number {
@@ -159,13 +159,17 @@ export async function requestApi(
   }
 }
 
-/** Runs a vote through /vote and resolves once it is decided. Never throws. */
+/**
+ * Runs a vote through /request and resolves once it is decided. Fails with VOTE_TOO_OLD_MESSAGE
+ * when the answer is a plain outcome, since only a service without votes on /request sends one;
+ * by then the key's person was asked. Never throws.
+ */
 export async function voteApi(
   endpoint: URL,
   body: VoteBody,
   options: Omit<ApiOptions, 'timeoutMs'>,
 ): Promise<VoteOutcome> {
-  const result = await postApi(endpoint, '/vote', body, {
+  const result = await postApi(endpoint, '/request', body, {
     ...options,
     timeoutMs: toFetchTimeoutMs(body),
   })
@@ -174,6 +178,9 @@ export async function voteApi(
   }
   const parsed = voteReportSchema.safeParse(result.body)
   if (!parsed.success) {
+    if (isOutcome(result.body)) {
+      return { kind: 'failed', reason: 'tooOld', message: VOTE_TOO_OLD_MESSAGE }
+    }
     return unreadable(JSON.stringify(result.body))
   }
   return { kind: 'voted', report: parsed.data }
@@ -333,9 +340,6 @@ function toStatusFailure(status: number, path: ApiPath, text: string, sentToken:
   }
   if (status === 404 && (path === '/log' || path.startsWith('/log?'))) {
     return { kind: 'failed', reason: 'tooOld', message: LOG_TOO_OLD_MESSAGE }
-  }
-  if (status === 404 && path === '/vote') {
-    return { kind: 'failed', reason: 'tooOld', message: VOTE_TOO_OLD_MESSAGE }
   }
   if (status === 404 && path === '/request/async') {
     return { kind: 'failed', reason: 'tooOld', message: BACKGROUND_TOO_OLD_MESSAGE }

@@ -75,8 +75,8 @@ export class Caller {
   }
 
   /**
-   * Asks every voter on `ballot` the two-way `question` (`options` is `[approve, reject]` and
-   * `timeoutOption` the reject answer) and resolves once the vote is decided.
+   * Asks every voter on `ballot` the `question` (any number of `options`; `timeoutOption` is
+   * the reject answer) and resolves once the vote is decided.
    */
   async vote(question: Question, ballot: Ballot, call: CallOptions): Promise<VoteOutcome> {
     const session = this.#begin()

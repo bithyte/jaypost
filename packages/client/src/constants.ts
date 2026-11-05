@@ -35,7 +35,7 @@ export const RETRY_TOO_OLD_MESSAGE =
 /** Shown when the service has no GET /log. */
 export const LOG_TOO_OLD_MESSAGE =
   'jaypost service is too old to read its log over the API (run jaypost service install to upgrade)'
-/** Shown when the service has no /vote. */
+/** Shown when a vote comes back as a plain answer, which only a service without votes on /request sends. */
 export const VOTE_TOO_OLD_MESSAGE =
   'jaypost service is too old for votes (run jaypost service install to upgrade)'
 /** Longest delay a Node timer takes (2^31 - 1 ms, about 24.8 days); longer ones fire at once. */

@@ -84,7 +84,7 @@ export class Client {
   }
 
   /**
-   * Asks every voter the two-way question and resolves once the vote is decided, either way;
+   * Asks every voter the question and resolves once the vote is decided, either way;
    * `approved` says which. Throws like `request`.
    */
   async vote(request: VoteRequest): Promise<VoteReport> {

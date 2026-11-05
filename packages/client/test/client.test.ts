@@ -116,7 +116,7 @@ test('a long timeout with many retries still waits for the answer', async () => 
   })
 })
 
-test('vote posts to /vote and returns the report', async () => {
+test('vote posts to /request and returns the report', async () => {
   const report = {
     answer: 'Decline',
     timedOut: false,
@@ -129,18 +129,18 @@ test('vote posts to /vote and returns the report', async () => {
   const client = new Client({ port, project: 'app' })
   const vote = {
     text: 'Deploy?',
-    options: ['Approve', 'Decline'] as const,
+    options: ['Ship', 'Hold', 'Decline'],
     timeoutOption: 'Decline',
     voters: ['111', '222'],
     require: 'majority' as const,
     retry: 1,
   }
   expect(await client.vote(vote)).toEqual(report)
-  expect(seen).toEqual({ url: '/vote', body: { ...vote, project: 'app' } })
+  expect(seen).toEqual({ url: '/request', body: { ...vote, project: 'app' } })
 })
 
-test('vote against a service without /vote throws the upgrade message', async () => {
-  const { port } = await startStub(404, '{"error":"not found"}')
+test('vote answered as a plain question throws the upgrade message', async () => {
+  const { port } = await startStub(200, '{"answer":"Approve","timedOut":false}')
   const client = new Client({ port })
   await expect(
     client.vote({ text: 'Deploy?', options: ['Approve', 'Decline'], timeoutOption: 'Decline' }),
