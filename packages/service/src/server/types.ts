@@ -29,7 +29,7 @@ export type ApiBot = {
   >
   /** How to redeem `code` on this bot; absent for providers that don't pair. */
   readonly pairingInstructions?: (code: string) => string
-  /** Voter ids for /vote; without `voters`, `person` (the key's person), or noOwner when undefined. */
+  /** Voter ids for a vote; without `voters`, `person` (the key's person), or noOwner when undefined. */
   readonly resolveVoters: (
     voters: readonly string[] | undefined,
     person: string | undefined,

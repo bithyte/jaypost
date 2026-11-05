@@ -328,7 +328,7 @@ export function toAskBody(question: Question, attachment: AttachmentBody | undef
   }
 }
 
-// Only /request and /vote take `retry`; /request/async answers 400 to it.
+// Only /request takes `retry`; /request/async answers 400 to it.
 function toRetryField(question: Question): { readonly retry?: number } {
   return question.retry === undefined ? {} : { retry: question.retry }
 }

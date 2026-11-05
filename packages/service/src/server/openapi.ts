@@ -87,7 +87,7 @@ function toRetrySchema(): JsonSchema {
   }
 }
 
-/** The fields a /vote body adds to ApprovalRequest, with `retry` described for votes. */
+/** The fields a vote body adds to ApprovalRequest, with `retry` described for votes. */
 function toVoteFieldsSchema(): JsonSchema {
   const {
     $schema: _schema,

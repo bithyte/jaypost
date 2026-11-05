@@ -73,9 +73,9 @@ export async function askWithRetries(
  * asks only voters who haven't voted. Each vote that doesn't decide shows the tally under every
  * voter's latest message. Once decided, every open message is closed with the vote's answer and
  * every answered voter's message shows the complete tally.
- * Rounds running out end on `timeoutOption`, counting missing votes as rejections. Throws `VoterSendError` when a
- * send fails, after cancelling the messages that were sent. An aborted `signal` cancels every open
- * message and resolves as cancelled. Settles only once every update it sent has landed.
+ * Rounds running out end on `timeoutOption`. Throws `VoterSendError` when a send fails, after
+ * cancelling the messages that were sent. An aborted `signal` cancels every open message and
+ * resolves as cancelled. Settles only once every update it sent has landed.
  * `onProgress` gets `sent` once every send of a round is out and `voted` after each recorded vote.
  */
 export async function runVote(

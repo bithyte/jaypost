@@ -68,9 +68,9 @@ export const OWNER_COMMANDS: readonly OwnerCommand[] = [
   { name: 'cancel', description: 'Reject all open requests with their timeout answers' },
   { name: 'history', description: 'Show recent answers' },
 ]
-/** The vote rules the CLI accepts for `--require` and /vote for `require`. */
+/** The vote rules the CLI accepts for `--require` and a vote body for `require`. */
 export const VOTE_RULES = ['all', 'majority'] as const satisfies readonly VoteRule[]
 /** Most re-asks `request --retry` and the API's `retry` accept. */
 export const MAX_RETRY_COUNT = 100
-/** Most voters a /vote body may list. */
+/** Most voters a vote body may list. */
 export const MAX_VOTER_COUNT = 25

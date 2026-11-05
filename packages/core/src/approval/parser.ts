@@ -315,7 +315,7 @@ export function createRetrySchema() {
 }
 
 /**
- * Schema of the fields a /vote body adds to a /request body; also the source of the OpenAPI spec.
+ * Schema of the fields a vote body adds to a /request body; also the source of the OpenAPI spec.
  * Unknown keys are kept, since they belong to the question.
  */
 export function createVoteFieldsSchema() {

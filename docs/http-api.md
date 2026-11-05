@@ -61,14 +61,14 @@ Errors are JSON `{ "error": "..." }`:
 | 502    | Message couldn't be sent.                                                                                                                                  |
 | 503    | The key's bot isn't `running` (see `state` in [`GET /status`](#status)), or isn't paired yet.                                                              |
 | 500    | Internal error, or the request was cancelled.                                                                                                              |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                          |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                          |
 | 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
 
 ## Background questions
 
-`POST /request/async` takes the same body and sends the same message, but answers `202` as soon as it is sent, so no connection has to stay open. It checks pairing like `/request`; the routes below only need the token.
+`POST /request/async` takes the same body and sends the same message, but answers `202` as soon as it is sent, so no connection has to stay open. It checks pairing like `/request`; the routes below only need the token. It answers 400 to `voters` and `require`.
 
 ```
 curl -s -X POST http://127.0.0.1:8787/request/async \
@@ -125,16 +125,16 @@ Errors are JSON `{ "error": "..." }`:
 
 ## Votes
 
-`POST /vote` asks several people the same yes/no question, one message each, and stays open until the vote is decided. The body is a `/request` body whose `options` are `[approve, reject]`, with `timeoutOption` the reject answer and no `allowText`, plus:
+`POST /request` with `voters` or `require` asks several people the same question, one message each, and stays open until the vote is decided. It needs at least two `options` and no `allowText`. An option wins when `all` voters (default) or a `majority` of all listed voters pick it. Once no option but `timeoutOption` can still win, the vote ends on `timeoutOption`, and so does running out of rounds. `approved` is `answer !== timeoutOption`. The body is a `/request` body plus:
 
 | Field     | Type     | Required | Notes                                                                                                  |
 | --------- | -------- | -------- | ------------------------------------------------------------------------------------------------------ |
 | `voters`  | string[] | no       | User ids, 1 to 25. Default: the owner. Each one must have started a chat with the bot.                 |
-| `require` | string   | no       | `all` (default) or `majority`. A tie rejects.                                                           |
-| `retry`   | integer  | no       | 0 to 100. Rounds after the first; each re-asks only voters who haven't voted. Running out rejects.     |
+| `require` | string   | no       | `all` (default) or `majority`. A tie ends on `timeoutOption`.                                                        |
+| `retry`   | integer  | no       | 0 to 100. Rounds after the first; each re-asks only voters who haven't voted. Running out ends on `timeoutOption`. |
 
 ```
-curl -s -X POST http://127.0.0.1:8787/vote \
+curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
   -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Publish v123?","options":["Yes","No"],"timeoutOption":"No","voters":["111","222","333"],"require":"majority"}'
@@ -152,6 +152,8 @@ curl -s -X POST http://127.0.0.1:8787/vote \
 ```
 
 `votes` has `null` for anyone who didn't vote, and `timedOut` means the rounds ran out. Errors are the same as `/request`, except a `502` also names the voter whose message couldn't be sent (`{"error":"failed to send message","voter":"222"}`); the messages already sent are cancelled. Disconnecting cancels every open message. This is what `jaypost request -u ... --require ...` calls in service mode.
+
+A service from before this release ignores `voters` and `require` and asks only the key's person. Check that the response has `votes`, or check `info.version` from `GET /openapi.yaml` first.
 
 ## Attachments
 

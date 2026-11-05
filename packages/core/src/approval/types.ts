@@ -294,7 +294,7 @@ export type RetryResult =
   | { readonly kind: 'completed'; readonly outcome: Outcome; readonly roundCount: number }
   | { readonly kind: 'cancelled' }
 
-/** A /vote body once validated; `voters` is as sent, absent meaning the owner. */
+/** A vote body once validated; `voters` is as sent, absent meaning the owner. */
 export type VoteRequest = {
   readonly request: ApprovalRequest
   readonly voters?: readonly string[]
@@ -302,7 +302,7 @@ export type VoteRequest = {
   readonly retryCount: number
 }
 
-/** Outcome of validating a /vote body; `error` is the client-facing message. */
+/** Outcome of validating a vote body; `error` is the client-facing message. */
 export type VoteParseResult =
   | { readonly ok: true; readonly value: VoteRequest }
   | { readonly ok: false; readonly error: string }

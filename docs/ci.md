@@ -138,7 +138,7 @@ So `-d No` works as a gate: the step fails unless someone approves. In service m
 
 `--retry N` asks again after a timeout, up to N more times (100 at most), and only the approvers who haven't answered. Votes already cast stand. Each round waits `--timeout` seconds. A vote that runs out of rounds is rejected, since a missing vote counts as `-d`. `--retry` alone re-asks a plain question, with no vote. `--require` without `-u` is a vote of one, the owner.
 
-A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs exactly one `-o`, a different `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
+A vote exits 0 when approved, 3 when rejected, 1 on an error or a cancelled run, and 2 on bad arguments. It needs at least two answers from `-o` and `-d`, and no `--allow-text`. If a message can't be sent to one approver, the ones already sent are cancelled and the command exits 1. With `--json` it prints `{"answer","timedOut","approved","require","votes","rounds"}`, where `votes` maps each approver id to their answer, or `null` if they didn't answer.
 
 Instead of `-u` flags, `JAYPOST_APPROVERS` can hold the ids, comma or space separated. That keeps them out of the workflow file when it comes from a secret, and a different secret per step gives each step its own approvers:
 
@@ -153,7 +153,7 @@ Setting it means the same as passing those ids with `-u`: the question is a vote
 
 On GitHub Actions the voter ids, from `-u` or `JAYPOST_APPROVERS`, are masked in the logs (shown as `***`) in direct mode. GitHub masks the secret as a whole but not the single ids inside a list.
 
-All of this works in service mode too, through the service's [`POST /vote`](http-api.md#votes) and `retry`, with the same exit codes and output. A service older than this release can't do it, and `request` says so instead of asking once. In the Action, `approvers` and `require` go together.
+All of this works in service mode too, through [POST /request](http-api.md#votes) with `voters` and `require`, with the same exit codes and output. An older service would ask only the owner, and `request` then fails with the too-old message once that question settles. In the Action, `approvers` and `require` go together.
 
 Other differences from service mode:
 

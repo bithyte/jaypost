@@ -40,7 +40,7 @@ export const statusInfoSchema = z.discriminatedUnion('paired', [
   }),
 ])
 
-/** Shape of the /vote response; `null` in `votes` is a voter who never voted. Unknown fields are kept. */
+/** Shape of a vote's response; `null` in `votes` is a voter who never voted. Unknown fields are kept. */
 export const voteReportSchema = z.looseObject({
   answer: z.string(),
   timedOut: z.boolean(),

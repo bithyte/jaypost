@@ -104,7 +104,7 @@ A key can ask, ask in the background, vote, notify, check `/status` and read the
 
 In the chat, `/pending`, `/cancel` and `/history` only cover the questions addressed to the sender. A chat person who isn't paired on that bot gets no answer.
 
-`/vote` goes to the voters you name, or to the key's own person if you name none. Each voter must have started a chat with that bot. There are no per-key voter lists.
+A vote on `/request` goes to the voters you name, or to the key's own person if you name none. Each voter must have started a chat with that bot. There are no per-key voter lists.
 
 ## Logs
 
@@ -135,6 +135,6 @@ The old key stops working immediately, the new one is printed once and saved in 
 
 - No TLS. Use a reverse proxy; `--exposed` is plain http.
 - No quotas or rate limits per key.
-- No per-key voter lists; `/vote` uses the rule above for every key.
+- No per-key voter lists; votes on `/request` use the rule above for every key.
 - No user accounts, signup or web UI; only the admin adds bots, and an app on top of the admin API can add the rest.
 - Direct mode, `pair ci` and the GitHub Action are unchanged; they don't use any of this.
