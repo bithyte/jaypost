@@ -5,6 +5,7 @@ import type {
   RequestState,
   RoundEnd,
   Settlement,
+  VoteDecision,
   VoteResult,
   VoteRule,
 } from './types.ts'
@@ -45,6 +46,8 @@ export const REASKED_ENDING = { kind: 'reasked' } as const satisfies MessageEndi
 export const CANCELLED_RESULT = { kind: 'cancelled' } as const satisfies RequestResult
 /** Shared result for `runVote` when its signal aborted. */
 export const CANCELLED_VOTE = { kind: 'cancelled' } as const satisfies VoteResult
+/** A vote with no answer able to win yet. */
+export const UNDECIDED_VOTE = { kind: 'undecided' } as const satisfies VoteDecision
 /** A vote round that ended with a message cancelled. */
 export const CANCELLED_ROUND = { kind: 'cancelled' } as const satisfies RoundEnd
 /** A vote round whose open messages all timed out undecided. */
