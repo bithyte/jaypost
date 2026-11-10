@@ -22,7 +22,7 @@ export function loadDirectConfig(
     if (raw === undefined) {
       if (setting.required || setting.owner) {
         throw new Error(
-          `missing ${setting.description}; set ${setting.envVar} (jaypost setup-ci prints it)`,
+          `missing ${setting.description}; set ${setting.envVar} (jaypost pair ci prints it)`,
         )
       }
       continue

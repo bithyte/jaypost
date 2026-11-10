@@ -27,7 +27,7 @@ export type ServiceOptions = {
   /** jaypost.db and the admin key file live next to it. */
   readonly configPath: string
   readonly providers: readonly Provider[]
-  /** Bot 1, pairing 1 and key 1 as the env and config.json describe them, from `loadSeed`. */
+  /** Bot 1, contact 1 and key 1 as the env and config.json describe them, from `loadSeed`. */
   readonly seed: SeedLoad
   readonly log?: (line: string) => void
   readonly generateCode?: () => string

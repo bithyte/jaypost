@@ -43,7 +43,7 @@ async function runSetupCiInner(
         note('')
         return 130
       case 'blocked':
-        note('Too many wrong pairing codes. Run jaypost setup-ci again.')
+        note('Too many wrong pairing codes. Run jaypost pair ci again.')
         return 1
       case 'fatal':
         note(`Setup failed: ${redact(outcome.message, seen)}`)

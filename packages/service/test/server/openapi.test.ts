@@ -220,7 +220,7 @@ test('maxOptionCount becomes maxItems on request options', () => {
   )
 })
 
-test('/vote is documented with its body and report', () => {
+test('/request takes a vote body and answers with its report', () => {
   const document = createOpenApiDocument({
     version: TEST_VERSION,
     port: 8787,
@@ -228,8 +228,16 @@ test('/vote is documented with its body and report', () => {
     maxAttachmentBytes: 0,
   })
   const { VoteRequest, VoteReport, ApprovalRequest } = document.components.schemas
-  expect(document.paths['/vote'].post.responses['200']).toMatchObject({
-    content: { 'application/json': { schema: { $ref: '#/components/schemas/VoteReport' } } },
+  expect(document.paths).not.toHaveProperty('/vote')
+  const post = document.paths['/request'].post
+  expect(post.requestBody.content['application/json'].schema).toEqual({
+    anyOf: [
+      { $ref: '#/components/schemas/ApprovalRequest' },
+      { $ref: '#/components/schemas/VoteRequest' },
+    ],
+  })
+  expect(post.responses['200'].content['application/json'].schema).toEqual({
+    anyOf: [{ $ref: '#/components/schemas/Outcome' }, { $ref: '#/components/schemas/VoteReport' }],
   })
   expect(VoteRequest.allOf[0]).toEqual({ $ref: '#/components/schemas/ApprovalRequest' })
   expect(VoteRequest.allOf[1]?.properties).toMatchObject({
@@ -258,10 +266,10 @@ test('the openapi document lists the admin routes under the adminKey scheme', ()
     ['/admin/bots', 'get'],
     ['/admin/bots', 'post'],
     ['/admin/bots/{id}', 'delete'],
-    ['/admin/pairings', 'get'],
-    ['/admin/pairings', 'post'],
-    ['/admin/pairings/{id}/reset', 'post'],
-    ['/admin/pairings/{id}', 'delete'],
+    ['/admin/contacts', 'get'],
+    ['/admin/contacts', 'post'],
+    ['/admin/contacts/{id}/reset', 'post'],
+    ['/admin/contacts/{id}', 'delete'],
     ['/admin/keys', 'get'],
     ['/admin/keys', 'post'],
     ['/admin/keys/{id}', 'patch'],
@@ -285,13 +293,13 @@ test('the openapi document lists the admin routes under the adminKey scheme', ()
   expect(AddBotBody.required).toEqual(['provider', 'settings'])
   expect(Object.keys(CreateKeyBody.properties ?? {})).toEqual([
     'bot',
-    'pairing',
+    'contact',
     'sameAsKey',
     'label',
     'externalId',
   ])
   expect(Object.keys(AdminKey.properties ?? {})).not.toContain('hash')
-  expect(CreatedKey.required).toEqual(['id', 'key', 'pairing'])
+  expect(CreatedKey.required).toEqual(['id', 'key', 'contact'])
   expect(document.paths['/admin/bots'].post.responses).toMatchObject({
     '201': expect.anything(),
     '400': expect.anything(),
@@ -308,7 +316,7 @@ test('GET /log and the key fields of /status are documented', () => {
   })
   expect(log).not.toHaveProperty('security')
   const status = JSON.stringify(document.components.schemas.Status)
-  for (const field of ['key', 'pairing', 'state', 'error']) {
+  for (const field of ['key', 'contact', 'state', 'error']) {
     expect(status).toContain(`"${field}"`)
   }
   expect(status).toContain('retried with backoff')

@@ -147,7 +147,7 @@ test('200 with outcome', async () => {
     attachment: undefined,
     deleteAfter: undefined,
     reaskOnTimeout: false,
-    caller: { key: 'k1', pairing: 'p1' },
+    caller: { key: 'k1', contact: 'c1' },
   })
 })
 
@@ -603,7 +603,7 @@ function toRoute(
   const key = options.key ?? 'k1'
   return {
     kind: 'key',
-    caller: { key, pairing: 'p1' },
+    caller: { key, contact: 'c1' },
     person: options.person,
     bot,
     status: () => ({ paired: options.person !== undefined, code: 'ABCD-EFGH', key }),
@@ -657,11 +657,11 @@ test('a router with several bots sends each call to the bot its token picks', as
   error.mockRestore()
   expect(askFirst.mock.calls[0]?.[0]).toMatchObject({
     recipient: 'u1',
-    caller: { key: 'k1', pairing: 'p1' },
+    caller: { key: 'k1', contact: 'c1' },
   })
   expect(askSecond.mock.calls[0]?.[0]).toMatchObject({
     recipient: 'u2',
-    caller: { key: 'k2', pairing: 'p1' },
+    caller: { key: 'k2', contact: 'c1' },
   })
 })
 
@@ -670,7 +670,6 @@ test('a key whose bot is not running gets 503 on every question route', async ()
   const routes = [
     ['POST', '/request', JSON.stringify(valid)],
     ['POST', '/request/async', JSON.stringify(valid)],
-    ['POST', '/vote', JSON.stringify(valid)],
     ['POST', '/notify', JSON.stringify({ text: 'hi' })],
     ['GET', '/request/q1', undefined],
     ['DELETE', '/request/q1', undefined],
@@ -727,7 +726,7 @@ async function postInHalves(
   })
 }
 
-test('a key revoked or a pairing reset during the upload sends nothing', async () => {
+test('a key revoked or a contact reset during the upload sends nothing', async () => {
   const request = vi.fn<RequestFn>(async () => ({
     kind: 'completed',
     outcome: { answer: 'Approve', timedOut: false },
@@ -749,7 +748,6 @@ test('a key revoked or a pairing reset during the upload sends nothing', async (
     for (const [path, body] of [
       ['/request', JSON.stringify(valid)],
       ['/request/async', JSON.stringify(valid)],
-      ['/vote', JSON.stringify(valid)],
       ['/notify', JSON.stringify({ text: 'hi' })],
     ] as const) {
       current = toRoute(bot, { person: 'u1' })
@@ -781,7 +779,7 @@ test('the local person of a bot that does not pair sends to nobody in particular
   const url = await startRouted(() => toRoute(toBot(request, 100), { person: LOCAL_PERSON }))
   expect((await post(url, JSON.stringify(valid))).status).toBe(200)
   expect(request.mock.calls[0]?.[0]).not.toHaveProperty('recipient')
-  expect(request.mock.calls[0]?.[0].caller).toEqual({ key: 'k1', pairing: 'p1' })
+  expect(request.mock.calls[0]?.[0].caller).toEqual({ key: 'k1', contact: 'c1' })
 })
 
 test('GET /log answers the route log and checks its query', async () => {
@@ -795,7 +793,7 @@ test('GET /log answers the route log and checks its query', async () => {
     status: 'answered',
     answer: 'Approve',
     key: 'k1',
-    pairing: 'p1',
+    contact: 'c1',
   }
   const readLog = vi.fn<KeyRoute['readLog']>(() => ({ entries: [entry], skippedCount: 2 }))
   const url = await startRouted(() => ({ ...toRoute(undefined), readLog }))
@@ -1294,13 +1292,13 @@ const resolveTestVoters: ApiBot['resolveVoters'] = (voters) => {
 }
 
 const postVote = (url: string, body: unknown) =>
-  fetch(`${url}/vote`, { method: 'POST', body: JSON.stringify(body) })
+  fetch(`${url}/request`, { method: 'POST', body: JSON.stringify(body) })
 
 async function waitForSent(messenger: RecordingMessenger, count: number): Promise<void> {
   await vi.waitFor(() => expect(messenger.sent.length).toBeGreaterThanOrEqual(count))
 }
 
-test('POST /vote asks every voter and reports the tally', async () => {
+test('POST /request with voters asks every voter and reports the tally', async () => {
   const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
   const response = postVote(url, { ...valid, voters: ['1', '2', '3'], require: 'majority' })
   await waitForSent(messenger, 3)
@@ -1319,9 +1317,9 @@ test('POST /vote asks every voter and reports the tally', async () => {
   })
 })
 
-test('POST /vote without voters asks the owner and requires all', async () => {
+test('POST /request with require alone is a vote of the owner', async () => {
   const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
-  const response = postVote(url, valid)
+  const response = postVote(url, { ...valid, require: 'all' })
   await waitForSent(messenger, 1)
   service.tap(messenger.idOf('o'), 1)
   expect(await (await response).json()).toEqual({
@@ -1334,27 +1332,25 @@ test('POST /vote without voters asks the owner and requires all', async () => {
   })
 })
 
-test('POST /vote re-asks voters who timed out and rejects once the rounds run out', async () => {
+test('POST /request with voters re-asks voters who timed out and rejects once the rounds run out', async () => {
   const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
   const res = await postVote(url, { ...valid, timeout: 0.1, voters: ['1'], retry: 1 })
   expect(await res.json()).toMatchObject({ approved: false, timedOut: true, rounds: 2 })
   expect(messenger.recipients).toEqual(['1', '1'])
 })
 
-test('POST /vote answers 400 for bodies that are not a vote', async () => {
+test('POST /request with voters answers 400 for bodies that are not a vote', async () => {
   const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
   for (const [body, error] of [
     [{ ...valid, voters: ['1', 'bad'] }, 'invalid user id "bad"'],
-    [
-      { ...valid, options: ['A', 'B', 'Decline'] },
-      'a vote needs exactly two options: approve, then reject',
-    ],
-    [{ ...valid, timeoutOption: 'Approve' }, 'timeoutOption must be the second option'],
-    [{ ...valid, allowText: true }, "a vote can't allow text replies"],
+    [{ ...valid, options: ['Decline'], voters: ['1'] }, 'a vote needs at least two options'],
+    [{ ...valid, allowText: true, voters: ['1'] }, "a vote can't allow text replies"],
     [{ ...valid, voters: [] }, 'voters must be a non-empty array'],
     [{ ...valid, voters: [' '] }, 'voters must contain only non-empty strings'],
     [{ ...valid, require: 'some' }, 'require must be "all" or "majority"'],
-    [{ ...valid, retry: -1 }, 'retry must be an integer 0-100'],
+    [{ ...valid, voters: null }, 'voters must be a non-empty array'],
+    [{ ...valid, require: null }, 'require must be "all" or "majority"'],
+    [{ ...valid, retry: -1, voters: ['1'] }, 'retry must be an integer 0-100'],
   ] as const) {
     const res = await postVote(url, body)
     expect(res.status).toBe(400)
@@ -1363,16 +1359,16 @@ test('POST /vote answers 400 for bodies that are not a vote', async () => {
   expect(messenger.sent).toEqual([])
 })
 
-test('POST /vote without voters answers 400 when the provider has no owner', async () => {
+test('POST /request with voters without voters answers 400 when the provider has no owner', async () => {
   const { url } = await startReal()
-  const res = await postVote(url, valid)
+  const res = await postVote(url, { ...valid, require: 'all' })
   expect(res.status).toBe(400)
   expect(await res.json()).toEqual({
     error: 'voters is required, since this provider has no owner',
   })
 })
 
-test('POST /vote answers 502 naming the voter it could not reach', async () => {
+test('POST /request with voters answers 502 naming the voter it could not reach', async () => {
   const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
   messenger.failSend = true
   const error = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -1383,18 +1379,67 @@ test('POST /vote answers 502 naming the voter it could not reach', async () => {
   error.mockRestore()
 })
 
-test('POST /vote answers 503 while unpaired, and GET /vote is 405', async () => {
+test('POST /request with voters answers 503 while unpaired', async () => {
   const { url } = await startReal({ status: unpaired, resolveVoters: resolveTestVoters })
-  expect((await postVote(url, valid)).status).toBe(503)
-  const res = await fetch(`${url}/vote`)
-  expect(res.status).toBe(405)
-  expect(res.headers.get('allow')).toBe('POST')
+  expect((await postVote(url, { ...valid, voters: ['1'] })).status).toBe(503)
+})
+
+test('POST /request with three options reports the option most voters picked', async () => {
+  const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
+  const response = postVote(url, {
+    ...valid,
+    options: ['Ship', 'Hold', 'Decline'],
+    voters: ['1', '2', '3'],
+    require: 'majority',
+  })
+  await waitForSent(messenger, 3)
+  service.tap(messenger.idOf('1'), 1)
+  service.tap(messenger.idOf('2'), 1)
+  const res = await response
+  expect(res.status).toBe(200)
+  expect(await res.json()).toEqual({
+    answer: 'Hold',
+    timedOut: false,
+    approved: true,
+    require: 'majority',
+    votes: { '1': 'Hold', '2': 'Hold', '3': null },
+    rounds: 1,
+  })
+})
+
+test('POST /request with the timeout option first approves on the other one', async () => {
+  const { url, messenger, service } = await startReal({ resolveVoters: resolveTestVoters })
+  const response = postVote(url, { ...valid, options: ['Decline', 'Approve'], voters: ['1'] })
+  await waitForSent(messenger, 1)
+  service.tap(messenger.idOf('1'), 1)
+  expect(await (await response).json()).toMatchObject({ approved: true, answer: 'Approve' })
+})
+
+test('POST /request/async answers 400 to voters and require', async () => {
+  const { url, messenger } = await startReal({ resolveVoters: resolveTestVoters })
+  for (const [body, error] of [
+    [{ ...valid, voters: ['1'] }, "voters isn't supported on /request/async"],
+    [{ ...valid, require: 'all' }, "require isn't supported on /request/async"],
+  ] as const) {
+    const res = await postAsync(url, JSON.stringify(body))
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({ error })
+  }
+  expect(messenger.sent).toEqual([])
+})
+
+test('POST /vote is not a route', async () => {
+  const { url } = await startReal({ resolveVoters: resolveTestVoters })
+  const res = await fetch(`${url}/vote`, { method: 'POST', body: JSON.stringify(valid) })
+  expect(res.status).toBe(404)
 })
 
 test('POST /request with retry re-asks after a timeout and reports the rounds', async () => {
   const { url, messenger } = await startReal()
   const res = await post(url, JSON.stringify({ ...valid, timeout: 0.1, retry: 2 }))
-  expect(await res.json()).toEqual({ answer: 'Decline', timedOut: true, rounds: 3 })
+  const body = await res.json()
+  expect(body).toEqual({ answer: 'Decline', timedOut: true, rounds: 3 })
+  expect(body).not.toHaveProperty('votes')
   expect(messenger.finalized.map((message) => message.ending.kind)).toEqual([
     'reasked',
     'reasked',

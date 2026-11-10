@@ -26,14 +26,14 @@ test('the provider defaults to telegram', () => {
 
 test('the owner is required', () => {
   expect(() => loadDirectConfig({ JAYPOST_PROVIDER: 'fakepair', FAKE_KEY: 'k' }, [FAKE])).toThrow(
-    'missing fake owner; set FAKE_OWNER (jaypost setup-ci prints it)',
+    'missing fake owner; set FAKE_OWNER (jaypost pair ci prints it)',
   )
 })
 
 test('a required setting is required, and empty counts as unset', () => {
   expect(() =>
     loadDirectConfig({ JAYPOST_PROVIDER: 'fakepair', FAKE_KEY: '', FAKE_OWNER: 'o' }, [FAKE]),
-  ).toThrow('missing fake key; set FAKE_KEY (jaypost setup-ci prints it)')
+  ).toThrow('missing fake key; set FAKE_KEY (jaypost pair ci prints it)')
 })
 
 test('an invalid telegram owner id names the env var, not the value', () => {

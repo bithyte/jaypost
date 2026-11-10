@@ -1,5 +1,5 @@
 import type { TargetName } from '@jaypost/install'
-import type { OwnerPairing, StatusFetch } from './types.ts'
+import type { AdminKeySource, OwnerPairing, StatusFetch } from './types.ts'
 
 /** Display names for the install target prompt. */
 export const TARGET_LABELS: Readonly<Record<TargetName, string>> = {
@@ -48,4 +48,18 @@ export const PAIRED_APPROVERS_HEADING =
 export const KEY_SHOWN_ONCE_NOTE = "This key isn't shown again; store it now."
 /** `bot add` without an admin key, when the service it meant to write behind came up meanwhile. */
 export const STARTED_MEANWHILE_MESSAGE =
-  'The service started while the settings were asked, so nothing was written. Run jaypost bot add again.'
+  'The service started while the settings were asked, so nothing was written. Run jaypost admin bot add again.'
+
+/** The base URL of the service on this machine at `port`. */
+export function toLocalUrl(port: number): URL {
+  return new URL(`http://127.0.0.1:${port}/`)
+}
+
+/** The admin key came from `JAYPOST_ADMIN_KEY`. */
+export const ENV_KEY_SOURCE = { kind: 'env' } as const satisfies AdminKeySource
+
+/** The admin key came from the install: its copy in the inbox, or its target. */
+export const INSTALL_KEY_SOURCE = { kind: 'install' } as const satisfies AdminKeySource
+
+/** The admin key came from the admin key file next to the config. */
+export const FILE_KEY_SOURCE = { kind: 'keyFile' } as const satisfies AdminKeySource

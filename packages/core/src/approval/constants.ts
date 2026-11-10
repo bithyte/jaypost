@@ -5,6 +5,7 @@ import type {
   RequestState,
   RoundEnd,
   Settlement,
+  VoteDecision,
   VoteResult,
   VoteRule,
 } from './types.ts'
@@ -45,6 +46,8 @@ export const REASKED_ENDING = { kind: 'reasked' } as const satisfies MessageEndi
 export const CANCELLED_RESULT = { kind: 'cancelled' } as const satisfies RequestResult
 /** Shared result for `runVote` when its signal aborted. */
 export const CANCELLED_VOTE = { kind: 'cancelled' } as const satisfies VoteResult
+/** A vote with no answer able to win yet. */
+export const UNDECIDED_VOTE = { kind: 'undecided' } as const satisfies VoteDecision
 /** A vote round that ended with a message cancelled. */
 export const CANCELLED_ROUND = { kind: 'cancelled' } as const satisfies RoundEnd
 /** A vote round whose open messages all timed out undecided. */
@@ -65,9 +68,9 @@ export const OWNER_COMMANDS: readonly OwnerCommand[] = [
   { name: 'cancel', description: 'Reject all open requests with their timeout answers' },
   { name: 'history', description: 'Show recent answers' },
 ]
-/** The vote rules the CLI accepts for `--require` and /vote for `require`. */
+/** The vote rules the CLI accepts for `--require` and a vote body for `require`. */
 export const VOTE_RULES = ['all', 'majority'] as const satisfies readonly VoteRule[]
 /** Most re-asks `request --retry` and the API's `retry` accept. */
 export const MAX_RETRY_COUNT = 100
-/** Most voters a /vote body may list. */
+/** Most voters a vote body may list. */
 export const MAX_VOTER_COUNT = 25

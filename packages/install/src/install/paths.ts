@@ -1,6 +1,6 @@
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { resolveConfigDirectory, resolveTokenFile } from '@jaypost/store'
+import { resolveConfigDirectory } from '@jaypost/store'
 import { LAUNCHD_LABEL } from './constants.ts'
 import type { InstallPaths } from './types.ts'
 
@@ -18,7 +18,6 @@ export function resolveInstallPaths(env: NodeJS.ProcessEnv = process.env): Insta
     configDirectory,
     configFile: join(configDirectory, 'config.json'),
     installFile: join(configDirectory, 'install.json'),
-    tokenFile: resolveTokenFile(env),
     composeDirectory: join(configDirectory, 'compose'),
     quadletDirectory: join(configDirectory, 'quadlet'),
     systemdUnit: join(xdgConfigHome, 'systemd', 'user', 'jaypost.service'),

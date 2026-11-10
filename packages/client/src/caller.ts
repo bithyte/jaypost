@@ -75,8 +75,8 @@ export class Caller {
   }
 
   /**
-   * Asks every voter on `ballot` the two-way `question` (`options` is `[approve, reject]` and
-   * `timeoutOption` the reject answer) and resolves once the vote is decided.
+   * Asks every voter on `ballot` the `question` (any number of `options`; `timeoutOption` is
+   * the reject answer) and resolves once the vote is decided.
    */
   async vote(question: Question, ballot: Ballot, call: CallOptions): Promise<VoteOutcome> {
     const session = this.#begin()
@@ -91,7 +91,8 @@ export class Caller {
       ...toAskBody(question, attachment.body),
       ...toRetryField(question),
       ...(ballot.voters === undefined ? {} : { voters: ballot.voters }),
-      ...(ballot.rule === undefined ? {} : { require: ballot.rule }),
+      // Always sent: the service tells a vote from a plain question by `voters` or `require`.
+      require: ballot.rule ?? 'all',
     }
     return voteApi(session.endpoint, body, this.#apiOptions(session, call.signal))
   }
@@ -328,7 +329,7 @@ export function toAskBody(question: Question, attachment: AttachmentBody | undef
   }
 }
 
-// Only /request and /vote take `retry`; /request/async answers 400 to it.
+// Only /request takes `retry`; /request/async answers 400 to it.
 function toRetryField(question: Question): { readonly retry?: number } {
   return question.retry === undefined ? {} : { retry: question.retry }
 }

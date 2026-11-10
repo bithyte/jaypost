@@ -28,6 +28,8 @@ const REQUEST: ApprovalRequest = {
   attachment: undefined,
 }
 
+const THREE_WAY: ApprovalRequest = { ...REQUEST, options: ['Ship', 'Hold', 'No'] }
+
 const VOTERS = ['1', '2', '3']
 
 const CANCELLED = { kind: 'cancelled' }
@@ -117,8 +119,8 @@ function setup() {
   return { messenger, service, idOf, endingsOf, recipients }
 }
 
-function createVote(rule: VoteRule, retryCount = 0): Vote {
-  return { request: REQUEST, voters: VOTERS, rule, retryCount }
+function createVote(rule: VoteRule, retryCount = 0, request: ApprovalRequest = REQUEST): Vote {
+  return { request, voters: VOTERS, rule, retryCount }
 }
 
 beforeEach(() => {
@@ -203,6 +205,64 @@ test('majority approves at two of three and closes the third', async () => {
     timedOut: false,
   })
   expect(endingsOf('2')).toEqual([{ kind: 'closed', answer: 'Yes' }])
+})
+
+test('a three-way majority decides on the option most voters pick and closes the rest with it', async () => {
+  const { service, idOf, endingsOf } = setup()
+  const result = runVote(
+    service,
+    createVote('majority', 0, THREE_WAY),
+    new AbortController().signal,
+  )
+  await flush()
+  service.tap(idOf('1'), 1)
+  await flush()
+  service.tap(idOf('2'), 1)
+  expect(await result).toEqual({
+    kind: 'decided',
+    approved: true,
+    answer: 'Hold',
+    votes: [
+      { voter: '1', answer: 'Hold' },
+      { voter: '2', answer: 'Hold' },
+      { voter: '3', answer: undefined },
+    ],
+    roundCount: 1,
+    timedOut: false,
+  })
+  expect(endingsOf('3')).toEqual([{ kind: 'closed', answer: 'Hold' }])
+})
+
+test('a split vote ends on the timeout option as soon as no other option can win', async () => {
+  const { service, idOf, endingsOf } = setup()
+  const result = runVote(service, createVote('all', 0, THREE_WAY), new AbortController().signal)
+  await flush()
+  service.tap(idOf('1'), 0)
+  await flush()
+  service.tap(idOf('2'), 1)
+  expect(await result).toMatchObject({
+    kind: 'decided',
+    approved: false,
+    answer: 'No',
+    timedOut: false,
+    roundCount: 1,
+  })
+  expect(endingsOf('3')).toEqual([{ kind: 'closed', answer: 'No' }])
+})
+
+test('the timeout option can come first and still means no', async () => {
+  const request: ApprovalRequest = { ...REQUEST, options: ['No', 'Yes'], timeoutOption: 'No' }
+  const vote: Vote = { request, voters: ['1'], rule: 'all', retryCount: 0 }
+  const first = setup()
+  const yes = runVote(first.service, vote, new AbortController().signal)
+  await flush()
+  first.service.tap(first.idOf('1'), 1)
+  expect(await yes).toMatchObject({ approved: true, answer: 'Yes' })
+  const second = setup()
+  const no = runVote(second.service, vote, new AbortController().signal)
+  await flush()
+  second.service.tap(second.idOf('1'), 0)
+  expect(await no).toMatchObject({ approved: false, answer: 'No' })
 })
 
 test("a timed-out round re-asks only voters who haven't voted", async () => {

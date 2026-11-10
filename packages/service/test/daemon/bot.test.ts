@@ -54,7 +54,7 @@ function createPeople(
   options: {
     readonly persons?: readonly string[]
     readonly codes?: Map<string, string>
-    readonly claim?: (pairingId: string, person: string) => void
+    readonly claim?: (contactId: string, person: string) => void
     readonly quiet?: ReadonlyMap<string, Quiet>
     readonly saveQuiet?: (person: string, patch: QuietPatch) => void
   } = {},
@@ -72,10 +72,10 @@ function createPeople(
       if (found === undefined) {
         return 'wrong'
       }
-      const [pairingId] = found
-      codes.delete(pairingId)
+      const [contactId] = found
+      codes.delete(contactId)
       persons.push(person)
-      options.claim?.(pairingId, person)
+      options.claim?.(contactId, person)
       return 'claimed'
     },
     quietHours: (person) => options.quiet?.get(person) ?? {},
@@ -144,16 +144,16 @@ function createNotifyingProvider(options: { readonly pairs?: boolean } = {}) {
   return { provider, notified }
 }
 
-test('a pending code pairs a new person and the hub is told which pairing', async () => {
+test('a pending code pairs a new person and the hub is told which contact', async () => {
   const claim = vi.fn()
   const log = vi.fn()
   const { runtime } = await start({
-    people: createPeople({ persons: ['u1'], codes: new Map([['p2', 'K7QM4XPD']]), claim }),
+    people: createPeople({ persons: ['u1'], codes: new Map([['c2', 'K7QM4XPD']]), claim }),
     log,
   })
   expect(runtime.handlers?.isPaired('u2')).toBe(false)
   expect(runtime.handlers?.pair?.('u2', 'K7QM4XPD')).toBe('paired')
-  expect(claim).toHaveBeenCalledWith('p2', 'u2')
+  expect(claim).toHaveBeenCalledWith('c2', 'u2')
   expect(runtime.handlers?.isPaired('u2')).toBe(true)
   expect(runtime.handlers?.listPaired()).toEqual(['u1', 'u2'])
   expect(log).toHaveBeenCalledWith('[b2] paired u2 on b2')
@@ -166,30 +166,30 @@ test('codes are read at each attempt, so ones added or dropped after start count
   const codes = new Map<string, string>()
   const { runtime } = await start({ people: createPeople({ codes, claim }) })
   expect(runtime.handlers?.pair?.('u1', 'K7QM4XPD')).toBe('notPairing')
-  codes.set('p3', 'ABCD2345')
-  codes.set('p4', 'K7QM4XPD')
-  codes.delete('p4')
+  codes.set('c3', 'ABCD2345')
+  codes.set('c4', 'K7QM4XPD')
+  codes.delete('c4')
   expect(runtime.handlers?.pair?.('u1', 'K7QM-4XPD')).toBe('wrong')
   expect(runtime.handlers?.pair?.('u1', 'abcd-2345')).toBe('paired')
-  expect(claim).toHaveBeenCalledWith('p3', 'u1')
+  expect(claim).toHaveBeenCalledWith('c3', 'u1')
 })
 
 test("a paired person's chat text is not counted as a wrong code", async () => {
   const claim = vi.fn()
   const { runtime } = await start({
-    people: createPeople({ persons: ['u1'], codes: new Map([['p2', 'K7QM4XPD']]), claim }),
+    people: createPeople({ persons: ['u1'], codes: new Map([['c2', 'K7QM4XPD']]), claim }),
   })
   for (let index = 0; index < 5; index += 1) {
     expect(runtime.handlers?.pair?.('u1', 'hello')).toBe('notPairing')
   }
   expect(claim).not.toHaveBeenCalled()
   expect(runtime.handlers?.pair?.('u1', 'K7QM4XPD')).toBe('paired')
-  expect(claim).toHaveBeenCalledWith('p2', 'u1')
+  expect(claim).toHaveBeenCalledWith('c2', 'u1')
 })
 
 test('an unpaired sender is still counted for wrong codes and blocked', async () => {
   const { runtime } = await start({
-    people: createPeople({ codes: new Map([['p2', 'K7QM4XPD']]) }),
+    people: createPeople({ codes: new Map([['c2', 'K7QM4XPD']]) }),
   })
   for (let index = 0; index < 5; index += 1) {
     expect(runtime.handlers?.pair?.('u9', 'hello')).toBe('wrong')
@@ -377,7 +377,7 @@ test('a bot that does not pair accepts taps from any sender', async () => {
 test('rejectForKeys settles the open questions of the given keys only', async () => {
   const { running, runtime } = await start({ people: createPeople({ persons: ['u1'] }) })
   const ask = (key: string) =>
-    running.bot.service.request({ ...REQUEST, recipient: 'u1', caller: { key, pairing: 'p1' } })
+    running.bot.service.request({ ...REQUEST, recipient: 'u1', caller: { key, contact: 'c1' } })
   const first = ask('k1')
   const second = ask('k2')
   const kept = ask('k3')
@@ -396,7 +396,7 @@ test('describe and pairingInstructions show the provider without pairing state',
   const provider = createPairingFakeProvider()
   const { running } = await start({
     provider,
-    people: createPeople({ codes: new Map([['p1', 'K7QM4XPD']]) }),
+    people: createPeople({ codes: new Map([['c1', 'K7QM4XPD']]) }),
   })
   expect(running.bot.describe()).toEqual({ provider: 'fakepair', displayName: 'fake' })
   expect(running.bot.pairingInstructions?.('ABCD2345')).toBe('Say ABCD2345 to fake')

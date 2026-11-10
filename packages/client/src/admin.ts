@@ -4,8 +4,8 @@ import {
   createdKeySchema,
   keyListSchema,
   logPageSchema,
-  pairingInviteSchema,
-  pairingListSchema,
+  contactInviteSchema,
+  contactListSchema,
   removedKeysSchema,
   revokedKeySchema,
   rotatedAdminKeySchema,
@@ -17,11 +17,11 @@ import type {
   BotsBody,
   CreatedKey,
   CreateKeyBody,
-  CreatePairingBody,
+  CreateContactBody,
   KeysBody,
   LogPage,
-  PairingInvite,
-  PairingsBody,
+  ContactInvite,
+  ContactsBody,
   RemovedKeys,
   RevokedKey,
   RotatedAdminKey,
@@ -69,11 +69,13 @@ export class AdminCaller {
   #endpoint: AdminCallerOptions['endpoint']
   #adminKey: string
   #fetchTimeoutMs: number
+  #rejectedMessage: string
 
   constructor(options: AdminCallerOptions) {
     this.#endpoint = options.endpoint
     this.#adminKey = options.adminKey
     this.#fetchTimeoutMs = options.fetchTimeoutMs ?? FETCH_GRACE_MS
+    this.#rejectedMessage = options.rejectedMessage ?? ADMIN_KEY_REJECTED_MESSAGE
   }
 
   listBots(): Promise<AdminResult<BotsBody>> {
@@ -85,7 +87,7 @@ export class AdminCaller {
     return this.#call('POST', '/admin/bots', body, addedBotSchema)
   }
 
-  /** Removes the bot with its pairings and keys; `removedKeys` lists the keys that went. */
+  /** Removes the bot with its contacts and keys; `removedKeys` lists the keys that went. */
   removeBot(id: string): Promise<AdminResult<RemovedKeys>> {
     return this.#call(
       'DELETE',
@@ -95,30 +97,30 @@ export class AdminCaller {
     )
   }
 
-  listPairings(filter: { readonly bot?: string }): Promise<AdminResult<PairingsBody>> {
-    return this.#call('GET', `/admin/pairings${toQuery(filter)}`, undefined, pairingListSchema)
+  listContacts(filter: { readonly bot?: string }): Promise<AdminResult<ContactsBody>> {
+    return this.#call('GET', `/admin/contacts${toQuery(filter)}`, undefined, contactListSchema)
   }
 
-  /** A pairing with no key (an approver invite) and its code. */
-  createPairing(body: CreatePairingBody): Promise<AdminResult<PairingInvite>> {
-    return this.#call('POST', '/admin/pairings', body, pairingInviteSchema)
+  /** A contact with no key (an approver invite) and its code. */
+  createContact(body: CreateContactBody): Promise<AdminResult<ContactInvite>> {
+    return this.#call('POST', '/admin/contacts', body, contactInviteSchema)
   }
 
-  /** Drops the pairing's person and hands out a new code; its keys stay. */
-  resetPairing(id: string): Promise<AdminResult<PairingInvite>> {
+  /** Drops the contact's person and hands out a new code; its keys stay. */
+  resetContact(id: string): Promise<AdminResult<ContactInvite>> {
     return this.#call(
       'POST',
-      `/admin/pairings/${encodeURIComponent(id)}/reset`,
+      `/admin/contacts/${encodeURIComponent(id)}/reset`,
       undefined,
-      pairingInviteSchema,
+      contactInviteSchema,
     )
   }
 
-  /** Removes the pairing and revokes its keys. */
-  removePairing(id: string): Promise<AdminResult<RemovedKeys>> {
+  /** Removes the contact and revokes its keys. */
+  removeContact(id: string): Promise<AdminResult<RemovedKeys>> {
     return this.#call(
       'DELETE',
-      `/admin/pairings/${encodeURIComponent(id)}`,
+      `/admin/contacts/${encodeURIComponent(id)}`,
       undefined,
       removedKeysSchema,
     )
@@ -126,7 +128,7 @@ export class AdminCaller {
 
   listKeys(filter: {
     readonly bot?: string
-    readonly pairing?: string
+    readonly contact?: string
   }): Promise<AdminResult<KeysBody>> {
     return this.#call('GET', `/admin/keys${toQuery(filter)}`, undefined, keyListSchema)
   }
@@ -155,7 +157,7 @@ export class AdminCaller {
     const query = toQuery({
       ...toLogQueryFields(filter),
       ...(filter.bot === undefined ? {} : { bot: filter.bot }),
-      ...(filter.pairing === undefined ? {} : { pairing: filter.pairing }),
+      ...(filter.contact === undefined ? {} : { contact: filter.contact }),
       ...(filter.key === undefined ? {} : { key: filter.key }),
     })
     return this.#call('GET', `/admin/log${query}`, undefined, logPageSchema)
@@ -185,7 +187,7 @@ export class AdminCaller {
       return response
     }
     if (response.status < 200 || response.status > 299) {
-      return toAdminFailure(response)
+      return toAdminFailure(response, this.#rejectedMessage)
     }
     // A 2xx body that holds a plaintext key must never reach an error message.
     const failure: Failure = holdsSecret
@@ -202,11 +204,11 @@ export class AdminCaller {
   }
 }
 
-function toAdminFailure(response: RawResponse): Failure {
+function toAdminFailure(response: RawResponse, rejectedMessage: string): Failure {
   const { status, text } = response
   const error = readStringField(text, 'error')
   if (status === 401) {
-    return { kind: 'failed', reason: 'unauthorized', message: ADMIN_KEY_REJECTED_MESSAGE }
+    return { kind: 'failed', reason: 'unauthorized', message: rejectedMessage }
   }
   // The server's own 404 for a route it doesn't have; an admin 404 names the unknown id.
   if (status === 404 && (error === undefined || error.toLowerCase() === ROUTE_NOT_FOUND_ERROR)) {

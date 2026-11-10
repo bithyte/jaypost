@@ -5,17 +5,17 @@ import type {
   KeyLookup,
   KeyRecord,
   ListKeysResult,
-  PairingRecord,
-  PendingPairing,
+  ContactRecord,
+  PendingContact,
   Registry,
 } from './types.ts'
 
-export function isPending(pairing: PairingRecord): pairing is PendingPairing {
-  return pairing.person === undefined && pairing.code !== undefined
+export function isPending(contact: ContactRecord): contact is PendingContact {
+  return contact.person === undefined && contact.code !== undefined
 }
 
 /**
- * The key stored with `hash` and its pairing; without a hash (a call without a token), the seed
+ * The key stored with `hash` and its contact; without a hash (a call without a token), the seed
  * key when the seed is open. A hashless seed key never matches a hash. Never throws.
  */
 export function findKeyRoute(registry: Registry, hash: string | undefined): KeyLookup {
@@ -24,47 +24,47 @@ export function findKeyRoute(registry: Registry, hash: string | undefined): KeyL
   if (key === undefined) {
     return hash === undefined ? { kind: 'missing' } : { kind: 'wrong' }
   }
-  const pairing = registry.pairings.find((other) => other.id === key.pairingId)
-  return pairing === undefined ? { kind: 'wrong' } : { kind: 'found', key, pairing }
+  const contact = registry.contacts.find((other) => other.id === key.contactId)
+  return contact === undefined ? { kind: 'wrong' } : { kind: 'found', key, contact }
 }
 
-/** The pairing `person` has on `botId`, or undefined. Never throws. */
-export function findPairingOf(
+/** The contact `person` has on `botId`, or undefined. Never throws. */
+export function findContactOf(
   registry: Registry,
   botId: string,
   person: string,
-): PairingRecord | undefined {
-  return registry.pairings.find((pairing) => pairing.botId === botId && pairing.person === person)
+): ContactRecord | undefined {
+  return registry.contacts.find((contact) => contact.botId === botId && contact.person === person)
 }
 
-/** How many pairings `botId` has, and how many keys those pairings have. Never throws. */
+/** How many contacts `botId` has, and how many keys those contacts have. Never throws. */
 export function countBotRecords(registry: Registry, botId: string): BotRecordCounts {
-  const pairingIds = registry.pairings
-    .filter((pairing) => pairing.botId === botId)
-    .map((pairing) => pairing.id)
+  const contactIds = registry.contacts
+    .filter((contact) => contact.botId === botId)
+    .map((contact) => contact.id)
   return {
-    pairingCount: pairingIds.length,
-    keyCount: registry.keys.filter((key) => pairingIds.includes(key.pairingId)).length,
+    contactCount: contactIds.length,
+    keyCount: registry.keys.filter((key) => contactIds.includes(key.contactId)).length,
   }
 }
 
-/** Every key with its bot, narrowed by `filter`; an unknown bot or pairing is `notFound`. */
+/** Every key with its bot, narrowed by `filter`; an unknown bot or contact is `notFound`. */
 export function listKeys(registry: Registry, filter: KeyFilter): ListKeysResult {
-  const { bot, pairing } = filter
+  const { bot, contact } = filter
   if (bot !== undefined && !registry.bots.some((record) => record.id === bot)) {
     return { kind: 'notFound', what: 'bot', id: bot }
   }
-  if (pairing !== undefined && !registry.pairings.some((other) => other.id === pairing)) {
-    return { kind: 'notFound', what: 'pairing', id: pairing }
+  if (contact !== undefined && !registry.contacts.some((other) => other.id === contact)) {
+    return { kind: 'notFound', what: 'contact', id: contact }
   }
   return {
     kind: 'listed',
     keys: registry.keys.flatMap((key) => {
-      const found = registry.pairings.find((other) => other.id === key.pairingId)
+      const found = registry.contacts.find((other) => other.id === key.contactId)
       const isMatch =
         found !== undefined &&
         (bot === undefined || found.botId === bot) &&
-        (pairing === undefined || found.id === pairing)
+        (contact === undefined || found.id === contact)
       return isMatch ? [{ key, botId: found.botId }] : []
     }),
   }

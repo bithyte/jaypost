@@ -463,6 +463,23 @@ test('parseVoteRequest reports the question problem before the vote shape', () =
   })
 })
 
+test('parseVoteRequest takes any number of options and any timeoutOption', () => {
+  expect(
+    parseVoteRequest({ ...base, options: ['Ship', 'Hold', 'Decline'] }, 3900, LIMIT),
+  ).toMatchObject({ ok: true, value: { request: { options: ['Ship', 'Hold', 'Decline'] } } })
+  expect(parseVoteRequest({ ...base, timeoutOption: 'Approve' }, 3900, LIMIT)).toMatchObject({
+    ok: true,
+    value: { request: { timeoutOption: 'Approve' } },
+  })
+})
+
+test('parseVoteRequest needs at least two options', () => {
+  expect(parseVoteRequest({ ...base, options: ['Decline'] }, 3900, LIMIT)).toEqual({
+    ok: false,
+    error: 'a vote needs at least two options',
+  })
+})
+
 test('parseVoteRequest caps the voter count', () => {
   const voters = Array.from({ length: 26 }, (_, index) => String(index))
   expect(parseVoteRequest({ ...base, voters }, 3900, LIMIT)).toEqual({

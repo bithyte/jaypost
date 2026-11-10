@@ -44,7 +44,8 @@ export const MESSAGE_FLAG_SUPPRESS_NOTIFICATIONS = 4096
 /** Message flag that shows an interaction reply only to the user who triggered it. */
 export const MESSAGE_FLAG_EPHEMERAL = 64
 /** Fatal message for a token Discord refuses; never includes the token. */
-export const REJECTED_TOKEN_FATAL = 'Discord rejected the bot token; check it with `jaypost init`'
+export const REJECTED_TOKEN_FATAL =
+  'Discord rejected the bot token; check it with `jaypost service install`'
 /** Most characters of request text; leaves room for the hint and escaping under Discord's limit. */
 export const DISCORD_MAX_TEXT_LENGTH = 1800
 /** Largest attachment Discord accepts on a default-tier message. */

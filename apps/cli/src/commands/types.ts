@@ -1,5 +1,5 @@
-import type { ClientToken, Exec } from '@jaypost/store'
-import type { AdminCaller, AttachmentSource, ServiceEndpoint } from '@jaypost/client'
+import type { Inbox, ClientToken, Exec } from '@jaypost/store'
+import type { AdminCaller, AttachmentSource, ResolvedBot, ServiceEndpoint } from '@jaypost/client'
 import type {
   MessageFormat,
   Provider,
@@ -28,6 +28,16 @@ export type Prompts = {
     options: readonly SelectOption<T>[],
     initialValue: T,
   ) => Promise<T>
+}
+
+/** What the inbox commands touch outside themselves, injected for tests. */
+export type InboxDeps = {
+  readonly inboxPath: string
+  readonly prompt: Prompts
+  /** True on a terminal; only then may a command ask before overwriting. */
+  readonly isInteractive: boolean
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
 }
 
 /** Inputs to `resolveProviderSettings`. */
@@ -59,11 +69,12 @@ export type StatusFetch =
   | { readonly kind: 'unreachable' }
 
 /** Signature of `defaultFetchStatus`, injectable for tests. */
-export type FetchStatus = (port: number, token: string | undefined) => Promise<StatusFetch>
+export type FetchStatus = (url: URL, token: string | undefined) => Promise<StatusFetch>
 
 /** Inputs to `waitForPairing`; the optional fields are test seams with real defaults. */
 export type WaitOptions = {
-  readonly port: number
+  /** The service's base URL; `toLocalEndpoint(port).url` for the one on this machine. */
+  readonly url: URL
   readonly isRunning: () => Promise<boolean>
   /** Appended to the message when the service stops while waiting. */
   readonly logsHint: string
@@ -107,12 +118,18 @@ export type InitDeps = {
   readonly platform?: string
   /** IANA zone passed to container installs as `TZ`; omitted when unknown. */
   readonly timeZone?: string
+  /** The inbox; gets the local service and its seed bot. */
+  readonly inboxPath: string
+  /** This machine's name (`os.hostname()`), for the `remote add` line `--exposed` prints. */
+  readonly hostname: string
 }
 
-/** Parsed `init` flags; absent fields mean the user didn't pass them. */
+/** Parsed `service install` flags; absent fields mean the user didn't pass them. */
 export type InitArgs = {
   readonly target?: TargetName
   readonly port?: number
+  /** Listen on all interfaces over plain http instead of loopback. */
+  readonly exposed?: boolean
   readonly tarball?: string
   readonly provider?: string
   /** `true` for `--token`, `false` for `--no-token`; absent when neither was passed. */
@@ -130,8 +147,8 @@ export type ResetOwnerDeps = {
   readonly wait: WaitForPairing
   readonly progress: Progress
   readonly signal?: AbortSignal
-  /** Key 1's token; its /status names the pairing to reset. */
-  readonly token: ClientToken
+  /** The inbox; the local seed bot's key is key 1's token, whose /status names the contact. */
+  readonly inboxPath: string
   readonly fetchStatus: FetchStatus
   /** Delay between /status polls while the service starts; defaults to an abortable timer. */
   readonly sleep?: (delayMs: number) => Promise<void>
@@ -139,41 +156,27 @@ export type ResetOwnerDeps = {
 
 /** Everything `runStatus` touches outside itself, injected for tests. */
 export type StatusDeps = {
-  readonly targets: Readonly<Record<TargetName, Target>>
-  readonly paths: InstallPaths
+  /** The bot `status` asks about; its key is sent to /status but never printed. */
+  readonly resolved: ResolvedBot
+  /** The install on this machine, if any; only shown when the bot is on this machine. */
+  readonly install: { readonly record: InstallRecord; readonly target: Target } | undefined
   readonly fetchStatus: FetchStatus
-  readonly token: ClientToken
-  /** Token file path, named in the `Token:` line when the token came from it. */
-  readonly tokenFile: string
   readonly print: (text: string) => void
 }
 
-/**
- * Parsed `log` flags; absent fields mean the user didn't pass them. `bot`, `pairing`, `key` and
- * `all` read through the service's API instead of the install's files.
- */
+/** Parsed `log` flags; absent fields mean the user didn't pass them. */
 export type LogArgs = {
   readonly since?: Date
   readonly project?: string
   readonly limit?: number
   readonly json?: boolean
-  readonly bot?: string
-  readonly pairing?: string
-  readonly key?: string
-  /** Every bot's log, not only the seed bot's. */
-  readonly all?: boolean
 }
 
 /** Everything `runLog` touches outside itself, injected for tests. */
 export type LogDeps = {
-  readonly targets: Readonly<Record<TargetName, Target>>
-  readonly paths: InstallPaths
-  readonly env: NodeJS.ProcessEnv
-  /** Sent to GET /log when no admin key resolves. */
+  /** The bot whose GET /log is read. */
+  readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
-  /** The running CLI's version, for the development exemption on the too-old check. */
-  readonly version: string
-  readonly now: () => Date
   readonly print: (text: string) => void
   readonly printError: (text: string) => void
 }
@@ -185,6 +188,16 @@ export type UninstallDeps = {
   readonly confirm: Prompts['confirm']
   readonly progress: Progress
   readonly signal?: AbortSignal
+  /** The inbox; loses the local service and its bots. */
+  readonly inboxPath: string
+}
+
+/** Everything `runServiceStart` and `runServiceStop` touch outside themselves, injected for tests. */
+export type ServiceControlDeps = {
+  readonly paths: InstallPaths
+  readonly targets: Readonly<Record<TargetName, Target>>
+  readonly print: (text: string) => void
+  readonly printError: (text: string) => void
 }
 
 /** Everything `runUpdate` and `runFinishUpdate` touch outside themselves, injected for tests. */
@@ -193,7 +206,7 @@ export type UpdateDeps = {
   readonly paths: InstallPaths
   readonly providers: readonly Provider[]
   readonly exec: Exec
-  /** The CLI running `update`; it updates itself for container installs or no install. */
+  /** The CLI running `service update`; it updates itself for container installs or no install. */
   readonly cli: CliLocation
   /** This CLI's version; the finish step installs it. */
   readonly version: string
@@ -265,7 +278,7 @@ export type SendDeps = {
 
 /** Everything `runPing` touches outside itself, injected for tests. */
 export type PingDeps = {
-  readonly port: number
+  readonly endpoint: ServiceEndpoint
   readonly token: ClientToken
   readonly progress: Progress
   readonly providers: readonly Provider[]
@@ -344,12 +357,24 @@ export type OpenedRuntime =
 
 /** The admin key for the service, or why there is none (already worded for the user). */
 export type AdminKeyLookup =
-  | { readonly kind: 'found'; readonly adminKey: string }
+  | { readonly kind: 'found'; readonly adminKey: string; readonly source: AdminKeySource }
   | { readonly kind: 'missing'; readonly message: string }
 
 /**
- * Where the admin commands send their calls: `JAYPOST_URL` (its key from `JAYPOST_ADMIN_KEY`), or
- * the service on this machine (an install, or none with the config's port), or why neither works.
+ * Where a found admin key came from: a remote saved in the inbox, the environment, the install
+ * (its inbox copy or its target) or the admin key file. Only admin-access reads it; commands ask
+ * that module what follows from it.
+ */
+export type AdminKeySource =
+  | { readonly kind: 'remote'; readonly name: string }
+  | { readonly kind: 'env' }
+  | { readonly kind: 'install' }
+  | { readonly kind: 'keyFile' }
+
+/**
+ * Where the admin commands send their calls: a remote from the inbox or `JAYPOST_URL` (its key from
+ * `JAYPOST_ADMIN_KEY`), or the service on this machine (an install, or none with the config's
+ * port), or why none works.
  */
 export type AdminEndpoint =
   | {
@@ -380,16 +405,25 @@ export type ReachableEndpoint = Exclude<AdminEndpoint, { readonly kind: 'failed'
  * says why); `failed` is no usable endpoint.
  */
 export type OpenedAdmin =
-  | {
-      readonly kind: 'opened'
-      readonly caller: AdminCaller
-      readonly endpoint: ReachableEndpoint
-    }
+  | AdminAccess
   | {
       readonly kind: 'noKey'
       readonly endpoint: ReachableEndpoint
       readonly message: string
     }
+  | { readonly kind: 'failed'; readonly message: string }
+
+/** The `opened` variant of `OpenedAdmin`. */
+export type AdminAccess = {
+  readonly kind: 'opened'
+  readonly caller: AdminCaller
+  readonly endpoint: ReachableEndpoint
+  readonly keySource: AdminKeySource
+}
+
+/** The inbox, or why it can't be read (the message names the file, never a value). */
+export type LoadedInbox =
+  | { readonly kind: 'loaded'; readonly inbox: Inbox }
   | { readonly kind: 'failed'; readonly message: string }
 
 /** Everything the admin commands touch outside themselves, injected for tests. */
@@ -409,6 +443,18 @@ export type AdminDeps = {
   /** Defaults to the current time; stamps a bot `bot add` writes straight to the registry. */
   readonly now?: () => Date
   readonly signal?: AbortSignal
+  /** The inbox: remotes, the local admin key, and where `key add --save` writes. */
+  readonly inboxPath: string
+  /** The remote `-s` names; undefined picks the target as `openAdmin` describes. */
+  readonly service: string | undefined
+  /** True on a terminal; only then may a command ask before replacing an inbox entry. */
+  readonly isInteractive: boolean
+}
+
+/** What `admin log` needs on top of `AdminDeps`. */
+export type AdminLogDeps = AdminDeps & {
+  /** This CLI's version; an install recorded with it is read whatever its number. */
+  readonly version: string
 }
 
 /** Every admin command takes `--json`. */
@@ -419,29 +465,33 @@ export type BotAddArgs = AdminOutputArgs & {
   readonly label?: string
 }
 
-/** `bot remove` and `pairing remove`; `yes` skips the confirmation. */
+/** `bot remove` and `contact remove`; `yes` skips the confirmation. */
 export type AdminRemoveArgs = AdminOutputArgs & { readonly id: string; readonly yes?: boolean }
 
-/** Exactly one of `bot`, `pairing` and `sameAs` names the pairing the key points to. */
-export type KeyCreateArgs = AdminOutputArgs & {
-  readonly bot?: string
-  readonly pairing?: string
-  readonly sameAs?: string
+/**
+ * `target` is a bot, contact or key id. `save` is `true` for a bare `--save` and the alias for
+ * `--save ALIAS`; at most one of `save` and `invite`.
+ */
+export type KeyAddArgs = AdminOutputArgs & {
+  readonly target: string
   readonly label?: string
-  readonly externalId?: string
-}
-
-export type KeyListArgs = AdminOutputArgs & { readonly bot?: string; readonly pairing?: string }
-
-/** An empty string clears the field; absent keeps it. */
-export type KeyLabelArgs = AdminOutputArgs & {
-  readonly id: string
-  readonly label?: string
-  readonly externalId?: string
+  /** Also save the key to this machine's inbox as a bot. */
+  readonly save?: boolean | string
+  /** Print a `jaypost inbox join` line for the person instead of the bare key; remotes only. */
+  readonly invite?: boolean
 }
 
 export type AdminIdArgs = AdminOutputArgs & { readonly id: string }
 
-export type PairingCreateArgs = AdminOutputArgs & { readonly bot: string }
+export type ContactAddArgs = AdminOutputArgs & { readonly bot: string }
 
-export type PairingListArgs = AdminOutputArgs & { readonly bot?: string }
+export type ContactListArgs = AdminOutputArgs & { readonly bot?: string }
+
+/** Parsed `admin log` flags; no `bot`, `contact` or `key` means every bot's questions. */
+export type AdminLogArgs = LogArgs & {
+  readonly bot?: string
+  readonly contact?: string
+  readonly key?: string
+  /** Every bot's questions; the same as giving no filter flag. */
+  readonly all?: boolean
+}

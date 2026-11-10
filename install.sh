@@ -1,8 +1,8 @@
 #!/bin/sh
-# Installs the jaypost standalone binary to ~/.local/bin, then runs `jaypost init`.
+# Installs the jaypost standalone binary to ~/.local/bin, then runs `jaypost service install`.
 # Usage: curl -fsSL https://unpkg.com/jaypost/install.sh | sh
 # JAYPOST_RELEASE_URL overrides where the binaries come from (tests use it).
-# JAYPOST_INSTALL_DIR overrides where the binary goes, and JAYPOST_NO_INIT=1 skips init
+# JAYPOST_INSTALL_DIR overrides where the binary goes, and JAYPOST_NO_INIT=1 skips the install
 # (the GitHub Action uses both).
 set -eu
 
@@ -17,13 +17,13 @@ fail() {
 case "$(uname -s)" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
-  *) fail "no binary for $(uname -s); use npx jaypost init instead (needs Node 24.15+)" ;;
+  *) fail "no binary for $(uname -s); use npx jaypost service install instead (needs Node 24.15+)" ;;
 esac
 
 case "$(uname -m)" in
   x86_64 | amd64) arch=x64 ;;
   aarch64 | arm64) arch=arm64 ;;
-  *) fail "no binary for $(uname -m); use npx jaypost init instead (needs Node 24.15+)" ;;
+  *) fail "no binary for $(uname -m); use npx jaypost service install instead (needs Node 24.15+)" ;;
 esac
 
 # A shell running under Rosetta reports x86_64 on Apple silicon; the native binary is better
@@ -67,9 +67,9 @@ if [ "${JAYPOST_NO_INIT:-}" = 1 ]; then
   exit 0
 fi
 
-# stdin is this script when piped from curl, so init's prompts need the terminal
+# stdin is this script when piped from curl, so the install prompts need the terminal
 if ! (: </dev/tty) 2>/dev/null; then
-  echo "No terminal to set it up from; run $bin_dir/jaypost init"
+  echo "No terminal to set it up from; run $bin_dir/jaypost service install"
   exit 0
 fi
-"$bin_dir/jaypost" init </dev/tty
+"$bin_dir/jaypost" service install </dev/tty

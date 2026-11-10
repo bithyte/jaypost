@@ -95,7 +95,7 @@ function parseAsk(
   }
 }
 
-/** A /request/async body; `retry` is refused, since nothing would re-ask a background question. */
+/** A /request/async body; `retry` and the vote fields are refused, since nothing would re-ask or tally a background question. */
 function parseBackgroundAsk(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<ApprovalRequest> {
   const parsed = parseApprovalRequest(
     json,
@@ -103,13 +103,16 @@ function parseBackgroundAsk(bot: ApiBot, route: KeyRoute, json: unknown): Parsed
     bot.maxAttachmentBytes ?? 0,
     bot.maxOptionCount,
   )
-  if (parsed.ok && hasKey(json, 'retry')) {
-    return { ok: false, error: "retry isn't supported on /request/async" }
+  if (parsed.ok) {
+    const refused = ['retry', 'voters', 'require'].find((field) => hasKey(json, field))
+    if (refused !== undefined) {
+      return { ok: false, error: `${refused} isn't supported on /request/async` }
+    }
   }
   return parsed.ok ? { ok: true, value: addressTo(route, parsed.value) } : parsed
 }
 
-/** A /vote body with its voters resolved by the bot's provider; no voters means the key's person. */
+/** A vote body with its voters resolved by the bot's provider; no voters means the key's person. */
 function parseVote(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<Vote> {
   const parsed = parseVoteRequest(
     json,
@@ -140,6 +143,24 @@ function parseVote(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<Vote> {
   }
 }
 
+type ParsedQuestion =
+  | {
+      readonly kind: 'ask'
+      readonly request: ApprovalRequest
+      readonly retryCount: number | undefined
+    }
+  | { readonly kind: 'vote'; readonly vote: Vote }
+
+/** A /request body: a vote when it has `voters` or `require` (even null), else a plain question. */
+function parseQuestion(bot: ApiBot, route: KeyRoute, json: unknown): Parsed<ParsedQuestion> {
+  if (hasKey(json, 'voters') || hasKey(json, 'require')) {
+    const vote = parseVote(bot, route, json)
+    return vote.ok ? { ok: true, value: { kind: 'vote', vote: vote.value } } : vote
+  }
+  const ask = parseAsk(bot, route, json)
+  return ask.ok ? { ok: true, value: { kind: 'ask', ...ask.value } } : ask
+}
+
 /** How the 502 log line names the bot: `b2 (telegram)`. */
 function describeBot(route: KeyRoute | undefined): string {
   const bot = route?.bot
@@ -148,12 +169,12 @@ function describeBot(route: KeyRoute | undefined): string {
 
 /**
  * Builds the HTTP API (POST /request, POST /request/async, GET and DELETE /request/:id,
- * POST /vote, POST /notify, GET /status, GET /log, GET /openapi.yaml) without listening. Every
+ * POST /notify, GET /status, GET /log, GET /openapi.yaml) without listening. Every
  * route but /openapi.yaml asks `router` for the call's key first and answers 401 when there is
  * none, before parsing the body; routes with a body ask again once it's read. A key whose bot
- * isn't running gets 503 `bot unavailable` and one whose pairing waits for its code 503
- * `not paired` on the question routes. Aborting the connection cancels a pending /request or
- * /vote; background questions outlive their connections and only their key reads or cancels them.
+ * isn't running gets 503 `bot unavailable` and one whose contact waits for its code 503
+ * `not paired` on the question routes. Aborting the connection cancels a pending /request
+ * (a vote too); background questions outlive their connections and only their key reads or cancels them.
  * Errors return JSON bodies. A bot without notifications answers POST /notify 501. With `admin`,
  * the /admin routes are served too, behind the admin key only.
  */
@@ -181,12 +202,7 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
   app.setNotFoundHandler((request, reply) => {
     // Not new URL(): it throws on targets like '//'.
     const path = request.url.split('?')[0]
-    if (
-      path === '/request' ||
-      path === '/request/async' ||
-      path === '/vote' ||
-      path === '/notify'
-    ) {
+    if (path === '/request' || path === '/request/async' || path === '/notify') {
       return reply.code(405).header('Allow', 'POST').send({ error: 'method not allowed' })
     }
     if (path !== undefined && REQUEST_ID_PATH_PATTERN.test(path)) {
@@ -266,7 +282,7 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
   )
   // Replies 401/503/400/501 itself and returns undefined, or returns the bot and what `parse` made
   // of the body. The key is routed again because the upload can take a while: a key revoked or a
-  // pairing reset meanwhile must not reach the old person. Drops the raw body from the Fastify
+  // contact reset meanwhile must not reach the old person. Drops the raw body from the Fastify
   // request so a long wait doesn't keep an attachment's bytes alive; the parsed JSON goes out of
   // scope on return for the same reason.
   const readBody = <T>(
@@ -307,24 +323,44 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
     return { bot, value: parsed.value }
   }
   app.post<{ Body: string | undefined }>('/request', guard, async (request, reply) => {
-    let read = readBody(request, reply, parseAsk)
+    let read = readBody(request, reply, parseQuestion)
     if (read === undefined) {
       return reply
     }
     const signal = abortOnClose(reply)
-    const { retryCount } = read.value
-    const pending = askWithRetries(read.bot.service, read.value.request, retryCount ?? 0, signal)
-    // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
-    read = undefined
-    const result = await pending
-    if (result.kind === 'cancelled') {
-      // Normally because the client is gone, so this write is a no-op.
-      return reply.code(500).send({ error: 'request was cancelled' })
+    // No local may hold the parsed question across an await, or the attachment bytes stay alive.
+    switch (read.value.kind) {
+      case 'ask': {
+        const { retryCount } = read.value
+        const pending = askWithRetries(
+          read.bot.service,
+          read.value.request,
+          retryCount ?? 0,
+          signal,
+        )
+        // V8 keeps locals alive across await; drop the only handle on the attachment bytes first.
+        read = undefined
+        const result = await pending
+        if (result.kind === 'cancelled') {
+          // Normally because the client is gone, so this write is a no-op.
+          return reply.code(500).send({ error: 'request was cancelled' })
+        }
+        // `rounds` tells a client that sent `retry` that this service re-asks.
+        return retryCount === undefined
+          ? result.outcome
+          : { ...result.outcome, rounds: result.roundCount }
+      }
+      case 'vote': {
+        const { rule } = read.value.vote
+        const pending = runVote(read.bot.service, read.value.vote, signal)
+        read = undefined
+        const result = await pending
+        if (result.kind === 'cancelled') {
+          return reply.code(500).send({ error: 'request was cancelled' })
+        }
+        return toVoteReport(result, rule)
+      }
     }
-    // `rounds` tells a client that sent `retry` that this service re-asks.
-    return retryCount === undefined
-      ? result.outcome
-      : { ...result.outcome, rounds: result.roundCount }
   })
   app.post<{ Body: string | undefined }>('/request/async', guard, async (request, reply) => {
     const read = readBody(request, reply, parseBackgroundAsk)
@@ -336,20 +372,6 @@ export function createApiServer(router: BotRouter, admin?: AdminApi): FastifyIns
       .code(202)
       .header('Location', `/request/${id}`)
       .send(toStateBody(id, { kind: 'pending', expiresAt }))
-  })
-  app.post<{ Body: string | undefined }>('/vote', guard, async (request, reply) => {
-    let read = readBody(request, reply, parseVote)
-    if (read === undefined) {
-      return reply
-    }
-    const { rule } = read.value
-    const pending = runVote(read.bot.service, read.value, abortOnClose(reply))
-    read = undefined
-    const result = await pending
-    if (result.kind === 'cancelled') {
-      return reply.code(500).send({ error: 'request was cancelled' })
-    }
-    return toVoteReport(result, rule)
   })
   app.get<{ Params: { id: string }; Querystring: { wait?: unknown } }>(
     '/request/:id',

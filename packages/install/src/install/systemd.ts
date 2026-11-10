@@ -18,13 +18,14 @@ import {
   findBinaryCopyConflict,
   printPathHint,
   purgeServiceFiles,
+  readConfigApiToken,
   readConfigSecrets,
   resolveCliCommand,
   resolveDefaultConfigFile,
   writeServiceConfig,
 } from './native.ts'
 import { requireRecordOwner } from './state.ts'
-import { formatSystemdUnit } from './templates.ts'
+import { formatSystemdUnit, stripServiceRun } from './templates.ts'
 import type { CliLocation, InstallRecord, Secrets, Target, TargetDeps } from './types.ts'
 
 /** Best-effort read of the JAYPOST_CONFIG value from a unit's Environment= lines. */
@@ -88,7 +89,7 @@ function splitCommandLine(line: string): string[] {
 }
 
 /**
- * The unquoted words of a unit's `ExecStart=` line minus the trailing `start`: the node path and
+ * The unquoted words of a unit's `ExecStart=` line minus the trailing `service run`: the node path and
  * CLI script, or the binary path. Undefined without an `ExecStart=` line.
  */
 export function findUnitExecWords(unit: string): readonly string[] | undefined {
@@ -100,7 +101,7 @@ export function findUnitExecWords(unit: string): readonly string[] | undefined {
     const words = splitCommandLine(rawValue).map((word) =>
       word.replaceAll('$$', '$').replaceAll('%%', '%'),
     )
-    return words.at(-1) === 'start' ? words.slice(0, -1) : words
+    return stripServiceRun(words)
   }
   return undefined
 }
@@ -142,7 +143,11 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
       mkdirSync(dirname(paths.systemdUnit), { recursive: true })
       writeFileSync(
         paths.systemdUnit,
-        formatSystemdUnit({ exec: command.words, config: configFile }),
+        formatSystemdUnit({
+          exec: command.words,
+          config: configFile,
+          exposed: options.exposed ?? false,
+        }),
       )
       for (const args of [['daemon-reload'], ['enable', '--now', SERVICE_NAME]]) {
         const result = await systemctl(...args)
@@ -160,10 +165,11 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
         cliPath: command.cliPath,
         cliKind: cli.kind,
         configFile,
+        ...(options.exposed ? { exposed: true } : {}),
       }
     },
-    async upgrade(options): Promise<InstallRecord> {
-      const record = await target.install(options)
+    async upgrade(options, previous): Promise<InstallRecord> {
+      const record = await target.install({ ...options, exposed: previous.exposed ?? false })
       // `enable --now` leaves an already running unit on the old command.
       await target.restart(record)
       return record
@@ -184,6 +190,21 @@ export function createSystemdTarget(deps: TargetDeps, cli: CliLocation): Target 
       if (result.code !== 0) {
         throw new Error(`systemctl restart failed (exit ${result.code})`)
       }
+    },
+    async start() {
+      const result = await systemctl('start', SERVICE_NAME)
+      if (result.code !== 0) {
+        throw new Error(`systemctl start failed (exit ${result.code})`)
+      }
+    },
+    async stop() {
+      const result = await systemctl('stop', SERVICE_NAME)
+      if (result.code !== 0) {
+        throw new Error(`systemctl stop failed (exit ${result.code})`)
+      }
+    },
+    async readApiToken(record) {
+      return readConfigApiToken(resolveConfigFile(record))
     },
     async clearOwner(record) {
       await target.forgetSeedOwner(record)

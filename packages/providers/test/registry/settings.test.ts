@@ -17,7 +17,7 @@ const telegram = requireProvider(PROVIDERS, 'telegram')
 
 test('requireProvider rejects an unknown name', () => {
   expect(() => requireProvider(PROVIDERS, 'slack')).toThrow(
-    'unknown provider "slack"; run `jaypost init`',
+    'unknown provider "slack"; run `jaypost service install`',
   )
 })
 

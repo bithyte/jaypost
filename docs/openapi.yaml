@@ -12,26 +12,30 @@ security:
   - bearerAuth: []
 tags:
   - name: admin
-    description: Managing bots, pairings and keys. Needs the admin key; an API key gets 401 like a missing one.
+    description: Managing bots, contacts and keys. Needs the admin key; an API key gets 401 like a missing one.
 paths:
   /request:
     post:
       operationId: request
       summary: Ask a question and wait for the answer
-      description: Stays open until the owner answers (tap, or text reply with `allowText`) or the timeout fires. Disconnecting cancels the question.
+      description: "Stays open until the owner answers (tap, or text reply with `allowText`) or the timeout fires. With `voters` or `require` it's a vote instead: one message per voter, open until the vote is decided or its rounds run out, answered with the vote's report. Disconnecting cancels every open message."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ApprovalRequest"
+              anyOf:
+                - $ref: "#/components/schemas/ApprovalRequest"
+                - $ref: "#/components/schemas/VoteRequest"
       responses:
         "200":
-          description: The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked.
+          description: The tapped or typed answer, or `timeoutOption` on timeout; with `retry`, also the rounds asked. A vote answers with its decision and each voter's answer.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Outcome"
+                anyOf:
+                  - $ref: "#/components/schemas/Outcome"
+                  - $ref: "#/components/schemas/VoteReport"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -47,14 +51,25 @@ paths:
         "501":
           $ref: "#/components/responses/NotSupported"
         "502":
-          $ref: "#/components/responses/SendFailed"
+          description: Message couldn't be sent; on a vote, `voter` names who. The messages already sent are cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  voter:
+                    type: string
+                required:
+                  - error
         "503":
           $ref: "#/components/responses/NotPaired"
   /request/async:
     post:
       operationId: requestAsync
       summary: Ask a question with buttons and return at once
-      description: Returns once the message is sent. Poll `GET /request/{id}` for the answer. The question outlives the connection and is cancelled only by `DELETE /request/{id}`, the timeout or the owner.
+      description: Returns once the message is sent. Poll `GET /request/{id}` for the answer. The question outlives the connection and is cancelled only by `DELETE /request/{id}`, the timeout or the owner. It answers 400 to `retry`, `voters` and `require`.
       requestBody:
         required: true
         content:
@@ -137,54 +152,6 @@ paths:
           $ref: "#/components/responses/UnknownRequest"
         "503":
           $ref: "#/components/responses/BotUnavailable"
-  /vote:
-    post:
-      operationId: vote
-      summary: Ask several people the same yes/no question and wait for the decision
-      description: Sends one message per voter and stays open until the vote is decided or its rounds run out. `options` must be `[approve, reject]` and `timeoutOption` the reject answer, without `allowText`. Once decided, every open message is closed with the result. Disconnecting cancels every open message.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VoteRequest"
-      responses:
-        "200":
-          description: The decision and each voter's answer.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VoteReport"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "413":
-          $ref: "#/components/responses/PayloadTooLarge"
-        "500":
-          description: Internal error, or the vote was cancelled.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "501":
-          $ref: "#/components/responses/NotSupported"
-        "502":
-          description: A voter's message couldn't be sent; `voter` names them. The messages already sent are cancelled.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  error:
-                    type: string
-                  voter:
-                    type: string
-                required:
-                  - error
-                  - voter
-        "503":
-          $ref: "#/components/responses/NotPaired"
   /notify:
     post:
       operationId: notify
@@ -358,8 +325,8 @@ paths:
       security:
         - adminKey: []
       operationId: removeBot
-      summary: Remove a bot with its pairings and keys
-      description: Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its pairings, keys and saved state are deleted.
+      summary: Remove a bot with its contacts and keys
+      description: Stops the bot. Its open questions are answered with their timeout option. Its questions stay readable in the log until they are 30 days old; its contacts, keys and saved state are deleted.
       parameters:
         - $ref: "#/components/parameters/BotId"
       responses:
@@ -375,35 +342,35 @@ paths:
           $ref: "#/components/responses/UnknownId"
         "500":
           $ref: "#/components/responses/SaveFailed"
-  /admin/pairings:
+  /admin/contacts:
     get:
       tags:
         - admin
       security:
         - adminKey: []
-      operationId: listPairings
-      summary: List pairings
+      operationId: listContacts
+      summary: List contacts
       parameters:
         - name: bot
           in: query
           required: false
-          description: Only this bot's pairings.
+          description: Only this bot's contacts.
           schema:
             type: string
       responses:
         "200":
-          description: The pairings, with their keys and, while pending, their code.
+          description: The contacts, with their keys and, while pending, their code.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  pairings:
+                  contacts:
                     type: array
                     items:
-                      $ref: "#/components/schemas/AdminPairing"
+                      $ref: "#/components/schemas/AdminContact"
                 required:
-                  - pairings
+                  - contacts
         "400":
           description: A filter was given more than once.
           content:
@@ -419,22 +386,22 @@ paths:
         - admin
       security:
         - adminKey: []
-      operationId: createPairing
+      operationId: createContact
       summary: Invite an approver
-      description: A pairing with no key, waiting for its code. On a bot that doesn't pair, the bot's one pairing.
+      description: A contact with no key, waiting for its code. On a bot that doesn't pair, the bot's one contact.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreatePairingBody"
+              $ref: "#/components/schemas/CreateContactBody"
       responses:
         "201":
-          description: The pairing and, while pending, its code.
+          description: The contact and, while pending, its code.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PairingInvite"
+                $ref: "#/components/schemas/ContactInvite"
         "400":
           $ref: "#/components/responses/AdminBadRequest"
         "401":
@@ -443,26 +410,26 @@ paths:
           $ref: "#/components/responses/UnknownId"
         "500":
           $ref: "#/components/responses/SaveFailed"
-  /admin/pairings/{id}/reset:
+  /admin/contacts/{id}/reset:
     post:
       tags:
         - admin
       security:
         - adminKey: []
-      operationId: resetPairing
-      summary: Remove a pairing's person and wait for a new one
+      operationId: resetContact
+      summary: Remove a contact's person and wait for a new one
       description: Its keys stay and wait for the new code. Their open questions are answered with their timeout option.
       parameters:
-        - $ref: "#/components/parameters/PairingId"
+        - $ref: "#/components/parameters/ContactId"
       responses:
         "200":
-          description: The pending pairing and its new code.
+          description: The pending contact and its new code.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PairingInvite"
+                $ref: "#/components/schemas/ContactInvite"
         "400":
-          description: The pairing is on a bot that doesn't pair.
+          description: The contact is on a bot that doesn't pair.
           content:
             application/json:
               schema:
@@ -473,17 +440,17 @@ paths:
           $ref: "#/components/responses/UnknownId"
         "500":
           $ref: "#/components/responses/SaveFailed"
-  /admin/pairings/{id}:
+  /admin/contacts/{id}:
     delete:
       tags:
         - admin
       security:
         - adminKey: []
-      operationId: removePairing
-      summary: Remove a pairing and revoke its keys
+      operationId: removeContact
+      summary: Remove a contact and revoke its keys
       description: Their open questions are answered with their timeout option.
       parameters:
-        - $ref: "#/components/parameters/PairingId"
+        - $ref: "#/components/parameters/ContactId"
       responses:
         "200":
           description: Removed; `removedKeys` are the revoked keys.
@@ -509,13 +476,13 @@ paths:
         - name: bot
           in: query
           required: false
-          description: Only keys on this bot's pairings.
+          description: Only keys on this bot's contacts.
           schema:
             type: string
-        - name: pairing
+        - name: contact
           in: query
           required: false
-          description: Only keys on this pairing.
+          description: Only keys on this contact.
           schema:
             type: string
       responses:
@@ -549,7 +516,7 @@ paths:
         - adminKey: []
       operationId: createKey
       summary: Create an API key
-      description: On a new pairing (`bot`), the key waits until someone sends the code to the bot. On an existing pairing (`pairing` or `sameAsKey`), it works at once.
+      description: On a new contact (`bot`), the key waits until someone sends the code to the bot. On an existing contact (`contact` or `sameAsKey`), it works at once.
       requestBody:
         required: true
         content:
@@ -614,7 +581,7 @@ paths:
         - adminKey: []
       operationId: revokeKey
       summary: Revoke an API key
-      description: Its open questions are answered with their timeout option. Its pairing stays.
+      description: Its open questions are answered with their timeout option. Its contact stays.
       parameters:
         - $ref: "#/components/parameters/KeyId"
       responses:
@@ -638,7 +605,7 @@ paths:
         - adminKey: []
       operationId: readAdminLog
       summary: Every bot's questions
-      description: Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `pairing` and `key` may name removed ones, so their history stays readable.
+      description: Oldest first, each with its bot, removed bots included while their questions are under 30 days old. `contact` and `key` may name removed ones, so their history stays readable.
       parameters:
         - name: bot
           in: query
@@ -646,10 +613,10 @@ paths:
           description: Only this bot's questions.
           schema:
             type: string
-        - name: pairing
+        - name: contact
           in: query
           required: false
-          description: Only this pairing's questions.
+          description: Only this contact's questions.
           schema:
             type: string
         - name: key
@@ -719,11 +686,11 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: An API key, such as the one `init` saved to `~/.config/jaypost/token`. A service installed without a token treats a call without the header as its first key.
+      description: An API key, such as the `key` of a bot in `~/.config/jaypost/inbox.json`. A service installed without a token treats a call without the header as its first key.
     adminKey:
       type: http
       scheme: bearer
-      description: The admin key, in `~/.config/jaypost/admin-key` on the machine running the service. Only the admin routes take it.
+      description: The admin key, in `~/.config/jaypost/service/admin-key` on the machine running the service, and in `~/.config/jaypost/inbox.json` on a machine that administers it. Only the admin routes take it.
   schemas:
     ApprovalRequest:
       type: object
@@ -788,12 +755,12 @@ components:
               enum:
                 - all
                 - majority
-              description: "`all` voters must approve (default), or a `majority` of them."
+              description: "How the vote decides: an option wins once `all` voters (default) or a `majority` of them pick it. Once no option but `timeoutOption` can win, `timeoutOption` does."
             retry:
               type: integer
               minimum: 0
               maximum: 100
-              description: Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds rejects.
+              description: Rounds after the first; each re-asks only voters who timed out. Default 0. Running out of rounds ends on `timeoutOption`.
     Attachment:
       type: object
       properties:
@@ -939,9 +906,9 @@ components:
             key:
               type: string
               description: The caller key's id.
-            pairing:
+            contact:
               type: string
-              description: The id of the caller key's pairing.
+              description: The id of the caller key's contact.
             state:
               type: string
               enum:
@@ -979,9 +946,9 @@ components:
             key:
               type: string
               description: The caller key's id.
-            pairing:
+            contact:
               type: string
-              description: The id of the caller key's pairing.
+              description: The id of the caller key's contact.
             state:
               type: string
               enum:
@@ -1039,7 +1006,7 @@ components:
           type: string
         key:
           type: string
-        pairing:
+        contact:
           type: string
         bot:
           type: string
@@ -1086,8 +1053,8 @@ components:
         - provider
         - settings
       additionalProperties: false
-      description: "`settings` by config key, as `init` asks for them, without the owner. `label` is at most 200 characters."
-    CreatePairingBody:
+      description: "`settings` by config key, as `service install` asks for them, without the owner. `label` is at most 200 characters."
+    CreateContactBody:
       type: object
       properties:
         bot:
@@ -1100,7 +1067,7 @@ components:
       properties:
         bot:
           type: string
-        pairing:
+        contact:
           type: string
         sameAsKey:
           type: string
@@ -1111,7 +1078,7 @@ components:
           type: string
           maxLength: 200
       additionalProperties: false
-      description: Exactly one of `bot` (a new pairing on that bot), `pairing` or `sameAsKey` (that key's pairing). `label` and `externalId` are stored and never interpreted, at most 200 characters.
+      description: Exactly one of `bot` (a new contact on that bot), `contact` or `sameAsKey` (that key's contact). `label` and `externalId` are stored and never interpreted, at most 200 characters.
     UpdateKeyBody:
       type: object
       properties:
@@ -1146,7 +1113,7 @@ components:
             - failed
         error:
           type: string
-        pairingCount:
+        contactCount:
           type: number
         keyCount:
           type: number
@@ -1154,10 +1121,10 @@ components:
         - id
         - provider
         - state
-        - pairingCount
+        - contactCount
         - keyCount
       additionalProperties: {}
-    AdminPairing:
+    AdminContact:
       type: object
       properties:
         id:
@@ -1188,7 +1155,7 @@ components:
       properties:
         id:
           type: string
-        pairing:
+        contact:
           type: string
         bot:
           type: string
@@ -1200,7 +1167,7 @@ components:
           type: string
       required:
         - id
-        - pairing
+        - contact
         - bot
         - createdAt
       additionalProperties: {}
@@ -1211,7 +1178,7 @@ components:
           type: string
         key:
           type: string
-        pairing:
+        contact:
           type: string
         code:
           type: string
@@ -1220,21 +1187,21 @@ components:
       required:
         - id
         - key
-        - pairing
+        - contact
       additionalProperties: {}
-    PairingInvite:
+    ContactInvite:
       type: object
       properties:
-        pairing:
-          $ref: "#/components/schemas/AdminPairing"
+        contact:
+          $ref: "#/components/schemas/AdminContact"
         code:
           type: string
-          description: Present while the pairing waits for it.
+          description: Present while the contact waits for it.
         instructions:
           type: string
           description: How to send the code to the bot.
       required:
-        - pairing
+        - contact
     RemovedKeys:
       type: object
       properties:
@@ -1275,11 +1242,11 @@ components:
       description: A bot id, such as `b1`.
       schema:
         type: string
-    PairingId:
+    ContactId:
       name: id
       in: path
       required: true
-      description: A pairing id, such as `p1`.
+      description: A contact id, such as `c1`.
       schema:
         type: string
     KeyId:
@@ -1327,7 +1294,7 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     NotPaired:
-      description: The key's pairing waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).
+      description: The key's contact waits for its code (`not paired`), or its bot isn't running (`bot unavailable`).
       content:
         application/json:
           schema:

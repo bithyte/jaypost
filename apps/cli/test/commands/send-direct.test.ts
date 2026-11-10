@@ -187,7 +187,7 @@ test('a missing owner exits 1 before anything is sent', async () => {
   })
   expect(await runDirectSendRequest(REQUEST, deps)).toBe(1)
   expect(errors).toEqual([
-    'jaypost: missing fake owner; set FAKE_OWNER (jaypost setup-ci prints it)',
+    'jaypost: missing fake owner; set FAKE_OWNER (jaypost pair ci prints it)',
   ])
   expect(provider.runtimes).toEqual([])
 })
@@ -361,6 +361,31 @@ test('a rejected vote exits 3 and prints the reject answer', async () => {
   const { deps, printed } = createDeps(provider)
   const answered = answerVoter(provider, 'a', 1)
   expect(await runDirectSendRequest({ ...REQUEST, voters: ['a'] }, deps)).toBe(3)
+  await answered
+  expect(printed).toEqual(['No'])
+})
+
+test('a three-way vote exits 0 when an option other than the default wins', async () => {
+  const { provider } = createProvider()
+  const { deps, printed } = createDeps(provider)
+  const answered = answerVoter(provider, 'a', 1)
+  const args = { ...REQUEST, options: ['Ship', 'Hold', 'No'], voters: ['a'] }
+  expect(await runDirectSendRequest(args, deps)).toBe(0)
+  await answered
+  expect(printed).toEqual(['Hold'])
+})
+
+test('a split vote exits 3 with the default answer', async () => {
+  const { provider } = createProvider()
+  const { deps, printed } = createDeps(provider)
+  const answered = Promise.all([answerVoter(provider, 'a', 0), answerVoter(provider, 'b', 1)])
+  const args = {
+    ...REQUEST,
+    options: ['Ship', 'Hold', 'No'],
+    voters: ['a', 'b'],
+    rule: 'all',
+  } as const
+  expect(await runDirectSendRequest(args, deps)).toBe(3)
   await answered
   expect(printed).toEqual(['No'])
 })

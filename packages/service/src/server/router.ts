@@ -14,7 +14,7 @@ export function toLimits(
 }
 
 /**
- * Routes every call to the one bot as key `k1` on pairing `p1`, after checking the token when
+ * Routes every call to the one bot as key `k1` on contact `c1`, after checking the token when
  * `auth` has one. The person is `recipient()` while `status()` says paired, else nobody.
  */
 export function createSingleBotRouter(options: SingleBotOptions): BotRouter {

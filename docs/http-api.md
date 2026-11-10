@@ -5,9 +5,11 @@
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":60}'
 ```
+
+`$JAYPOST_TOKEN` is an API key: the `key` of a bot in `~/.config/jaypost/inbox.json`, or one from `jaypost admin bot key add`. A service installed with `--no-token` takes calls without the header.
 
 The request stays open until you tap a button (or reply, see below) or the timeout fires, then returns `200`:
 
@@ -22,13 +24,13 @@ For a question with no sensible buttons, set `allowText` and leave out `options`
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Which branch?","allowText":true,"timeoutOption":"main","timeout":120}'
 ```
 
 Reply to the question's message in Telegram; if it's the only open text question, just typing works. The first answer wins, whether it's a tap or a reply. Non-text replies don't count, and a registered command name (`/pending`, `/cancel`, `/history`) can't be typed as an answer.
 
-`allowText` needs a service at least as new as this release. An older one ignores it: with `options` you get a buttons-only question, without them a 400 `options must be a non-empty array`. Re-run `init` to upgrade.
+`allowText` needs a service at least as new as this release. An older one ignores it: with `options` you get a buttons-only question, without them a 400 `options must be a non-empty array`. Run `jaypost service install` again to upgrade.
 
 `POST /request` body:
 
@@ -59,19 +61,19 @@ Errors are JSON `{ "error": "..." }`:
 | 502    | Message couldn't be sent.                                                                                                                                  |
 | 503    | The key's bot isn't `running` (see `state` in [`GET /status`](#status)), or isn't paired yet.                                                              |
 | 500    | Internal error, or the request was cancelled.                                                                                                              |
-| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/vote`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                          |
+| 404    | Path isn't `/request`, `/request/async`, `/request/{id}`, `/notify`, `/status`, `/log`, `/admin/...` or `/openapi.yaml`.                          |
 | 405    | Method isn't the one the path takes (POST, or GET and DELETE for `/request/{id}`).                                                                         |
 
 If the caller disconnects early, the request is dropped and the Telegram message is edited to a "cancelled" line. A restart still drops pending requests (callers see a connection error), but when the service comes back it edits their Telegram messages to an expired line.
 
 ## Background questions
 
-`POST /request/async` takes the same body and sends the same message, but answers `202` as soon as it is sent, so no connection has to stay open. It checks pairing like `/request`; the routes below only need the token.
+`POST /request/async` takes the same body and sends the same message, but answers `202` as soon as it is sent, so no connection has to stay open. It checks pairing like `/request`; the routes below only need the token. It answers 400 to `voters` and `require`.
 
 ```
 curl -s -X POST http://127.0.0.1:8787/request/async \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Deploy?","options":["Approve","Decline"],"timeoutOption":"Decline","timeout":3600}'
 ```
 
@@ -92,7 +94,7 @@ For messages that don't need an answer, e.g. from n8n when someone joins a game 
 ```
 curl -s -X POST http://127.0.0.1:8787/notify \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"alice joined the Core Keeper server"}'
 ```
 
@@ -123,18 +125,18 @@ Errors are JSON `{ "error": "..." }`:
 
 ## Votes
 
-`POST /vote` asks several people the same yes/no question, one message each, and stays open until the vote is decided. The body is a `/request` body whose `options` are `[approve, reject]`, with `timeoutOption` the reject answer and no `allowText`, plus:
+`POST /request` with `voters` or `require` asks several people the same question, one message each, and stays open until the vote is decided. It needs at least two `options` and no `allowText`. An option wins when `all` voters (default) or a `majority` of all listed voters pick it. Once no option but `timeoutOption` can still win, the vote ends on `timeoutOption`, and so does running out of rounds. `approved` is `answer !== timeoutOption`. The body is a `/request` body plus:
 
 | Field     | Type     | Required | Notes                                                                                                  |
 | --------- | -------- | -------- | ------------------------------------------------------------------------------------------------------ |
 | `voters`  | string[] | no       | User ids, 1 to 25. Default: the owner. Each one must have started a chat with the bot.                 |
-| `require` | string   | no       | `all` (default) or `majority`. A tie rejects.                                                           |
-| `retry`   | integer  | no       | 0 to 100. Rounds after the first; each re-asks only voters who haven't voted. Running out rejects.     |
+| `require` | string   | no       | `all` (default) or `majority`. A tie ends on `timeoutOption`.                                                        |
+| `retry`   | integer  | no       | 0 to 100. Rounds after the first; each re-asks only voters who haven't voted. Running out ends on `timeoutOption`. |
 
 ```
-curl -s -X POST http://127.0.0.1:8787/vote \
+curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Publish v123?","options":["Yes","No"],"timeoutOption":"No","voters":["111","222","333"],"require":"majority"}'
 ```
 
@@ -150,6 +152,8 @@ curl -s -X POST http://127.0.0.1:8787/vote \
 ```
 
 `votes` has `null` for anyone who didn't vote, and `timedOut` means the rounds ran out. Errors are the same as `/request`, except a `502` also names the voter whose message couldn't be sent (`{"error":"failed to send message","voter":"222"}`); the messages already sent are cancelled. Disconnecting cancels every open message. This is what `jaypost request -u ... --require ...` calls in service mode.
+
+A service from before this release ignores `voters` and `require` and asks only the key's person. Check that the response has `votes`, or check `info.version` from `GET /openapi.yaml` first.
 
 ## Attachments
 
@@ -168,7 +172,7 @@ Send exactly one of `text` and `data`. The content must be at least 1 byte and a
 ```
 curl -s -X POST http://127.0.0.1:8787/request \
   -H 'content-type: application/json' \
-  -H "authorization: Bearer $(cat ~/.config/jaypost/token)" \
+  -H "authorization: Bearer $JAYPOST_TOKEN" \
   -d '{"text":"Push this diff?","options":["Push","Stop"],"timeoutOption":"Stop",
        "attachment":{"name":"changes.diff","text":"diff --git a/x b/x\n..."}}'
 
@@ -176,7 +180,7 @@ jq -n --arg data "$(base64 -w0 screen.png)" \
   '{text:"Login page is blank, see screenshot",attachment:{name:"screen.png",data:$data}}' |
   curl -s -X POST http://127.0.0.1:8787/notify \
     -H 'content-type: application/json' \
-    -H "authorization: Bearer $(cat ~/.config/jaypost/token)" -d @-
+    -H "authorization: Bearer $JAYPOST_TOKEN" -d @-
 ```
 
 The body limit is 14 MiB, which fits the base64 of a 10 MiB file. Send big files as `data`: a `text` attachment near 10 MiB with many quotes or control characters grows when JSON-escaped and can hit the `413`.
@@ -185,37 +189,37 @@ Attachments need a service at least as new as this release; an older one ignores
 
 ## Status
 
-`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. It also names the caller's `key` and `pairing` ids, and the `state` of the key's bot: `starting`, `running`, or `failed` with an `error`. A failed bot is retried with backoff and question routes answer 503 until it's `running`. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
+`GET /status` needs the token too. It returns `provider` and `displayName` along with `paired` and `bot`, plus `code` and `instructions` while unpaired. It also names the caller's `key` and `contact` ids, and the `state` of the key's bot: `starting`, `running`, or `failed` with an `error`. A failed bot is retried with backoff and question routes answer 503 until it's `running`. `maxTextLength` is the longest `text` a request may have, which depends on the provider (3900 on Telegram, 1800 on Discord). `maxOptionCount` is the most `options` a request may have; it's present only when the provider has a limit (25 on Discord) and absent on Telegram. `maxAttachmentBytes` is the largest attachment the provider takes, `0` when it can't send files; a service from before attachments leaves it out. `jaypost status` is the friendlier way to read it.
 
 ## Log
 
-`GET /log` returns the questions asked with the caller's key, oldest first, as `{ "entries": [...], "skippedCount": 0 }`. `skippedCount` is how many log lines couldn't be read. It takes `since` (a duration like `7d`, a date or an ISO date-time), `project` and `limit` (the last N); a bad or repeated parameter is a `400`. Each entry has `id`, `askedAt`, `text`, `options`, `timeoutOption`, `timeoutSeconds`, `status` and, once known, `answer` and `settledAt`, plus the `key` and `pairing` it came from. See [Question log](question-log.md).
+`GET /log` returns the questions asked with the caller's key, oldest first, as `{ "entries": [...], "skippedCount": 0 }`. `skippedCount` is how many log lines couldn't be read. It takes `since` (a duration like `7d`, a date or an ISO date-time), `project` and `limit` (the last N); a bad or repeated parameter is a `400`. Each entry has `id`, `askedAt`, `text`, `options`, `timeoutOption`, `timeoutSeconds`, `status` and, once known, `answer` and `settledAt`, plus the `key` and `contact` it came from. See [Question log](question-log.md).
 
 ```
-curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $(cat ~/.config/jaypost/token)"
+curl -s "http://127.0.0.1:8787/log?since=7d" -H "authorization: Bearer $JAYPOST_TOKEN"
 ```
 
 ## Admin routes
 
-The admin routes manage bots, pairings and keys on a running service, so a remote admin or another app can drive them. They take the admin key as the bearer token, not an API key; an API key, a missing key or a wrong one gets `401`, and the admin key gets `401` on every other route except `/openapi.yaml`, which takes no key at all. Bodies are JSON and error messages never quote them. Secrets are never echoed: the API key's plaintext comes back once, from `POST /admin/keys`, and hashes are never returned.
+The admin routes manage bots, contacts and keys on a running service, so a remote admin or another app can drive them. They take the admin key as the bearer token, not an API key; an API key, a missing key or a wrong one gets `401`, and the admin key gets `401` on every other route except `/openapi.yaml`, which takes no key at all. Bodies are JSON and error messages never quote them. Secrets are never echoed: the API key's plaintext comes back once, from `POST /admin/keys`, and hashes are never returned.
 
 | Route                             | Does                                                                                                                                                |
 | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /admin/bots`                 | Bots with `state` (`starting`, `running`, `failed`), `error`, `pairingCount` and `keyCount`. Never their settings.                                  |
+| `GET /admin/bots`                 | Bots with `state` (`starting`, `running`, `failed`), `error`, `contactCount` and `keyCount`. Never their settings.                                  |
 | `POST /admin/bots`                | `{ "provider", "settings", "label"? }`. Adds a bot, `201`, already starting. `settings` never holds the owner. Credentials another bot uses are rejected. |
-| `DELETE /admin/bots/{id}`         | Removes the bot, its pairings and keys; returns `removedKeys`.                                                                                      |
-| `GET /admin/pairings`             | Pairings, with `person` once paired, `code` while pending and their `keys`. `?bot=` filters.                                                        |
-| `POST /admin/pairings`            | `{ "bot" }`. A pairing with no key, `201`, with its `code` and `instructions`.                                                                      |
-| `POST /admin/pairings/{id}/reset` | Forgets the person and gives the pairing a fresh code. Rejects the open questions of its keys with their timeout option.                            |
-| `DELETE /admin/pairings/{id}`     | Removes the pairing and revokes its keys; returns `removedKeys`.                                                                                    |
-| `GET /admin/keys`                 | Keys without hashes. `?bot=` and `?pairing=` filter.                                                                                                |
-| `POST /admin/keys`                | Exactly one of `bot` (new pairing, returns a `code`), `pairing` or `sameAsKey`, plus `label` and `externalId`. `201` with the plaintext `key`.       |
+| `DELETE /admin/bots/{id}`         | Removes the bot, its contacts and keys; returns `removedKeys`.                                                                                      |
+| `GET /admin/contacts`             | Contacts, with `person` once paired, `code` while pending and their `keys`. `?bot=` filters.                                                        |
+| `POST /admin/contacts`            | `{ "bot" }`. A contact with no key, `201`, with its `code` and `instructions`.                                                                      |
+| `POST /admin/contacts/{id}/reset` | Forgets the person and gives the contact a fresh code. Rejects the open questions of its keys with their timeout option.                            |
+| `DELETE /admin/contacts/{id}`     | Removes the contact and revokes its keys; returns `removedKeys`.                                                                                    |
+| `GET /admin/keys`                 | Keys without hashes. `?bot=` and `?contact=` filter.                                                                                                |
+| `POST /admin/keys`                | Exactly one of `bot` (new contact, returns a `code`), `contact` or `sameAsKey`, plus `label` and `externalId`. `201` with the plaintext `key`.       |
 | `PATCH /admin/keys/{id}`          | `label` and `externalId`: a string sets, `null` clears, absent keeps.                                                                               |
-| `DELETE /admin/keys/{id}`         | Revokes the key and ends its open questions with their timeout option. Its pairing stays.                                                           |
-| `GET /admin/log`                  | Every bot's questions, each with its `bot`. Filters `bot`, `pairing`, `key`, `since`, `project`, `limit`.                                            |
+| `DELETE /admin/keys/{id}`         | Revokes the key and ends its open questions with their timeout option. Its contact stays.                                                           |
+| `GET /admin/log`                  | Every bot's questions, each with its `bot`. Filters `bot`, `contact`, `key`, `since`, `project`, `limit`.                                            |
 | `POST /admin/admin-key`           | Replaces the admin key and returns the new one. The old key stops working at once and the key file is rewritten.                                    |
 
-`/admin/log` doesn't `404` on a `pairing` or `key` id that no longer exists, so the history of revoked keys and removed pairings stays readable. `/admin/log` covers every bot, removed ones too, until their questions are 30 days old. A registry write that fails answers `500` and changes nothing. Unknown ids on the other routes answer `404`. Use the [CLI](commands.md#admin) rather than calling these by hand, unless you're building on top of them. See [Hosting](hosting.md).
+`/admin/log` doesn't `404` on a `contact` or `key` id that no longer exists, so the history of revoked keys and removed contacts stays readable. `/admin/log` covers every bot, removed ones too, until their questions are 30 days old. A registry write that fails answers `500` and changes nothing. Unknown ids on the other routes answer `404`. Use the [CLI](commands.md#admin) rather than calling these by hand, unless you're building on top of them. See [Hosting](hosting.md).
 
 ## OpenAPI spec
 

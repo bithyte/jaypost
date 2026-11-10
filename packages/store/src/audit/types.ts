@@ -9,9 +9,9 @@ export type AskedRecord = {
   readonly options: readonly string[]
   readonly timeoutOption: string
   readonly timeoutSeconds: number
-  /** The asking API key and its pairing; omitted for a request without a caller. */
+  /** The asking API key and its contact; omitted for a request without a caller. */
   readonly key?: string
-  readonly pairing?: string
+  readonly contact?: string
 }
 
 /** The line written when a request ends; `outcome` is the settlement kind. */
@@ -22,9 +22,9 @@ export type SettledRecord = {
   readonly at: string
   readonly outcome: string
   readonly answer?: string
-  /** The asking API key and its pairing; omitted for a request without a caller. */
+  /** The asking API key and its contact; omitted for a request without a caller. */
   readonly key?: string
-  readonly pairing?: string
+  readonly contact?: string
 }
 
 export type AuditLogOptions = {
@@ -46,7 +46,7 @@ export type AuditEntry = {
   readonly settledAt?: string
   /** From the asked line; omitted for a question asked without a key (or before keys existed). */
   readonly key?: string
-  readonly pairing?: string
+  readonly contact?: string
   /** Set by readers that merge several bots' logs; never by `parseAuditLog`. */
   readonly bot?: string
 }
@@ -61,7 +61,7 @@ export type AuditFilter = {
   readonly project?: string
   readonly limit?: number
   readonly key?: string
-  readonly pairing?: string
+  readonly contact?: string
   readonly bot?: string
 }
 

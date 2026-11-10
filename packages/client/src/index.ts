@@ -6,11 +6,12 @@ export {
   describeEndpoint,
   findEnvEndpoint,
   isLoopbackEndpoint,
-  parseEndpointUrl,
   toLocalEndpoint,
 } from './endpoint.ts'
 export {
   ADMIN_KEY_REJECTED_MESSAGE,
+  LOCAL_KEY_REJECTED_MESSAGE,
+  toRemoteKeyRejectedMessage,
   ADMIN_TOO_OLD_MESSAGE,
   ATTACHMENT_NOT_SUPPORTED_MESSAGE,
   ATTACHMENT_TOO_OLD_MESSAGE,
@@ -26,6 +27,7 @@ export {
   TOKEN_REQUIRED_MESSAGE,
   VOTE_TOO_OLD_MESSAGE,
 } from './constants.ts'
+export { resolveBot } from './target.ts'
 export { describeUnauthorized } from './http.ts'
 export type {
   AdminCallerOptions,
@@ -49,6 +51,8 @@ export type {
   Pending,
   Question,
   QuestionState,
+  ResolvedBot,
+  ResolvedBotFailure,
   ServiceEndpoint,
   VoteOutcome,
   VoteRequest,

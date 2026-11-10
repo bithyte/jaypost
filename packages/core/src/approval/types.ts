@@ -7,10 +7,10 @@ export type Attachment = {
   readonly content: Uint8Array
 }
 
-/** Who asked: the API key and its pairing. Opaque to core; used for scoping and the audit log. */
+/** Who asked: the API key and its contact. Opaque to core; used for scoping and the audit log. */
 export type RequestCaller = {
   readonly key: string
-  readonly pairing: string
+  readonly contact: string
 }
 
 /**
@@ -260,21 +260,26 @@ export type OwnerCommandOptions = {
   readonly maxTextLength: number
 }
 
-/** How a vote is decided: `all` voters must approve, or `majority` of all listed voters. */
+/**
+ * How a vote is decided: an answer needs `all` voters, or a `majority` of all listed voters, to
+ * win.
+ */
 export type VoteRule = 'all' | 'majority'
 
-/** Tally of a vote; voters who haven't answered are in neither count. */
+/** Votes cast so far; answers nobody picked may be missing from `countByAnswer`. */
 export type VoteCounts = {
   readonly voterCount: number
-  readonly approveCount: number
-  readonly rejectCount: number
+  readonly countByAnswer: ReadonlyMap<string, number>
 }
 
-export type VoteDecision = 'approved' | 'rejected' | 'undecided'
+export type VoteDecision =
+  | { readonly kind: 'decided'; readonly answer: string }
+  | { readonly kind: 'undecided' }
 
 /**
- * A vote over a two-way question: `request.options` is `[approve, reject]` and
- * `request.timeoutOption` is the reject answer. `voters` is non-empty and duplicate-free.
+ * A vote over `request.options`, any number of them. `request.timeoutOption` is the answer when
+ * no other option wins, and the only one that doesn't count as approval. `voters` is non-empty and
+ * duplicate-free.
  */
 export type Vote = {
   readonly request: ApprovalRequest
@@ -289,7 +294,7 @@ export type RetryResult =
   | { readonly kind: 'completed'; readonly outcome: Outcome; readonly roundCount: number }
   | { readonly kind: 'cancelled' }
 
-/** A /vote body once validated; `voters` is as sent, absent meaning the owner. */
+/** A vote body once validated; `voters` is as sent, absent meaning the owner. */
 export type VoteRequest = {
   readonly request: ApprovalRequest
   readonly voters?: readonly string[]
@@ -297,7 +302,7 @@ export type VoteRequest = {
   readonly retryCount: number
 }
 
-/** Outcome of validating a /vote body; `error` is the client-facing message. */
+/** Outcome of validating a vote body; `error` is the client-facing message. */
 export type VoteParseResult =
   | { readonly ok: true; readonly value: VoteRequest }
   | { readonly ok: false; readonly error: string }
@@ -343,7 +348,7 @@ export type VoteResult =
 
 /** How one round of a vote ended; `timedOut` means every open message timed out undecided. */
 export type RoundEnd =
-  | { readonly kind: 'decided'; readonly approved: boolean }
+  | { readonly kind: 'decided'; readonly answer: string }
   | { readonly kind: 'timedOut' }
   | { readonly kind: 'cancelled' }
 

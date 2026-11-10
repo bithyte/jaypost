@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { NO_CLIENT_TOKEN } from '@jaypost/store'
-import { Caller, toLocalEndpoint } from '@jaypost/client'
+import { Caller } from '@jaypost/client'
 import {
   DEFAULT_START_TIMEOUT_MS,
   POLL_INTERVAL_MS,
@@ -13,12 +13,12 @@ import type { ProgressStep } from '../progress/index.ts'
 import type { StatusFetch, WaitOptions, WaitResult } from './types.ts'
 
 /**
- * GETs the local /status, sending the bearer token when given. A 401 is `unauthorized`; any other
+ * GETs /status at `url`, sending the bearer token when given. A 401 is `unauthorized`; any other
  * failure or unexpected body is `unreachable` (typically the service isn't up yet). Never throws.
  */
-export async function defaultFetchStatus(port: number, token?: string): Promise<StatusFetch> {
+export async function defaultFetchStatus(url: URL, token?: string): Promise<StatusFetch> {
   const caller = new Caller({
-    endpoint: toLocalEndpoint(port),
+    endpoint: { kind: 'url', url },
     readToken: () =>
       token === undefined ? NO_CLIENT_TOKEN : { kind: 'token', token, source: 'file' },
   })
@@ -83,7 +83,7 @@ async function pollPairing(options: WaitOptions, holder: StepHolder): Promise<Wa
       )
       return 'interrupted'
     }
-    const fetched = await fetchStatus(options.port, options.token)
+    const fetched = await fetchStatus(options.url, options.token)
     if (fetched.kind === 'unauthorized') {
       holder.current().fail()
       return 'unauthorized'

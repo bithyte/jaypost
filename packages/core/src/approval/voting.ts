@@ -73,9 +73,9 @@ export async function askWithRetries(
  * asks only voters who haven't voted. Each vote that doesn't decide shows the tally under every
  * voter's latest message. Once decided, every open message is closed with the vote's answer and
  * every answered voter's message shows the complete tally.
- * Rounds running out reject, counting missing votes as rejections. Throws `VoterSendError` when a
- * send fails, after cancelling the messages that were sent. An aborted `signal` cancels every open
- * message and resolves as cancelled. Settles only once every update it sent has landed.
+ * Rounds running out end on `timeoutOption`. Throws `VoterSendError` when a send fails, after
+ * cancelling the messages that were sent. An aborted `signal` cancels every open message and
+ * resolves as cancelled. Settles only once every update it sent has landed.
  * `onProgress` gets `sent` once every send of a round is out and `voted` after each recorded vote.
  */
 export async function runVote(
@@ -119,10 +119,10 @@ async function runRounds(
       return CANCELLED_VOTE
     }
     if (end.kind === 'decided') {
-      return toVoteResult(vote, state.answers, end.approved, round, false)
+      return toVoteResult(vote, state.answers, end.answer, round, false)
     }
   }
-  return toVoteResult(vote, state.answers, false, roundCount, true)
+  return toVoteResult(vote, state.answers, vote.request.timeoutOption, roundCount, true)
 }
 
 type RoundPosition = { readonly round: number; readonly roundCount: number }
@@ -219,20 +219,18 @@ async function collectRound(
       votedCount: answers.size,
       voterCount: vote.voters.length,
     })
-    const decision = decideVote(vote.rule, countVotes(vote, answers))
-    if (decision !== 'undecided') {
-      const approved = decision === 'approved'
-      const answer = toVoteAnswer(vote.request, approved)
+    const decision = decideVote(vote.rule, vote.request.timeoutOption, countVotes(vote, answers))
+    if (decision.kind === 'decided') {
       for (const question of questions) {
         if (waiting.has(question.voter)) {
-          service.close(question.id, answer)
+          service.close(question.id, decision.answer)
         }
       }
       // No message is open now: answered voters, the deciding one too, get the complete tally.
       state.updates.push(...updateProgress(service, vote, state, new Map()))
       // So every closed message is finalized before the caller exits.
       await Promise.all(waiting.values())
-      return { kind: 'decided', approved }
+      return { kind: 'decided', answer: decision.answer }
     }
     state.updates.push(...updateProgress(service, vote, state, waiting))
   }
@@ -268,17 +266,11 @@ function updateProgress(
 }
 
 function countVotes(vote: Vote, answers: ReadonlyMap<string, string>): VoteCounts {
-  const values = [...answers.values()]
-  const approveCount = values.filter((answer) => answer === toVoteAnswer(vote.request, true)).length
-  return {
-    voterCount: vote.voters.length,
-    approveCount,
-    rejectCount: values.length - approveCount,
+  const countByAnswer = new Map<string, number>()
+  for (const answer of answers.values()) {
+    countByAnswer.set(answer, (countByAnswer.get(answer) ?? 0) + 1)
   }
-}
-
-function toVoteAnswer(request: ApprovalRequest, approved: boolean): string {
-  return approved ? request.options[0] : request.options[1]
+  return { voterCount: vote.voters.length, countByAnswer }
 }
 
 function toVoterAnswers(vote: Vote, answers: ReadonlyMap<string, string>): VoterAnswer[] {
@@ -288,14 +280,14 @@ function toVoterAnswers(vote: Vote, answers: ReadonlyMap<string, string>): Voter
 function toVoteResult(
   vote: Vote,
   answers: ReadonlyMap<string, string>,
-  approved: boolean,
+  answer: string,
   roundCount: number,
   timedOut: boolean,
 ): VoteResult {
   return {
     kind: 'decided',
-    approved,
-    answer: toVoteAnswer(vote.request, approved),
+    approved: answer !== vote.request.timeoutOption,
+    answer,
     votes: toVoterAnswers(vote, answers),
     roundCount,
     timedOut,

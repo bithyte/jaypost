@@ -1031,8 +1031,8 @@ test('a re-asked request finalizes as reasked but reports a timeout', async () =
   expect(m.finalized[0]?.text).toBe('Deploy?\n\n🔁 Re-asked, 09:05')
 })
 
-const CALLER_1: RequestCaller = { key: 'k1', pairing: 'p1' }
-const CALLER_2: RequestCaller = { key: 'k2', pairing: 'p2' }
+const CALLER_1: RequestCaller = { key: 'k1', contact: 'c1' }
+const CALLER_2: RequestCaller = { key: 'k2', contact: 'c2' }
 
 function setupCounting(
   options: { audit?: AuditSink; store?: ReturnType<typeof createStore> } = {},

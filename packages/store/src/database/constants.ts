@@ -13,19 +13,19 @@ export const SCHEMA_SQL = `
 CREATE TABLE counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL);
 CREATE TABLE seed (
   only INTEGER PRIMARY KEY CHECK (only = 1),
-  fingerprint TEXT NOT NULL, bot_id TEXT NOT NULL, pairing_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL, bot_id TEXT NOT NULL, contact_id TEXT NOT NULL,
   key_id TEXT NOT NULL, is_open INTEGER NOT NULL
 );
 CREATE TABLE bots (
   id TEXT PRIMARY KEY, provider TEXT NOT NULL, settings TEXT NOT NULL,
   label TEXT, created_at TEXT NOT NULL
 );
-CREATE TABLE pairings (
+CREATE TABLE contacts (
   id TEXT PRIMARY KEY, bot_id TEXT NOT NULL REFERENCES bots (id) ON DELETE CASCADE,
   person TEXT, code TEXT, quiet_hours TEXT, muted_until TEXT, created_at TEXT NOT NULL
 );
 CREATE TABLE keys (
-  id TEXT PRIMARY KEY, pairing_id TEXT NOT NULL REFERENCES pairings (id) ON DELETE CASCADE,
+  id TEXT PRIMARY KEY, contact_id TEXT NOT NULL REFERENCES contacts (id) ON DELETE CASCADE,
   hash TEXT UNIQUE, label TEXT, external_id TEXT, created_at TEXT NOT NULL
 );
 CREATE TABLE requests (
@@ -42,7 +42,7 @@ CREATE TABLE questions (
   bot_id TEXT NOT NULL, id TEXT NOT NULL,
   asked_at TEXT NOT NULL, project TEXT, text TEXT NOT NULL, options TEXT NOT NULL,
   timeout_option TEXT NOT NULL, timeout_seconds INTEGER NOT NULL,
-  key_id TEXT, pairing_id TEXT,
+  key_id TEXT, contact_id TEXT,
   outcome TEXT, answer TEXT, settled_at TEXT,
   PRIMARY KEY (bot_id, id)
 );

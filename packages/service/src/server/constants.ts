@@ -16,14 +16,14 @@ export const ATTACHMENTS_UNSUPPORTED_ERROR = 'attachments not supported'
 /** Body of the 503 for a key whose bot isn't running. */
 export const BOT_UNAVAILABLE_ERROR = 'bot unavailable'
 
-/** Body of the 503 for a key whose pairing waits for its code. */
+/** Body of the 503 for a key whose contact waits for its code. */
 export const NOT_PAIRED_ERROR = 'not paired'
 
 /** The bot id `createSingleBotRouter` names in its log lines. */
 export const SINGLE_BOT_ID = 'b1'
 
-/** The key and pairing `createSingleBotRouter` puts on every question. */
-export const SINGLE_BOT_CALLER = { key: 'k1', pairing: 'p1' } as const
+/** The key and contact `createSingleBotRouter` puts on every question. */
+export const SINGLE_BOT_CALLER = { key: 'k1', contact: 'c1' } as const
 
 /** What /openapi.yaml shows with no bot stored: no attachments and Telegram's text limit. */
 export const NO_BOT_LIMITS = { maxTextLength: 3900, maxAttachmentBytes: 0 } as const

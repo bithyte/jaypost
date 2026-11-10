@@ -100,7 +100,7 @@ function requireFingerprint(load: SeedLoad): string {
   return load.seed.fingerprint
 }
 
-test('loadSeed reads bot 1, pairing 1 and key 1 from config.json', () => {
+test('loadSeed reads bot 1, contact 1 and key 1 from config.json', () => {
   const load = loadSeedFor({
     provider: 'fake',
     botToken: 'tok',
@@ -176,14 +176,16 @@ test('the fingerprint changes with the token and bot token, not with the owner',
 test('a missing bot token is a missing seed, an invalid one throws', () => {
   expect(loadSeedFor({ provider: 'fake' })).toEqual({
     kind: 'missing',
-    message: 'missing bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    message:
+      'missing bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   })
   expect(loadSeedFor({ provider: 'fake', botToken: '' })).toEqual({
     kind: 'missing',
-    message: 'missing bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    message:
+      'missing bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   })
   expect(() => loadSeedFor({ provider: 'fake', botToken: 'bad secret' })).toThrow(
-    'invalid bot token; run `jaypost init` to set up the bot (or set FAKE_BOT_TOKEN)',
+    'invalid bot token; run `jaypost service install` to set up the bot (or set FAKE_BOT_TOKEN)',
   )
   expect(() => loadSeedFor({ provider: 'fake', botToken: 'bad secret' })).not.toThrow(/secret/)
 })

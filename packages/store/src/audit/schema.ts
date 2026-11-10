@@ -12,7 +12,7 @@ const ASKED_SCHEMA = z.looseObject({
   timeoutOption: z.string(),
   timeoutSeconds: z.number().positive(),
   key: z.string().optional(),
-  pairing: z.string().optional(),
+  contact: z.string().optional(),
 })
 
 const SETTLED_SCHEMA = z.looseObject({
@@ -23,7 +23,7 @@ const SETTLED_SCHEMA = z.looseObject({
   outcome: z.string().min(1),
   answer: z.string().optional(),
   key: z.string().optional(),
-  pairing: z.string().optional(),
+  contact: z.string().optional(),
 })
 
 export const auditLineSchema = z.discriminatedUnion('event', [ASKED_SCHEMA, SETTLED_SCHEMA])

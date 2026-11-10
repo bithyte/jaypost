@@ -28,16 +28,21 @@ test('formatDockerfile from tarball', () => {
 test('formatDockerfile binds all interfaces inside', () => {
   const d = formatDockerfile({ version: '1' })
   expect(d).toContain('JAYPOST_HOST=0.0.0.0')
-  expect(d).toContain('CMD ["jaypost","start"]')
+  expect(d).toContain('CMD ["jaypost","service","run"]')
 })
 test('compose publishes on localhost only, restarts', () => {
-  const y = formatComposeYaml(9000)
+  const y = formatComposeYaml(9000, false)
   expect(y).toContain('"127.0.0.1:9000:9000"')
   expect(y).toContain('restart: unless-stopped')
   expect(y).toContain('data:/data')
 })
 test('quadlet publishes on localhost and quotes the env file path', () => {
-  const q = formatQuadletContainer({ version: '0.1.0', port: 8787, envFile: '/home/a b/.env' })
+  const q = formatQuadletContainer({
+    version: '0.1.0',
+    port: 8787,
+    envFile: '/home/a b/.env',
+    exposed: false,
+  })
   expect(q).toContain('PublishPort=127.0.0.1:8787:8787')
   expect(q).toContain('EnvironmentFile="/home/a b/.env"')
   expect(q).toContain('Image=localhost/jaypost:0.1.0')
@@ -46,8 +51,9 @@ test('systemd unit quotes paths with spaces and percent', () => {
   const u = formatSystemdUnit({
     exec: ['/opt/node 24/bin/node', '/x/cli.js'],
     config: '/h/50%/c.json',
+    exposed: false,
   })
-  expect(u).toContain('ExecStart="/opt/node 24/bin/node" "/x/cli.js" start')
+  expect(u).toContain('ExecStart="/opt/node 24/bin/node" "/x/cli.js" service run')
   expect(u).toContain('Environment="JAYPOST_CONFIG=/h/50%%/c.json"')
   expect(u).not.toContain('WorkingDirectory')
 })
@@ -55,13 +61,18 @@ test('systemd unit escapes $ in ExecStart only', () => {
   const u = formatSystemdUnit({
     exec: ['/n$x/node', '/c$y/cli.js'],
     config: '/h/$z/c.json',
+    exposed: false,
   })
-  expect(u).toContain('ExecStart="/n$$x/node" "/c$$y/cli.js" start')
+  expect(u).toContain('ExecStart="/n$$x/node" "/c$$y/cli.js" service run')
   expect(u).toContain('Environment="JAYPOST_CONFIG=/h/$z/c.json"')
 })
 test('systemd unit with a single exec word runs it directly', () => {
-  const u = formatSystemdUnit({ exec: ['/h/.local/bin/jaypost'], config: '/h/c.json' })
-  expect(u).toContain('ExecStart="/h/.local/bin/jaypost" start\n')
+  const u = formatSystemdUnit({
+    exec: ['/h/.local/bin/jaypost'],
+    config: '/h/c.json',
+    exposed: false,
+  })
+  expect(u).toContain('ExecStart="/h/.local/bin/jaypost" service run\n')
 })
 test('quoteSystemdValue escapes backslash and quote', () =>
   expect(quoteSystemdValue('a\\b"c%')).toBe('"a\\\\b\\"c%%"'))
@@ -145,8 +156,9 @@ test('formatLaunchdPlist writes the agent plist', () => {
     formatLaunchdPlist({
       label: 'io.github.bithyte.jaypost',
       exec: ['/h/.local/bin/jaypost'],
-      config: '/h/.config/jaypost/config.json',
+      config: '/h/.config/jaypost/service/config.json',
       logFile: '/h/Library/Logs/jaypost/jaypost.log',
+      exposed: false,
     }),
   ).toBe(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -157,12 +169,13 @@ test('formatLaunchdPlist writes the agent plist', () => {
   <key>ProgramArguments</key>
   <array>
     <string>/h/.local/bin/jaypost</string>
-    <string>start</string>
+    <string>service</string>
+    <string>run</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>JAYPOST_CONFIG</key>
-    <string>/h/.config/jaypost/config.json</string>
+    <string>/h/.config/jaypost/service/config.json</string>
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -188,6 +201,7 @@ test('formatLaunchdPlist escapes & < > in every value', () => {
     exec: ['/a&b/<n>/node', '/c.js'],
     config: '/x&y/c.json',
     logFile: '/l<g>.log',
+    exposed: false,
   })
   expect(plist).toContain('<string>/a&amp;b/&lt;n&gt;/node</string>')
   expect(plist).toContain('<string>/x&amp;y/c.json</string>')
@@ -196,7 +210,13 @@ test('formatLaunchdPlist escapes & < > in every value', () => {
 
 test('findPlistExecWords undoes formatLaunchdPlist', () => {
   const words = ['/a b/&amp;/<x>/node', '/c.js']
-  const plist = formatLaunchdPlist({ label: 'l', exec: words, config: '/c', logFile: '/l' })
+  const plist = formatLaunchdPlist({
+    label: 'l',
+    exec: words,
+    config: '/c',
+    logFile: '/l',
+    exposed: false,
+  })
   expect(findPlistExecWords(plist)).toEqual(words)
   expect(findPlistExecWords('<plist><dict></dict></plist>')).toBeUndefined()
 })
@@ -213,8 +233,37 @@ test.skipIf(process.platform !== 'darwin')(
         exec: ['/a & b/<n>/node', '/c d/cli.js'],
         config: '/x & y/<c>/config.json',
         logFile: '/l & <g>/my log.log',
+        exposed: false,
       }),
     )
     expect((await realExec('plutil', ['-lint', file])).code).toBe(0)
   },
 )
+
+test('formatComposeYaml publishes on all interfaces when exposed', () => {
+  expect(formatComposeYaml(9000, true)).toContain('- "9000:9000"')
+  expect(formatComposeYaml(9000, true)).not.toContain('127.0.0.1')
+  expect(formatComposeYaml(9000, false)).toContain('- "127.0.0.1:9000:9000"')
+})
+test('formatQuadletContainer publishes on all interfaces when exposed', () => {
+  const q = formatQuadletContainer({ version: '1', port: 8787, envFile: '/e', exposed: true })
+  expect(q).toContain('PublishPort=8787:8787\n')
+  expect(q).not.toContain('127.0.0.1')
+})
+test('formatSystemdUnit sets JAYPOST_HOST only when exposed and runs service run', () => {
+  const plain = formatSystemdUnit({ exec: ['/b'], config: '/c', exposed: false })
+  const exposed = formatSystemdUnit({ exec: ['/b'], config: '/c', exposed: true })
+  expect(plain).not.toContain('JAYPOST_HOST')
+  expect(plain).toContain('ExecStart="/b" service run\n')
+  expect(exposed).toContain('Environment=JAYPOST_HOST=0.0.0.0\n')
+  expect(exposed).toContain('ExecStart="/b" service run\n')
+})
+test('formatLaunchdPlist runs service run and sets JAYPOST_HOST when exposed', () => {
+  const input = { label: 'l', exec: ['/b'], config: '/c', logFile: '/l' }
+  const plain = formatLaunchdPlist({ ...input, exposed: false })
+  const exposed = formatLaunchdPlist({ ...input, exposed: true })
+  expect(plain).not.toContain('JAYPOST_HOST')
+  expect(plain).toContain('<string>service</string>\n    <string>run</string>')
+  expect(exposed).toContain('<key>JAYPOST_HOST</key>\n    <string>0.0.0.0</string>')
+  expect(findPlistExecWords(exposed)).toEqual(['/b'])
+})

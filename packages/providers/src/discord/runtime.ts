@@ -44,7 +44,7 @@ export function createDiscordRuntime(
         case 'rejected':
           return {
             ok: false,
-            reason: `Discord rejected the bot token (${result.status}); check it with \`jaypost init\``,
+            reason: `Discord rejected the bot token (${result.status}); check it with \`jaypost service install\``,
           }
         case 'unreachable':
           return {

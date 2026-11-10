@@ -2,7 +2,7 @@ import { basename } from 'node:path'
 import { TOKEN_ENV_VAR } from '@jaypost/store'
 import type { ApiAuth } from '@jaypost/store'
 import type { Provider, SettingValues } from '@jaypost/core'
-import { LINE_BREAK_PATTERN } from './constants.ts'
+import { EXPOSED_HOST, LINE_BREAK_PATTERN } from './constants.ts'
 
 /** Wraps in double quotes, escaping backslash and `"`, and doubling `%` (systemd specifier). */
 export function quoteSystemdValue(value: string): string {
@@ -15,7 +15,7 @@ export function quoteExecWord(word: string): string {
 }
 
 /**
- * Image that installs the package from npm, or from a local tarball when given, and runs `start` as
+ * Image that installs the package from npm, or from a local tarball when given, and runs `service run` as
  * the node user.
  */
 export function formatDockerfile(options: {
@@ -32,12 +32,15 @@ ${install}
 RUN mkdir /data && chown node:node /data
 VOLUME /data
 USER node
-CMD ["jaypost","start"]
+CMD ["jaypost","service","run"]
 `
 }
 
-/** Compose file publishing `port` on loopback only, with a named volume for /data. */
-export function formatComposeYaml(port: number): string {
+/**
+ * Compose file publishing `port` on loopback only, or on all interfaces when `exposed`, with a
+ * named volume for /data.
+ */
+export function formatComposeYaml(port: number, exposed: boolean): string {
   return `name: jaypost
 services:
   bot:
@@ -45,7 +48,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "127.0.0.1:${port}:${port}"
+      - "${exposed ? '' : '127.0.0.1:'}${port}:${port}"
     volumes:
       - data:/data
 volumes:
@@ -91,11 +94,15 @@ export function formatEnvFile(options: {
   return lines.join('\n') + '\n'
 }
 
-/** Quadlet .container unit; publishes `port` on loopback only and reads the env file. */
+/**
+ * Quadlet .container unit; publishes `port` on loopback only, or on all interfaces when `exposed`,
+ * and reads the env file.
+ */
 export function formatQuadletContainer(options: {
   readonly version: string
   readonly port: number
   readonly envFile: string
+  readonly exposed: boolean
 }): string {
   return `[Unit]
 Description=jaypost service
@@ -105,7 +112,7 @@ Image=localhost/jaypost:${options.version}
 ContainerName=jaypost
 Volume=jaypost-data:/data
 EnvironmentFile=${quoteSystemdValue(options.envFile)}
-PublishPort=127.0.0.1:${options.port}:${options.port}
+PublishPort=${options.exposed ? '' : '127.0.0.1:'}${options.port}:${options.port}
 
 [Service]
 Restart=on-failure
@@ -116,13 +123,15 @@ WantedBy=default.target
 }
 
 /**
- * User unit that runs the `exec` words (`[node, cli]` or `[binary]`) plus `start`, with
- * JAYPOST_CONFIG pinned to `config`.
+ * User unit that runs the `exec` words (`[node, cli]` or `[binary]`) plus `service run`, with
+ * JAYPOST_CONFIG pinned to `config`, and JAYPOST_HOST set to all interfaces when `exposed`.
  */
 export function formatSystemdUnit(options: {
   readonly exec: readonly string[]
   readonly config: string
+  readonly exposed: boolean
 }): string {
+  const hostLine = options.exposed ? `Environment=JAYPOST_HOST=${EXPOSED_HOST}\n` : ''
   return `[Unit]
 Description=jaypost service
 After=network-online.target
@@ -130,13 +139,24 @@ Wants=network-online.target
 
 [Service]
 Environment=${quoteSystemdValue(`JAYPOST_CONFIG=${options.config}`)}
-ExecStart=${options.exec.map(quoteExecWord).join(' ')} start
+${hostLine}ExecStart=${options.exec.map(quoteExecWord).join(' ')} service run
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
 `
+}
+
+/**
+ * Drops a trailing `service run` from command words, or the `start` older units ended with; other
+ * words are returned as given.
+ */
+export function stripServiceRun(words: readonly string[]): readonly string[] {
+  if (words.at(-2) === 'service' && words.at(-1) === 'run') {
+    return words.slice(0, -2)
+  }
+  return words.at(-1) === 'start' ? words.slice(0, -1) : words
 }
 
 function escapeXml(value: string): string {
@@ -148,19 +168,23 @@ function unescapeXml(value: string): string {
 }
 
 /**
- * LaunchAgent plist that runs the `exec` words plus `start` at load, restarts after a non-zero
- * exit, and logs stdout and stderr to `logFile`. Every value is XML-escaped.
+ * LaunchAgent plist that runs the `exec` words plus `service run` at load, restarts after a non-zero
+ * exit, and logs stdout and stderr to `logFile`. `exposed` adds JAYPOST_HOST for all interfaces. Every value is XML-escaped.
  */
 export function formatLaunchdPlist(options: {
   readonly label: string
   readonly exec: readonly string[]
   readonly config: string
   readonly logFile: string
+  readonly exposed: boolean
 }): string {
-  const words = [...options.exec, 'start']
+  const words = [...options.exec, 'service', 'run']
     .map((word) => `    <string>${escapeXml(word)}</string>`)
     .join('\n')
   const logFile = escapeXml(options.logFile)
+  const hostEntry = options.exposed
+    ? `\n    <key>JAYPOST_HOST</key>\n    <string>${EXPOSED_HOST}</string>`
+    : ''
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -174,7 +198,7 @@ ${words}
   <key>EnvironmentVariables</key>
   <dict>
     <key>JAYPOST_CONFIG</key>
-    <string>${escapeXml(options.config)}</string>
+    <string>${escapeXml(options.config)}</string>${hostEntry}
   </dict>
   <key>RunAtLoad</key>
   <true/>
@@ -196,7 +220,7 @@ ${words}
 
 /**
  * The unescaped `ProgramArguments` words of a plist written by `formatLaunchdPlist`, minus the
- * trailing `start`; undefined when there's no `ProgramArguments` array.
+ * trailing `service run`; undefined when there's no `ProgramArguments` array.
  */
 export function findPlistExecWords(plist: string): readonly string[] | undefined {
   const match = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)
@@ -206,5 +230,5 @@ export function findPlistExecWords(plist: string): readonly string[] | undefined
   const words = [...(match[1] ?? '').matchAll(/<string>([\s\S]*?)<\/string>/g)].map((entry) =>
     unescapeXml(entry[1] ?? ''),
   )
-  return words.at(-1) === 'start' ? words.slice(0, -1) : words
+  return stripServiceRun(words)
 }

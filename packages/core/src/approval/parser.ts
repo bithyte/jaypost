@@ -315,7 +315,7 @@ export function createRetrySchema() {
 }
 
 /**
- * Schema of the fields a /vote body adds to a /request body; also the source of the OpenAPI spec.
+ * Schema of the fields a vote body adds to a /request body; also the source of the OpenAPI spec.
  * Unknown keys are kept, since they belong to the question.
  */
 export function createVoteFieldsSchema() {
@@ -347,10 +347,9 @@ export function parseRetryCount(body: unknown): RetryParseResult {
 }
 
 /**
- * Validates a /vote body: a /request body whose `options` are `[approve, reject]`, with
- * `timeoutOption` the reject answer and no `allowText`, plus optional `voters`, `require` (default
- * `all`) and `retry` (default 0). Voter ids are trimmed, not checked against the provider. Never
- * throws; returns the first problem as `error`.
+ * Validates a vote body: a /request body with at least two options and no `allowText`, plus
+ * optional `voters`, `require` (default `all`) and `retry` (default 0). Voter ids are trimmed, not
+ * checked against the provider. Never throws; returns the first problem as `error`.
  */
 export function parseVoteRequest(
   body: unknown,
@@ -366,11 +365,8 @@ export function parseVoteRequest(
   if (request.allowText) {
     return { ok: false, error: "a vote can't allow text replies" }
   }
-  if (request.options.length !== 2) {
-    return { ok: false, error: 'a vote needs exactly two options: approve, then reject' }
-  }
-  if (request.timeoutOption !== request.options[1]) {
-    return { ok: false, error: 'timeoutOption must be the second option' }
+  if (request.options.length < 2) {
+    return { ok: false, error: 'a vote needs at least two options' }
   }
   const fields = VOTE_FIELDS_SCHEMA.safeParse(body)
   if (!fields.success) {

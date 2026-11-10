@@ -26,7 +26,7 @@ function toSeedFingerprint(
 }
 
 /**
- * What the env and config.json say bot 1, pairing 1 and key 1 should be, with env vars overriding
+ * What the env and config.json say bot 1, contact 1 and key 1 should be, with env vars overriding
  * the file as in `loadConfig`. A missing required setting gives `missing`. Throws on an unknown
  * provider, an invalid setting, api token or quietHours, or a bad config file, never quoting a
  * secret. An unparseable mutedUntil is left out.

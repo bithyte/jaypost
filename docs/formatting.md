@@ -30,4 +30,4 @@ The text limit counts the text after the markup is removed, so the source may be
 
 On Telegram, if it refuses the formatting, the service sends the message again as plain text (the rendered text, without the markers) and logs one line, so the question still gets through.
 
-`format` needs a service at least as new as this release; an older one shows the markdown as typed. Re-run `init` to upgrade.
+`format` needs a service at least as new as this release; an older one shows the markdown as typed. Run `jaypost service install` again to upgrade.

@@ -467,18 +467,16 @@ type Cli = {
 // Async spawn: the API server runs in this process, so a blocking spawnSync would deadlock.
 function runCli(args: readonly string[], port: number, stdin?: Readable | string): Promise<Cli> {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['apps/cli/src/cli.ts', ...args, '--port', String(port)],
-      {
-        cwd: ROOT,
-        env: {
-          ...process.env,
-          XDG_CONFIG_HOME: createTempDirectory(),
-          JAYPOST_TOKEN: '',
-        },
+    const child = spawn(process.execPath, ['apps/cli/src/cli.ts', ...args], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        XDG_CONFIG_HOME: createTempDirectory(),
+        JAYPOST_URL: `http://127.0.0.1:${port}`,
+        JAYPOST_TOKEN: '',
+        JAYPOST_BOT: '',
       },
-    )
+    })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()))
@@ -580,13 +578,28 @@ test('a vote names the voter the service could not reach', async () => {
   expect(errors).toEqual(["jaypost: couldn't send the message to 7"])
 })
 
-test('a vote against a service without /vote says it is too old', async () => {
-  const port = await startFakeService(404, { error: 'not found' })
+test('a vote answered as a plain question says the service is too old', async () => {
+  const port = await startFakeService(200, { answer: 'Approve', timedOut: false })
   const { deps, errors } = createDeps(port)
   expect(await runSendRequest({ ...ASK, voters: ['1'] }, deps)).toBe(1)
   expect(errors).toEqual([
-    'jaypost: jaypost service is too old for votes (run jaypost init to upgrade)',
+    'jaypost: jaypost service is too old for votes (run jaypost service install to upgrade)',
   ])
+})
+
+test('a three-way vote through the service exits 0 on a non-default winner', async () => {
+  const { port, service, messenger } = await startApi()
+  const { deps, out } = createDeps(port)
+  const pending = runSendRequest(
+    { ...ASK, options: ['Ship', 'Hold', 'Decline'], voters: ['1', '2'], rule: 'majority' },
+    deps,
+  )
+  await waitFor(() => messenger.sent.length === 2)
+  for (const sent of messenger.sent) {
+    service.tap(sent.id, 1)
+  }
+  expect(await pending).toBe(0)
+  expect(out).toEqual(['Hold'])
 })
 
 test('retry re-asks through the service', async () => {
@@ -602,7 +615,7 @@ test('retry against a service that ignores it says it is too old once it times o
   const { deps, errors } = createDeps(port)
   expect(await runSendRequest({ ...ASK, retryCount: 1 }, deps)).toBe(1)
   expect(errors).toEqual([
-    'jaypost: jaypost service is too old to re-ask after a timeout (run jaypost init to upgrade)',
+    'jaypost: jaypost service is too old to re-ask after a timeout (run jaypost service install to upgrade)',
   ])
 })
 

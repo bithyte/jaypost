@@ -6,6 +6,7 @@ import { runPing } from '../../src/commands/index.ts'
 import type { PingDeps } from '../../src/commands/index.ts'
 import { SILENT_PROGRESS } from '../../src/progress/index.ts'
 import type { Progress } from '../../src/progress/index.ts'
+import { toLocalEndpoint } from '@jaypost/client'
 import { telegramProvider } from '@jaypost/providers'
 import { createRecordingProgress } from '../progress/recording.ts'
 
@@ -36,7 +37,7 @@ function createDeps(port: number, progress: Progress) {
   const out: string[] = []
   const errors: string[] = []
   const deps: PingDeps = {
-    port,
+    endpoint: toLocalEndpoint(port),
     token: NO_CLIENT_TOKEN,
     progress,
     providers: [telegramProvider],
@@ -47,7 +48,7 @@ function createDeps(port: number, progress: Progress) {
   return { deps, out, errors }
 }
 
-test('jaypost ping on a live terminal says where it was sent', async () => {
+test("ping sends to the endpoint it's given", async () => {
   const urls: (string | undefined)[] = []
   const port = await startFake(urls)
   const { progress, events } = createRecordingProgress('live')

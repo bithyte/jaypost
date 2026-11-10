@@ -1,7 +1,7 @@
-import { ADMIN_KEY_ENV_VAR, findEnvValue, resolveConfigPath } from '@jaypost/store'
+import { resolveConfigPath } from '@jaypost/store'
 import { readAdminKeyFile } from '@jaypost/install'
 import type { AdminResult } from '@jaypost/client'
-import { openAdmin } from './admin-access.ts'
+import { openAdmin, saveRotatedKey } from './admin-access.ts'
 import { PromptAborted } from './prompts.ts'
 import { redact } from './provider-setup.ts'
 import type { AdminDeps, AdminOutputArgs } from './types.ts'
@@ -73,8 +73,9 @@ export async function runAdminCommand(
 }
 
 /**
- * Asks the service for a new admin key and prints it. Locally the service already wrote it to its
- * admin key file; a remote admin has to update `JAYPOST_ADMIN_KEY`.
+ * Asks the service for a new admin key, prints it and writes it to the inbox entry it went through
+ * (`local` for the install, or the named remote). With `JAYPOST_URL` the inbox stays as it is and
+ * the admin has to update `JAYPOST_ADMIN_KEY`.
  */
 export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promise<number> {
   return runAdminCommand(deps, async () => {
@@ -84,20 +85,17 @@ export function runAdminKeyRotate(args: AdminOutputArgs, deps: AdminDeps): Promi
       return 1
     }
     const result = await opened.caller.rotateAdminKey()
+    // Printed before the inbox write, so a failed write can't lose the only copy of the new key.
     const code = printResult(result, args, deps, (value) => `New admin key: ${value.adminKey}`)
-    if (result.kind === 'failed' || args.json) {
+    if (result.kind === 'failed') {
       return code
     }
-    const isEnvSet = findEnvValue(deps.env, ADMIN_KEY_ENV_VAR) !== undefined
-    if (opened.endpoint.kind === 'local') {
-      deps.printError(
-        'The old admin key stopped working. The service saved the new one to its admin key file, where commands on this machine find it.',
-      )
-    } else {
-      deps.printError('The old admin key stopped working.')
+    const notes = saveRotatedKey(opened, result.value.adminKey, deps.inboxPath)
+    if (args.json) {
+      return code
     }
-    if (isEnvSet) {
-      deps.printError(`Set ${ADMIN_KEY_ENV_VAR} to the new key.`)
+    for (const note of notes) {
+      deps.printError(note)
     }
     return code
   })
