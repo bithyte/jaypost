@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: jaypost
-  version: 0.9.0
+  version: 0.10.0
   description: Local HTTP API that asks you a question in a chat app with buttons and returns your answer.
   license:
     name: Apache-2.0
