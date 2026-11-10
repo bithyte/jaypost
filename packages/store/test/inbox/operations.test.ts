@@ -16,7 +16,7 @@ import type { Inbox, InboxBot, InboxChange } from '../../src/inbox/index.ts'
 
 const KEY_A = `jpk_${'a'.repeat(43)}`
 const KEY_B = `jpk_${'b'.repeat(43)}`
-const BOT_A: InboxBot = { alias: 'NeveuBot', url: 'http://203.0.113.7:8787/', key: KEY_A }
+const BOT_A: InboxBot = { alias: 'DemoBot', url: 'http://203.0.113.7:8787/', key: KEY_A }
 const BOT_B: InboxBot = { alias: 'Other', url: 'https://other.example/', key: KEY_B }
 
 function changed(change: InboxChange): Inbox {
@@ -29,36 +29,36 @@ function changed(change: InboxChange): Inbox {
 test('saveBot on an empty inbox makes it the default', () => {
   expect(saveBot(EMPTY_INBOX, BOT_A)).toEqual({
     ...EMPTY_INBOX,
-    default: 'NeveuBot',
+    default: 'DemoBot',
     bots: [BOT_A],
   })
 })
 
 test('saveBot replaces an entry whose alias differs only by case', () => {
-  const inbox = saveBot(saveBot(EMPTY_INBOX, BOT_A), { ...BOT_A, alias: 'neveubot', key: KEY_B })
-  expect(inbox.bots).toEqual([{ ...BOT_A, alias: 'neveubot', key: KEY_B }])
+  const inbox = saveBot(saveBot(EMPTY_INBOX, BOT_A), { ...BOT_A, alias: 'demobot', key: KEY_B })
+  expect(inbox.bots).toEqual([{ ...BOT_A, alias: 'demobot', key: KEY_B }])
 })
 
 test('removeBot of the default moves the default to the first remaining bot', () => {
   const inbox = saveBot(saveBot(EMPTY_INBOX, BOT_A), BOT_B)
-  expect(changed(removeBot(inbox, 'neveubot')).default).toBe('Other')
+  expect(changed(removeBot(inbox, 'demobot')).default).toBe('Other')
 })
 
 test('removeBot of the last bot leaves no default', () => {
-  const inbox = changed(removeBot(saveBot(EMPTY_INBOX, BOT_A), 'NeveuBot'))
+  const inbox = changed(removeBot(saveBot(EMPTY_INBOX, BOT_A), 'DemoBot'))
   expect('default' in inbox).toBe(false)
   expect(inbox.bots).toEqual([])
 })
 
 test('renameBot keeps the default on the renamed entry', () => {
-  const inbox = changed(renameBot(saveBot(EMPTY_INBOX, BOT_A), 'NeveuBot', 'home'))
+  const inbox = changed(renameBot(saveBot(EMPTY_INBOX, BOT_A), 'DemoBot', 'home'))
   expect(inbox.default).toBe('home')
   expect(inbox.bots).toEqual([{ ...BOT_A, alias: 'home' }])
 })
 
 test("renameBot onto another entry's alias fails", () => {
   const inbox = saveBot(saveBot(EMPTY_INBOX, BOT_A), BOT_B)
-  expect(renameBot(inbox, 'NeveuBot', 'other')).toEqual({
+  expect(renameBot(inbox, 'DemoBot', 'other')).toEqual({
     kind: 'failed',
     message: 'a bot is already named "other"',
   })
@@ -122,8 +122,8 @@ test('toServiceUrl rejects credentials, query, fragment and non-http schemes', (
 test('saveBot over the default with a different case moves the default to the new spelling', () => {
   const inbox: Inbox = {
     ...EMPTY_INBOX,
-    default: 'neveubot',
-    bots: [{ ...BOT_A, alias: 'neveubot' }],
+    default: 'demobot',
+    bots: [{ ...BOT_A, alias: 'demobot' }],
   }
-  expect(saveBot(inbox, BOT_A)).toEqual({ ...inbox, default: 'NeveuBot', bots: [BOT_A] })
+  expect(saveBot(inbox, BOT_A)).toEqual({ ...inbox, default: 'DemoBot', bots: [BOT_A] })
 })

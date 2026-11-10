@@ -14,10 +14,10 @@ import type { Inbox } from '../../src/inbox/index.ts'
 const KEY = `jpk_${'a'.repeat(43)}`
 const INBOX: Inbox = {
   version: 1,
-  default: 'NeveuBot',
+  default: 'DemoBot',
   local: { url: 'http://127.0.0.1:8787/' },
   remotes: [{ name: 'home', url: 'https://home.example/', adminKey: `jpa_${'b'.repeat(43)}` }],
-  bots: [{ alias: 'NeveuBot', url: 'http://203.0.113.7:8787/', key: KEY }],
+  bots: [{ alias: 'DemoBot', url: 'http://203.0.113.7:8787/', key: KEY }],
 }
 
 let dir = ''
